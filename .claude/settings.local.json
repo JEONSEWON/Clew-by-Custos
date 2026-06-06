@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pip install --quiet pytest pydantic)",
+      "Bash(python -m pytest --collect-only)",
+      "Bash(python -m pytest tests/test_model.py -v)",
+      "Bash(python -m pytest tests/test_roundtrip.py -v)",
+      "Bash(python -m pip install --quiet langgraph langchain-core openinference-instrumentation-langchain opentelemetry-sdk opentelemetry-api)",
+      "Bash(python -c ' *)",
+      "Bash(python -m pip install --quiet --upgrade wrapt)",
+      "Bash(python -m pytest tests/test_langgraph_adapter.py -v)",
+      "Bash(python -m pytest tests/test_generator.py -v)",
+      "Bash(python -m pytest tests/test_build_set.py -v)",
+      "Bash(python -m eval.generators.build_set --seed 42 --pairs-per-pattern 10 --out-dir eval/)",
+      "Bash(python -m pip install -e . --quiet)",
+      "Bash(python -m pytest tests/test_no_label_leakage.py -v)",
+      "Bash(python tasks.py dod)",
+      "Bash(python -m pytest -v)",
+      "Bash(python -m pytest tests/test_generator.py tests/test_build_set.py -v)",
+      "Bash(python tasks.py clean-set)",
+      "Bash(python -m pytest)"
+    ]
+  }
+}

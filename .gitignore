@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+
+.pytest_cache/
+.venv/
+venv/
+.env
+
+# uv
+uv.lock
+
+# eval 생성물 — seed 고정으로 재생성 가능
+eval/traces/*.json
+eval/labels.jsonl
+eval/set_manifest.json
