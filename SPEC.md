@@ -107,48 +107,78 @@ clew/
 > 각 단계 끝에 "무엇을 검증했나" 한 줄 남기기. 5·6단계의 검증 규율(사전 동결·누수 금지)을
 > 절대 건너뛰지 말 것 — 이게 검증 실험을 반복하지 않는 핵심이다.
 
-## 8. 현재 단계 상세 명세 (Active Stage Detail) — 1단계
+## 8. 현재 단계 상세 명세 (Active Stage Detail) — 2단계
 
-### 1단계 — 데이터 기반 + 검증 하니스 (Data Foundation & Validation Harness)
+### 2단계 — 탐지 캐스케이드 (Detection Cascade)
 
-**목표:** 탐지 로직을 만들기 *전에*, (a) 트레이스가 정규 모델로 깨끗하게 들어오고,
-(b) 정답 라벨이 박힌 검증 세트가 손에 있고, (c) 성공/중단 기준이 동결되어 있고,
-(d) 탐지 코드가 라벨을 못 보는 구조를 먼저 세운다.
-**이 단계는 캐스케이드 탐지를 포함하지 않는다(→ 2단계).**
+**목표:** 1단계 하니스 위에서 구조→의미 캐스케이드 탐지기를 만들고, 동결된 기준으로
+평가 set에 **단 한 번** 측정해 GO/KILL을 정직하게 가린다.
 
-#### 1.1 정규 데이터 모델 (canonical span tree)
-- OpenInference / OTel 정렬 스팬 트리. 필드:
-  `trace_id`, `span_id`, `parent_span_id`, `agent_or_node_id`,
-  `span_kind`(llm/tool/chain/agent), `start_time`, `end_time`,
-  `input_text`, **`output_text`(필수)**, `token_count`(있으면), `model`, `cost_rate` 입력용.
-- ★ `output_text`는 2단계 *의미 중복* 비교의 입력 → **절대 누락 금지.**
-- 직렬화: JSON. 한 트레이스 = 루트 + 스팬 리스트. 역직렬화 라운드트립 보존.
+**전제:** 1단계 동결(`stage1-freeze`). `detect/`가 비어있던 상태를 이제 채운다 —
+누수 가드는 import *방향*만 강제하므로 `src/clew`는 여전히 `eval/labels`를 못 본다.
 
-#### 1.2 LangGraph 어댑터 (1번)
-- `openinference-instrumentation-langchain`으로 계측된 LangGraph 실행이 내보내는
-  OpenInference/OTLP 스팬 → 1.1 정규 모델로 변환.
-- 라운드트립 테스트: 알려진 LangGraph 실행 계측 → 정규 모델 로드 →
-  스팬 수 · 부모-자식 관계 · `output_text` 보존 검증.
+### v1 탐지 스코프
+v1 캐스케이드는 강한 구조 신호로 후보를 좁힐 수 있는 3패턴을 대상으로 한다:
+- repeat_node (같은 agent_or_node_id 반복)
+- pingpong_aba (A→B→A→B 반복)
+- requery_known (같은 입력 키 재조회 — tool 입력 게이트)
+regen_handoff(cross-node 재생성)는 v1 범위 밖. 사유: 핸드오프는 정상 파이프라인
+(A 1단계 → B 2단계)과 구조적으로 구별되지 않아 강한 구조 신호가 없다. 후보를
+'인접한 서로 다른 llm 노드'로 잡으면 모든 핸드오프가 후보가 되어 탐지가
+semantic-dominant가 되고, 정당한 refinement 핸드오프(B가 A를 다듬어 발전)가
+φ를 넘겨 거짓 양성이 될 위험이 크다. 향후 증분에서만: 핸드오프 후보 경로 +
+refinement non-waste 트윈으로 FP 표면을 검증한 뒤 도입.
 
-#### 1.3 검증 라벨셋 생성기
-- LangGraph로 두 부류 트레이스 생성:
-  - **낭비 심은(positive):** 중복 루프/중복 핸드오프를 의도적으로 주입.
-    어떤 스팬이 낭비인지 ground-truth 라벨을 **별도 파일**에 기록(트레이스 본문엔 안 넣음).
-  - **깨끗한(negative/control):** 낭비 없는 정상 수렴 그래프.
-    길이·단계 수를 positive와 **매칭**해 길이 편향 차단(v1 핵심 교훈).
-- 심을 낭비 패턴 카탈로그: 동일 노드 재호출 루프 · 동일 정보 재생성 핸드오프 ·
-  A→B→A 핑퐁 · 이미 가진 정보 재조회.
-- 규모: 각 부류 N개(1단계에서 확정, 예: 30/30).
+#### 2.1 후보 생성 — span_kind 인지 규칙 (label-free)
+탐지기는 트레이스의 패턴 라벨을 모른다. 후보 생성은 `span_kind` 로만 결정한다.
 
-#### 1.4 성공기준 동결 + 누수 가드
-- `validation/CRITERIA_FROZEN.md`: 성공/중단 기준을 라벨 분석 *전에* 적고 커밋
-  (예: 탐지 목표 F1, 깨끗한 트레이스 오탐율 상한). **결과 본 뒤 수정 금지.**
-- 탐지/제품 코드는 라벨 파일을 import·read 불가
-  (디렉터리 분리 + 테스트로 강제). **평가 스크립트만** 라벨 접근.
+- 조회/도구류 span(`retrieval`·`tool` kind): 같은 `agent_or_node_id` 가 N회+ 반복돼도,
+  재등장의 `input_text` 가 원본(첫 등장)과 정규화 동일(normalized-equal)일 때만 후보 쌍.
+  입력이 다르면 후보 아님 — 서로 다른 정당한 조회이므로 구조에서 제외한다.
+  (근거: 재조회 낭비의 정의적 신호는 '같은 입력'이지 '같은 노드'가 아니다.
+  노드 동일성만으로는 재조회와 서로 다른 조회를 구분 못 해, 의미 레이어에
+  템플릿-표면 거짓 양성을 떠넘긴다. 1차 calibrate FAIL(dev_fpr 0.20)이 그 증거.)
+- 그 외 kind(`agent`·`llm`·`chain`): 기존대로 노드 반복/토폴로지로 후보를 잡고,
+  의미 레이어가 출력 중복을 확인한다. 입력 게이트 적용 안 함.
+- `requery_known` clean 데이터셋은 '같은 스키마·다른 값'(예: 다른 `customer_id` 로
+  같은 형식 응답) 하드 네거티브를 반드시 포함한다. 이들은 입력이 다르므로
+  구조 후보 0개여야 한다(게이트 작동 증명). 전부 다른 도메인으로만 채우는 것
+  금지 — eval 이 프로덕션보다 쉬워진다.
 
-#### 1단계 완료 정의 (DoD)
-- [ ] 정규 모델 스키마 + 직렬화/역직렬화 + 테스트 통과
-- [ ] LangGraph 어댑터 + 라운드트립 테스트 통과
-- [ ] 라벨셋 생성기로 positive/negative 트레이스 + 라벨 파일 산출
-- [ ] `CRITERIA_FROZEN.md` 커밋
-- [ ] ❗탐지 로직 없음(고의) — "데이터 들어오고 검증할 판 깔림"까지만
+#### 2.2 semantic.py — 의미 중복 확인
+- 입력: 2.1의 후보 쌍.
+- **로컬 다국어 임베딩 모델 1개**(한국어 포함 → 다국어 필수, API 키 불요, 결정론).
+  후보: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`(가볍고 패러프레이즈 특화) /
+  `intfloat/multilingual-e5-small`. 최종 선택은 dev set 분리도로(평가 set 무관).
+- 후보 쌍의 `output_text` 코사인 유사도 ≥ φ → 의미 중복 확정.
+- 파라미터: φ 코사인 임계 (dev set에서 결정·동결).
+
+#### 2.3 cascade.py — 결합 + 비용
+- 낭비 판정 = **구조 후보 AND 의미 중복(코사인 ≥ φ).** (둘 중 하나만으론 불충분 — v1 교훈.)
+- 낭비 스팬의 `token_count × cost_rate` = 추정 낭비 비용.
+- trace 판정: 낭비 스팬 ≥1 → trace = wasteful.
+- 출력: trace별 `{낭비 스팬, 중복도, 추정 낭비 토큰/비용}`.
+
+#### 2.4 파라미터 동결 절차 (★ 순서 엄수)
+1. 임베딩 모델 1개 선택(라벨·평가 set 무관 근거).
+2. **dev set 생성**: `build_set --seed <42 아님, 예: 7>` — 평가 set과 구조 동일, 내용 다름.
+3. dev set에서 패러프레이즈 쌍 vs 무관 쌍의 코사인 분포 관찰 → φ 결정, 반복 임계 N 결정.
+4. φ·N·임베딩 모델을 `CRITERIA_FROZEN.md`의 "탐지 파라미터"(현재 TBD) 섹션에 박고 **git commit**.
+5. 그 다음에야 평가 set(seed=42, `stage1-freeze` 동결)에 `evaluate` 실행.
+6. ★ **평가 set은 파라미터 결정에 절대 쓰지 않는다.**
+
+#### 2.5 evaluate.py — 평가 (1단계 스텁 → 채움)
+- `labels.jsonl` + 평가 set 트레이스 로드 → cascade 실행 → trace-level F1, control(negative) FPR 산출.
+- CRITERIA GO/KILL과 대조해 판정 출력.
+- ★ **evaluate가 유일한 라벨 reader.** cascade/structural/semantic엔 라벨 절대 안 넘김.
+- 회색지대(0.60≤F1<0.80 또는 0.10<FPR≤0.25)면 CRITERIA의 N=3 예산 안에서만 재조정 —
+  단 **집계 지표(F1·FPR)만 관찰**, 개별 라벨·어느 트레이스가 틀렸는지는 비관찰(평가 set 과적합 차단).
+  3회 소진 후에도 GO 미달이면 KILL.
+
+#### 2단계 완료 정의 (DoD)
+- [ ] structural.py + 단위 테스트(후보 탐지, 라벨 미참조)
+- [ ] semantic.py + 단위 테스트(임베딩 결정론, 코사인)
+- [ ] cascade.py + 단위 테스트(구조 AND 의미, 비용 산출)
+- [ ] 임베딩 모델·φ·N을 dev set에서 결정 후 CRITERIA에 동결 커밋
+- [ ] evaluate.py로 평가 set **단 1회** 측정 → F1/FPR → GO/KILL 판정 기록
+- [ ] 누수 가드 여전히 green(detect 채워졌어도 src/clew→eval/labels 의존 0)

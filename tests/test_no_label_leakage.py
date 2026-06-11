@@ -102,21 +102,54 @@ def test_runtime_no_label_file_open():
 
 
 # ----------------------------------------------------------------------
-# (d) DoD: 1단계 탐지/리포트 코드 없음
+# (d) DoD: 2단계 탐지 모듈 4개 존재 / 리포트는 여전히 없음
 # ----------------------------------------------------------------------
 
-def test_dod_detect_directory_empty():
-    """src/clew/detect/ 에 .py 파일 없음 — 1단계 탐지 로직 금지."""
+def test_detect_directory_has_expected_modules():
+    """src/clew/detect/ 에 2단계 모듈 정확히 4개(structural/semantic/cascade/__init__)."""
     detect_dir = SRC_CLEW / "detect"
-    py_files = list(detect_dir.glob("*.py"))
-    assert py_files == [], f"detect/ should be empty (stage 1), found: {py_files}"
+    py_files = sorted(p.name for p in detect_dir.glob("*.py"))
+    expected = ["__init__.py", "cascade.py", "semantic.py", "structural.py"]
+    assert py_files == expected, f"detect/ expected {expected}, found: {py_files}"
 
 
 def test_dod_report_directory_empty():
-    """src/clew/report/ 에 .py 파일 없음 — 1단계 리포트 로직 금지."""
+    """src/clew/report/ 에 .py 파일 없음 — 3단계까지 리포트 로직 금지."""
     report_dir = SRC_CLEW / "report"
     py_files = list(report_dir.glob("*.py"))
-    assert py_files == [], f"report/ should be empty (stage 1), found: {py_files}"
+    assert py_files == [], f"report/ should be empty (stage <=2), found: {py_files}"
+
+
+def test_calibrate_does_not_reference_eval_set():
+    """eval/calibrate.py 가 평가 set(seed=42) 경로 리터럴을 본문에 갖지 않는다.
+
+    dev set 경로(eval/dev/...)는 허용. 정확히 'eval/traces' 또는
+    'eval/labels.jsonl' 두 리터럴만 차단한다.
+    """
+    calibrate_path = ROOT / "eval" / "calibrate.py"
+    if not calibrate_path.exists():
+        pytest.skip("calibrate.py not yet created")
+    text = calibrate_path.read_text(encoding="utf-8")
+    scrubbed = text.replace("eval/dev/", "")
+    assert "eval/traces" not in scrubbed, (
+        "calibrate.py references eval set trace dir — must use dev set only"
+    )
+    assert "eval/labels.jsonl" not in scrubbed, (
+        "calibrate.py references eval labels — must use dev labels only"
+    )
+
+
+def test_evaluate_does_not_reference_dev_set():
+    """eval/evaluate.py 가 dev set(seed=7) 경로 리터럴을 본문에 갖지 않는다.
+
+    대칭 가드: evaluate 가 dev 경로를 읽으면 동결 우회/누수 가능. 'eval/dev' 리터럴 차단.
+    """
+    evaluate_path = ROOT / "eval" / "evaluate.py"
+    text = evaluate_path.read_text(encoding="utf-8")
+    assert "eval/dev" not in text, (
+        "evaluate.py references dev set — must read only the eval set (seed=42)"
+    )
+    assert "seed-7" not in text
 
 
 # ----------------------------------------------------------------------

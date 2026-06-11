@@ -18,9 +18,9 @@
 > **2단계 시작 직후, `evaluate.py` 첫 실행 전에 본 섹션을 같이 채워 동결한다.**
 > 동결 후 변경 금지. 현재 비어있는 항목은 *그 시점 함께 동결할 항목*이며 예시가 아니다.
 
-- φ (의미 중복 코사인 임계): <2단계 동결 시점 채움>
-- 반복 임계 N: <2단계 동결 시점 채움>
-- 임베딩 모델 (1개 고정): <2단계 동결 시점 채움>
+- φ (의미 중복 코사인 임계): 0.514345
+- 반복 임계 N: 2
+- 임베딩 모델 (1개 고정): paraphrase-multilingual-MiniLM-L12-v2 @ revision e8f8c211226b894fcb81acc59f3b34ba3efd5f42
 
 ## 성공 기준 (GO)
 
@@ -49,6 +49,32 @@
 - "진짜 뭔가 잡았다" 양성 피드백 ≥ M
 - 1주 유지율 ≥ U
 - 미달 시 wedge 재검토.
+
+## Stage 2 사전등록 (캐스케이드 + 후보 게이트)
+
+> 본 섹션은 **새 후보 게이트(SPEC §8 2.1) 적용 후 calibrate 결과를 보기 전에** 동결된다.
+> eval set(seed=42)은 이 단계에서 건드리지 않는다. 결과 후 본 섹션 수정 시 검증 무효.
+
+- **C1.** `requery_known` clean(같은 스키마·다른 값) → 구조 후보 0개. (테스트로 강제)
+- **C2.** `requery_known` positive(같은 입력) → 후보 생성 + 캐스케이드가 flag. (recall 회귀 방지)
+- **C3.** dev(seed=7) 분리:
+  - gap(P10 dup − P90 prog) > 0
+  - Cohen's d ≥ 0.5
+  - **pair-level** `dev_fpr_estimate` ≤ 0.15
+- **C4.** dev **trace-level 캐스케이드 FPR** (낭비 쌍 ≥1 이면 트레이스 flag) 산출·보고.
+  사전등록 목표: **trace-level FPR ≤ 0.10**. (이 숫자가 CRITERIA에 박힐 값.)
+
+## Stage 2 결과 및 v1 스코프 결정 (캘리브레이션 후 기록)
+- C1~C4: 전부 통과. gap +0.2208, Cohen's d 4.3803, pair-FPR 0.00, trace-FPR 0.00.
+  동결 파라미터: phi=0.514345, N=2,
+  model=paraphrase-multilingual-MiniLM-L12-v2 @ e8f8c211226b894fcb81acc59f3b34ba3efd5f42.
+- 운영점 recall(보고용, φ·N 불변): in-scope 3패턴 30/30=1.00,
+  regen_handoff 0/10, 전체 30/40=0.75.
+- regen_handoff 진단: 구조 갭(find_candidates 후보 0; cross-node A→B 각 1회).
+  cosine(A,B)=0.862 > φ — 의미 미스 아님, 순수 구조 미커버.
+- 결정: regen_handoff v1 디스코프(원리적 사유: 강한 구조 신호 부재 →
+  semantic-dominant → refinement FP 위험). 데이터셋엔 유지, eval에서 패턴별
+  보고하되 regen은 'uncovered'로 투명 표기. 비커버는 결함이 아니라 명시적 범위.
 
 ## 변경 정책
 

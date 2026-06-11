@@ -69,9 +69,10 @@ def test_dod_criteria_frozen_exists_and_pins_manifest():
         )
 
 
-# 5. 탐지 로직 없음(고의)
-def test_dod_no_detect_or_report_code():
+# 5. 2단계 탐지 모듈 존재, 리포트는 여전히 부재
+def test_dod_detect_modules_present_report_absent():
     detect_dir = ROOT / "src" / "clew" / "detect"
     report_dir = ROOT / "src" / "clew" / "report"
-    assert list(detect_dir.glob("*.py")) == []
+    detect_files = sorted(p.name for p in detect_dir.glob("*.py"))
+    assert detect_files == ["__init__.py", "cascade.py", "semantic.py", "structural.py"]
     assert list(report_dir.glob("*.py")) == []

@@ -17,3 +17,9 @@ uv.lock
 eval/traces/*.json
 eval/labels.jsonl
 eval/set_manifest.json
+
+# 2단계 dev set (seed=7) — 평가 set과 절대 섞이면 안 됨
+eval/dev/
+
+# 임베딩 캐시
+.cache/embeddings/
