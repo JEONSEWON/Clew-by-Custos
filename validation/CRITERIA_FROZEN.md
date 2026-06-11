@@ -10,6 +10,7 @@
 - 라벨셋: `eval/labels.jsonl` (seed=42, 4 패턴 × 10쌍 = positive 40 / negative 40)
 - `eval/set_manifest.json` sha256:
   `6d4efdb05e8b6de3931c965353ad78e9632d94a308d82c996ff43d3b018d4e01`
+  <!-- stage2 재동결값; stage1 원본 sha f3369b7cf598d4aa6f764ec2f56fa9aa437f4603d4ea84a88cb114ec7eb9069b 는 tag stage1-freeze (0fa25e0) 에 보존 -->
 - 길이 분포: min=5, max=7, mean=6.0 (paired structural matching — positive/clean
   트윈은 동일 토폴로지)
 
