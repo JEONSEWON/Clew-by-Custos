@@ -25,16 +25,7 @@ def _frozen_manifest_sha() -> str:
     return m.group(1)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "stage2: requery_known 생성기 변경(HARD/MIXED 풀 분기, SPEC §8 2.1 + CRITERIA C1)"
-        " 으로 seed=42 manifest sha 의도적 drift. 검증됨: drift 8/80 전량 requery_known"
-        " clean 트레이스에 국한, positive·다른 3패턴 sha 불변. eval 재동결은 dev"
-        " calibrate 통과 후 별도 단계에서 수행, 그때 본 xfail 제거 + 새 baseline sha"
-        " 를 CRITERIA_FROZEN.md 에 기록."
-    ),
-)
+# stage2 eval baseline — requery_known 생성기 수정 반영, stage1-freeze와 별개
 def test_seed42_manifest_sha_matches_frozen(tmp_path: Path):
     info = build_set(seed=42, pairs_per_pattern=10, out_dir=tmp_path)
     actual = hashlib.sha256(info["manifest_path"].read_bytes()).hexdigest()
