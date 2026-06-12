@@ -241,7 +241,7 @@ refinement non-waste 트윈으로 FP 표면을 검증한 뒤 도입.
 - D1 낭비 픽스처(R2형) → CLI 리포트에 낭비 스팬 식별 + 토큰/비용(또는 unknown) 포함
 - D2 깨끗 픽스처 → "낭비 미탐지" 리포트 정상 출력
 - D3 직렬화 왕복: save_trace→load_trace 후 분석 결과 동일
-- D4 기존 155 테스트 + 누수 가드 green, detect/ diff 0
+- D4 기존 테스트 green + 누수 가드 green, detect/ diff 0 (단 stage 경계 가드 2건(test_no_label_leakage.py의 test_dod_report_directory_empty, test_dod.py의 test_dod_detect_modules_present_report_absent)은 §10 진입으로 경계 갱신 — 검증 약화 아님)
 - D5 README quickstart의 명령이 실제로 실행됨
 
 **금지:** φ/N/모델 변경(CLI에 임계 오버라이드 옵션 넣지 말 것 — 실험은

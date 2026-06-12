@@ -69,10 +69,11 @@ def test_dod_criteria_frozen_exists_and_pins_manifest():
         )
 
 
-# 5. 2단계 탐지 모듈 존재, 리포트는 여전히 부재
-def test_dod_detect_modules_present_report_absent():
+# 5. 탐지 모듈 존재, 리포트는 §10 계획 모듈과 정확히 일치 (stage 경계 가드 — §10 진입으로 경계 갱신)
+def test_dod_detect_and_report_modules_match_stage3_scope():
     detect_dir = ROOT / "src" / "clew" / "detect"
     report_dir = ROOT / "src" / "clew" / "report"
     detect_files = sorted(p.name for p in detect_dir.glob("*.py"))
     assert detect_files == ["__init__.py", "cascade.py", "semantic.py", "structural.py"]
-    assert list(report_dir.glob("*.py")) == []
+    expected_report = ["__init__.py", "_model.py", "json_report.py", "markdown.py"]
+    assert sorted(p.name for p in report_dir.glob("*.py")) == expected_report

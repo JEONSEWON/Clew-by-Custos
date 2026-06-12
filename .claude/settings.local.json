@@ -36,7 +36,9 @@
       "Bash(grep -E \"\\\\.py$|\\\\.md$|\\\\.txt$|\\\\.toml$\")",
       "Bash(findstr /v \"Loading weights\")",
       "Bash(findstr /v \"it/s\")",
-      "Bash(findstr /v \"Materializing\")"
+      "Bash(findstr /v \"Materializing\")",
+      "Bash(find *)",
+      "Bash(echo \"EXIT:$?\")"
     ]
   }
 }

@@ -113,11 +113,15 @@ def test_detect_directory_has_expected_modules():
     assert py_files == expected, f"detect/ expected {expected}, found: {py_files}"
 
 
-def test_dod_report_directory_empty():
-    """src/clew/report/ 에 .py 파일 없음 — 3단계까지 리포트 로직 금지."""
+def test_dod_report_directory_matches_stage3_scope():
+    """stage 경계 가드 — §10 진입(커밋 85da2b3)으로 경계 갱신.
+    동결 검증(누수 가드·eval)과 무관. report/ 의 .py가 §10 계획 모듈과 정확히 일치해야 함.
+    허용 목록 외 파일이 추가되면 이 테스트가 깨진다.
+    """
+    expected = ["__init__.py", "_model.py", "json_report.py", "markdown.py"]
     report_dir = SRC_CLEW / "report"
-    py_files = list(report_dir.glob("*.py"))
-    assert py_files == [], f"report/ should be empty (stage <=2), found: {py_files}"
+    py_files = sorted(p.name for p in report_dir.glob("*.py"))
+    assert py_files == expected, f"report/ expected {expected}, found: {py_files}"
 
 
 def test_calibrate_does_not_reference_eval_set():

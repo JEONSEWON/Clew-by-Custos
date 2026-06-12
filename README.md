@@ -52,6 +52,35 @@ validation/
 tests/                 모든 게이트 테스트
 ```
 
+## Quickstart
+
+트레이스 파일을 받아 낭비 리포트로 돌려주는 3단계.
+
+**1. 설치**
+```bash
+pip install -e ".[adapter,detect]"
+```
+
+**2. 캡처 — LangGraph 앱 트레이스를 파일로 저장**
+```python
+from clew.capture import capture_to_file
+from pathlib import Path
+
+# app: compiled LangGraph app
+trace = capture_to_file(app, {"topic": "..."}, Path("trace.json"))
+```
+
+**3. 분석**
+```bash
+python -m clew analyze trace.json --out report.md
+python -m clew analyze trace.json --json report.json --no-snippets
+```
+
+리포트에는 낭비 노드 경로·반복 횟수·코사인·추정 낭비 토큰/비용이 포함됩니다.
+token_count를 캡처하지 않은 경우 "unknown"으로 표기됩니다.
+
+---
+
 ## 1단계 규율
 
 `SPEC.md §4`의 6개 규율과 `CLAUDE.md §4`가 우선한다. 핵심:
