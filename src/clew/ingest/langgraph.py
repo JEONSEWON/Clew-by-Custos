@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from clew.ingest.preprocess import preprocess_trace
 from clew.model import Span, SpanKind, Trace
 
 if TYPE_CHECKING:
@@ -138,4 +139,20 @@ def otel_spans_to_trace(
         trace_id=trace_id_hex,
         spans=converted,
         metadata={"source": source_tag, "schema_version": "1.0"},
+    )
+
+
+def ingest_otel_spans(
+    spans: Sequence["ReadableSpan"],
+    *,
+    cost_table: dict[str, float] | None = None,
+    source_tag: str = "langgraph_adapter",
+) -> Trace:
+    """공식 인제스트 경로 = otel_spans_to_trace() + preprocess_trace().
+
+    프로덕션/필드 사용은 반드시 이 함수를 쓴다.
+    otel_spans_to_trace()는 raw 변환 전용(테스트·디버깅).
+    """
+    return preprocess_trace(
+        otel_spans_to_trace(spans, cost_table=cost_table, source_tag=source_tag)
     )

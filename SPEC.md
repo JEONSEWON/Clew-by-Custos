@@ -208,7 +208,8 @@ refinement non-waste 트윈으로 FP 표면을 검증한 뒤 도입.
 - R2 repeat_node 심은 트레이스 → TP fire 유지
 - R3 라우터 적대 케이스(같은 값 반복 반환) → FP 소거
 - R4 비중복 researcher 쌍 → 추출 후 cosine이 RAW 대비 하락
-- 기존 테스트 146개 전부 green + 누수 가드 green
-- R1~R4는 영구 회귀 테스트로 남긴다(신규 테스트 파일, 기존 테스트 수정 금지).
+- 기존 테스트 149개 전부 green + 누수 가드 green  (§9 작성 당시 "146"은 오기 — 실제 베이스라인 149, 베이스라인 변경 아님)
+- R1~R5는 영구 회귀 테스트로 남긴다(신규 테스트 파일, 기존 테스트 수정 금지).
+- 공식 인제스트 경로: `ingest_otel_spans()` (= otel_spans_to_trace + preprocess_trace). `otel_spans_to_trace()`는 raw 변환 전용.
 
 **금지:** φ/N/모델 변경, detect/ 수정, 기준 사후 변경, 예시에 맞춘 임계 조정.
