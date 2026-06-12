@@ -182,3 +182,33 @@ refinement non-waste 트윈으로 FP 표면을 검증한 뒤 도입.
 - [ ] 임베딩 모델·φ·N을 dev set에서 결정 후 CRITERIA에 동결 커밋
 - [ ] evaluate.py로 평가 set **단 1회** 측정 → F1/FPR → GO/KILL 판정 기록
 - [ ] 누수 가드 여전히 green(detect 채워졌어도 src/clew→eval/labels 의존 0)
+
+## 9. 현재 단계 상세 — 2.5단계: 인제스트 필드-하드닝
+
+**목표:** 필드 테스트로 진단·확정된 3개 결함을 ingest/preprocessing 레이어에서 수정.
+동결 탐지기(src/clew/detect)·eval·기존 tests는 불변. φ·N·임베딩 모델 불변
+(φ-transfer는 실분포 재보정 사안 — 본 단계 범위 밖).
+
+### 변환 3종 (적용 순서 고정)
+1. **token-bearing 플래그 (collapse 전 계산):** 원본 span 트리에서
+   `has_llm_or_tool_child` 를 계산해, llm/tool 자식이 없는 chain span
+   (라우터/제어흐름)을 탐지 단위에서 제외. 근거: 토큰 0 span은 정의상
+   토큰 낭비가 아니다. ※ collapse 후 계산 금지 — 접고 나면 작업 노드도
+   tokenless로 보인다.
+2. **collapse_to_logical_nodes 정식 승격:** llm 서브스팬을 부모 chain
+   노드로 접되, 접기 *전*에 llm 토큰/비용을 부모에 합산(비용 스토리 보존).
+   tool span은 절대 접지 않음(requery 입력 게이트 대상). tool이 llm의
+   자식인 ReAct 구조면 tool을 노드로 re-parent. 그래프 루트 유지.
+3. **내용 추출:** 어댑터가 output.value JSON에서 내용만 추출해 clean
+   `output_text` 생성(JSON 스캐폴드의 코사인 부풀림 ~0.2 제거).
+   비JSON이면 원문 유지.
+
+### 사전 등록 합격 기준 (결과 보기 전 동결)
+- R1 깨끗한 실제-계측 트레이스 → FP = 0
+- R2 repeat_node 심은 트레이스 → TP fire 유지
+- R3 라우터 적대 케이스(같은 값 반복 반환) → FP 소거
+- R4 비중복 researcher 쌍 → 추출 후 cosine이 RAW 대비 하락
+- 기존 테스트 146개 전부 green + 누수 가드 green
+- R1~R4는 영구 회귀 테스트로 남긴다(신규 테스트 파일, 기존 테스트 수정 금지).
+
+**금지:** φ/N/모델 변경, detect/ 수정, 기준 사후 변경, 예시에 맞춘 임계 조정.
