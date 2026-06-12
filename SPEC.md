@@ -213,3 +213,36 @@ refinement non-waste 트윈으로 FP 표면을 검증한 뒤 도입.
 - 공식 인제스트 경로: `ingest_otel_spans()` (= otel_spans_to_trace + preprocess_trace). `otel_spans_to_trace()`는 raw 변환 전용.
 
 **금지:** φ/N/모델 변경, detect/ 수정, 기준 사후 변경, 예시에 맞춘 임계 조정.
+
+## 10. 현재 단계 상세 — 3단계: 리포트 & CLI (트레이스→리포트 턴어라운드)
+
+**목표:** 외부에서 받은 트레이스 파일을 리포트로 돌려주는 경로 완성.
+아웃리치 약속("트레이스 주면 낭비 리포트로 돌려준다" + "로컬 실행 옵션")의
+코드 측 이행. 동결 탐지기(src/clew/detect)·eval·기존 tests 불변.
+φ=0.514345·N=2·임베딩 모델 불변 — 리포트는 동결 파라미터를 기본값으로 쓰고
+리포트 머리에 그 값을 명시 인쇄한다.
+
+### 범위
+1. **파일 인제스트:** 정규 Trace JSON 로더(`Trace` pydantic 직렬화 왕복:
+   save_trace/load_trace). + **캡처 헬퍼:** OpenInference 계측 LangGraph 앱에서
+   InMemorySpanExporter → ingest_otel_spans → trace.json 저장하는 최소 스니펫/
+   유틸(`clew.capture`). 외부 포맷(LangSmith/Langfuse export) 어댑터는 범위 밖
+   — 요청자가 생기면 그때 같이 만든다.
+2. **report/:** cascade 결과 → (a) 사람용 markdown (b) 기계용 JSON.
+   내용: 낭비 스팬 위치(노드 경로), 반복 횟수, 코사인, 추정 낭비 토큰·비용
+   (token_count 없으면 "unknown"으로 정직 표기), 한 줄 총평.
+   **프라이버시:** output_text 스니펫은 기본 80자 절단 + `--no-snippets`
+   옵션(스니펫 완전 제외) — 리포트가 되돌아올 때 민감 데이터 유출 최소화.
+3. **CLI:** `python -m clew analyze <trace.json> [--out report.md] [--json out.json]
+   [--no-snippets]`. 종료코드: 낭비 탐지 0, 미탐지 0 (분석 실패만 비0).
+4. **패키징 최소:** README quickstart — 설치 → 캡처 → 분석 3단계.
+
+### 사전 등록 합격 기준 (결과 보기 전 동결)
+- D1 낭비 픽스처(R2형) → CLI 리포트에 낭비 스팬 식별 + 토큰/비용(또는 unknown) 포함
+- D2 깨끗 픽스처 → "낭비 미탐지" 리포트 정상 출력
+- D3 직렬화 왕복: save_trace→load_trace 후 분석 결과 동일
+- D4 기존 155 테스트 + 누수 가드 green, detect/ diff 0
+- D5 README quickstart의 명령이 실제로 실행됨
+
+**금지:** φ/N/모델 변경(CLI에 임계 오버라이드 옵션 넣지 말 것 — 실험은
+field_test/에서만), detect/ 수정, 기준 사후 변경.
