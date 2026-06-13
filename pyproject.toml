@@ -1,0 +1,37 @@
+[project]
+name = "clew"
+version = "0.1.0"
+description = "Detect wasteful cycles in multi-agent traces (Custos / Clew, S0 MVP)."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+adapter = [
+    "langgraph>=0.2",
+    "langchain-core>=0.3",
+    "openinference-instrumentation-langchain>=0.1",
+    "opentelemetry-sdk>=1.25",
+    "opentelemetry-api>=1.25",
+]
+detect = [
+    # 정확한 핀은 stage2-params-freeze 동결 시점에 == 로 갱신.
+    "sentence-transformers>=3.0",
+    "torch>=2.0",
+    "huggingface_hub>=0.20",
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

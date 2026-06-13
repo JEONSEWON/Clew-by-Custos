@@ -1,0 +1,53 @@
+{
+  "trace_id": "bc6d9f9f9f3859f7959d9f033aa49c20",
+  "spans": [
+    {
+      "trace_id": "bc6d9f9f9f3859f7959d9f033aa49c20",
+      "span_id": "637ff83c1784070f",
+      "parent_span_id": "4ecc2654d09f37b8",
+      "agent_or_node_id": "researcher",
+      "span_kind": "chain",
+      "start_time": "2026-06-12T05:37:09.941657Z",
+      "end_time": "2026-06-12T05:37:09.943656Z",
+      "input_text": "{\"topic\": \"테스트 주제\", \"research\": \"\", \"loop_count\": 0}",
+      "output_text": "기후 변화 원인과 영향에 대한 분석 결과.",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    },
+    {
+      "trace_id": "bc6d9f9f9f3859f7959d9f033aa49c20",
+      "span_id": "e889ff1f17db07b6",
+      "parent_span_id": "4ecc2654d09f37b8",
+      "agent_or_node_id": "researcher",
+      "span_kind": "chain",
+      "start_time": "2026-06-12T05:37:09.944654Z",
+      "end_time": "2026-06-12T05:37:09.945653Z",
+      "input_text": "{\"topic\": \"테스트 주제\", \"research\": \"기후 변화 원인과 영향에 대한 분석 결과.\", \"loop_count\": 1}",
+      "output_text": "경제 성장 지표와 GDP 변동 패턴 검토.",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    },
+    {
+      "trace_id": "bc6d9f9f9f3859f7959d9f033aa49c20",
+      "span_id": "4ecc2654d09f37b8",
+      "parent_span_id": null,
+      "agent_or_node_id": "LangGraph",
+      "span_kind": "chain",
+      "start_time": "2026-06-12T05:37:09.940657Z",
+      "end_time": "2026-06-12T05:37:09.946685Z",
+      "input_text": "{\"topic\": \"테스트 주제\", \"research\": \"\", \"loop_count\": 0}",
+      "output_text": "경제 성장 지표와 GDP 변동 패턴 검토.",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    }
+  ],
+  "metadata": {
+    "source": "langgraph_adapter",
+    "schema_version": "1.0",
+    "collapsed_llm_spans": 2,
+    "filtered_router_spans": 2
+  }
+}
