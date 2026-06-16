@@ -1,0 +1,67 @@
+{
+  "trace_id": "8841d5c2adfcf43fa97d890293be3916",
+  "spans": [
+    {
+      "trace_id": "8841d5c2adfcf43fa97d890293be3916",
+      "span_id": "73c38906127fda8a",
+      "parent_span_id": "7d888fd6567591be",
+      "agent_or_node_id": "researcher",
+      "span_kind": "chain",
+      "start_time": "2026-06-16T06:23:40.217861Z",
+      "end_time": "2026-06-16T06:23:45.184526Z",
+      "input_text": "{\"topic\": \"quantum computing basics\", \"research\": \"\", \"summary\": \"\", \"critique\": \"\"}",
+      "output_text": "# Quantum Computing Basics\n\n## What It Is\n\nQuantum computing harnesses quantum mechanics principles to process information fundamentally differently than classical computers. Instead of traditional bits (0 or 1), quantum computers use **quantum bits (qubits)**, which can exist in multiple states simultaneously.\n\n## Key Principles\n\n**Superposition**\n- Qubits can be 0, 1, or both at once\n- Allows parallel processing of multiple possibilities\n- Collapses to a definite state when measured\n\n**Entanglement**\n- Qubits become correlated so the state of one instantly relates to others\n- Enables quantum computers to process complex relationships efficiently\n- Creates exponential scaling potential\n\n**Interference**\n- Quantum algorithms amplify correct answers and cancel out wrong ones\n- Guides the system toward desired solutions\n\n## Current State (2024)\n\n- **Development stage**: Early, with no universally agreed \"quantum advantage\" yet\n- **Leading players**: IBM, Google, IonQ, Rigetti, and others\n- **Google's claim**: Achieved \"quantum supremacy\" (2019) on a specific task, though practical applications remain limited\n- **Challenges**: Error rates, qubit stability, extreme cooling requirements\n\n## Potential Applications\n\n- Drug discovery and molecular simulation\n- Optimization problems\n- Cryptography and security\n- Financial modeling\n- Machine learning\n\n## Limitations\n\n- Qubits are fragile and prone to errors\n- Require near absolute-zero temperatures\n- Not suitable for all problem types\n- Still largely experimental\n\nQuantum computing remains a developing field with significant promise but practical limitations.",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    },
+    {
+      "trace_id": "8841d5c2adfcf43fa97d890293be3916",
+      "span_id": "25d462f856676623",
+      "parent_span_id": "7d888fd6567591be",
+      "agent_or_node_id": "summarizer",
+      "span_kind": "chain",
+      "start_time": "2026-06-16T06:23:45.184526Z",
+      "end_time": "2026-06-16T06:23:47.629390Z",
+      "input_text": "{\"topic\": \"quantum computing basics\", \"research\": \"# Quantum Computing Basics\\n\\n## What It Is\\n\\nQuantum computing harnesses quantum mechanics principles to process information fundamentally differently than classical computers. Instead of traditional bits (0 or 1), quantum computers use **quantum bits (qubits)**, which can exist in multiple states simultaneously.\\n\\n## Key Principles\\n\\n**Superposition**\\n- Qubits can be 0, 1, or both at once\\n- Allows parallel processing of multiple possibilities\\n- Collapses to a definite state when measured\\n\\n**Entanglement**\\n- Qubits become correlated so the state of one instantly relates to others\\n- Enables quantum computers to process complex relationships efficiently\\n- Creates exponential scaling potential\\n\\n**Interference**\\n- Quantum algorithms amplify correct answers and cancel out wrong ones\\n- Guides the system toward desired solutions\\n\\n## Current State (2024)\\n\\n- **Development stage**: Early, with no universally agreed \\\"quantum advantage\\\" yet\\n- **Leading players**: IBM, Google, IonQ, Rigetti, and others\\n- **Google's claim**: Achieved \\\"quantum supremacy\\\" (2019) on a specific task, though practical applications remain limited\\n- **Challenges**: Error rates, qubit stability, extreme cooling requirements\\n\\n## Potential Applications\\n\\n- Drug discovery and molecular simulation\\n- Optimization problems\\n- Cryptography and security\\n- Financial modeling\\n- Machine learning\\n\\n## Limitations\\n\\n- Qubits are fragile and prone to errors\\n- Require near absolute-zero temperatures\\n- Not suitable for all problem types\\n- Still largely experimental\\n\\nQuantum computing remains a developing field with significant promise but practical limitations.\", \"summary\": \"\", \"critique\": \"\"}",
+      "output_text": "# Summary\n\n• **Core Technology**: Quantum computers use qubits that exploit superposition, entanglement, and interference to process information in fundamentally different ways than classical computers, enabling parallel processing and exponential scaling potential.\n\n• **Current Status**: Still in early development stages with no universally proven \"quantum advantage\" yet; major tech companies are competing, but practical applications remain limited due to high error rates, qubit instability, and extreme cooling requirements.\n\n• **Future Potential & Limitations**: Promising applications include drug discovery, optimization, cryptography, and financial modeling, but qubits remain fragile and unsuitable for all problem types, keeping quantum computing largely experimental.",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    },
+    {
+      "trace_id": "8841d5c2adfcf43fa97d890293be3916",
+      "span_id": "b971206cc9907ebe",
+      "parent_span_id": "7d888fd6567591be",
+      "agent_or_node_id": "critic",
+      "span_kind": "chain",
+      "start_time": "2026-06-16T06:23:47.630386Z",
+      "end_time": "2026-06-16T06:23:54.237932Z",
+      "input_text": "{\"topic\": \"quantum computing basics\", \"research\": \"# Quantum Computing Basics\\n\\n## What It Is\\n\\nQuantum computing harnesses quantum mechanics principles to process information fundamentally differently than classical computers. Instead of traditional bits (0 or 1), quantum computers use **quantum bits (qubits)**, which can exist in multiple states simultaneously.\\n\\n## Key Principles\\n\\n**Superposition**\\n- Qubits can be 0, 1, or both at once\\n- Allows parallel processing of multiple possibilities\\n- Collapses to a definite state when measured\\n\\n**Entanglement**\\n- Qubits become correlated so the state of one instantly relates to others\\n- Enables quantum computers to process complex relationships efficiently\\n- Creates exponential scaling potential\\n\\n**Interference**\\n- Quantum algorithms amplify correct answers and cancel out wrong ones\\n- Guides the system toward desired solutions\\n\\n## Current State (2024)\\n\\n- **Development stage**: Early, with no universally agreed \\\"quantum advantage\\\" yet\\n- **Leading players**: IBM, Google, IonQ, Rigetti, and others\\n- **Google's claim**: Achieved \\\"quantum supremacy\\\" (2019) on a specific task, though practical applications remain limited\\n- **Challenges**: Error rates, qubit stability, extreme cooling requirements\\n\\n## Potential Applications\\n\\n- Drug discovery and molecular simulation\\n- Optimization problems\\n- Cryptography and security\\n- Financial modeling\\n- Machine learning\\n\\n## Limitations\\n\\n- Qubits are fragile and prone to errors\\n- Require near absolute-zero temperatures\\n- Not suitable for all problem types\\n- Still largely experimental\\n\\nQuantum computing remains a developing field with significant promise but practical limitations.\", \"summary\": \"# Summary\\n\\n• **Core Technology**: Quantum computers use qubits that exploit superposition, entanglement, and interference to process information in fundamentally different ways than classical computers, enabling parallel processing and exponential scaling potential.\\n\\n• **Current Status**: Still in early development stages with no universally proven \\\"quantum advantage\\\" yet; major tech companies are competing, but practical applications remain limited due to high error rates, qubit instability, and extreme cooling requirements.\\n\\n• **Future Potential & Limitations**: Promising applications include drug discovery, optimization, cryptography, and financial modeling, but qubits remain fragile and unsuitable for all problem types, keeping quantum computing largely experimental.\", \"critique\": \"\"}",
+      "output_text": "# Gap Analysis\n\n## **Critical Omissions**\n\n### 1. **Error Correction & Scalability**\n- Missing: Quantum error correction (QEC) is THE fundamental barrier, not just mentioned as \"error rates\"\n- Gap: No mention of logical vs. physical qubits or the massive overhead required (thousands of physical qubits needed per logical qubit)\n- Impact: This is why we're still far from practical advantage\n\n### 2. **Types of Quantum Computers**\n- Only implies gate-based models; ignores:\n  - Adiabatic/annealing systems (D-Wave)\n  - Photonic quantum computers\n  - Trapped ion vs. superconducting qubit trade-offs\n- These have different timelines and applications\n\n### 3. **\"Quantum Advantage\" Nuance**\n- Claims \"no universally proven advantage\" but misses:\n  - Google's 2019 quantum supremacy claim (disputed but significant)\n  - NISQ era (Noisy Intermediate-Scale Quantum) reality\n  - Advantage is problem-specific, not universal\n\n### 4. **Economic & Timeline Reality**\n- Missing: Estimated 10-15+ years before practical commercial applications\n- No mention of massive capital requirements ($billions invested)\n- Ignores: Most near-term value may be simulation, not solving \"hard\" problems\n\n### 5. **Threat to Current Security**\n- Cryptography mentioned but undersells the urgency:\n  - Post-quantum cryptography migration already underway\n  - \"Harvest now, decrypt later\" attacks are real concerns\n\n### 6. **What Quantum Computers WON'T Do**\n- Doesn't clarify: Not faster for all problems (web search, most everyday tasks)\n- Missing: Classical computers will remain dominant for most use cases\n\n## **Tone Issues**\n- Slightly overstates \"exponential scaling potential\" without caveating the practical barriers\n- \"Largely experimental\" is accurate but could emphasize: we're still in the \"can we build it?\" phase, not \"how do we use it?\"\n\n---\n\n**Verdict**: Solid overview for a general audience, but lacks technical depth on *why* quantum computing is hard and *when* it might actually",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    },
+    {
+      "trace_id": "8841d5c2adfcf43fa97d890293be3916",
+      "span_id": "7d888fd6567591be",
+      "parent_span_id": null,
+      "agent_or_node_id": "LangGraph",
+      "span_kind": "chain",
+      "start_time": "2026-06-16T06:23:40.213730Z",
+      "end_time": "2026-06-16T06:23:54.238931Z",
+      "input_text": "{\"topic\": \"quantum computing basics\", \"research\": \"\", \"summary\": \"\", \"critique\": \"\"}",
+      "output_text": "# Gap Analysis\n\n## **Critical Omissions**\n\n### 1. **Error Correction & Scalability**\n- Missing: Quantum error correction (QEC) is THE fundamental barrier, not just mentioned as \"error rates\"\n- Gap: No mention of logical vs. physical qubits or the massive overhead required (thousands of physical qubits needed per logical qubit)\n- Impact: This is why we're still far from practical advantage\n\n### 2. **Types of Quantum Computers**\n- Only implies gate-based models; ignores:\n  - Adiabatic/annealing systems (D-Wave)\n  - Photonic quantum computers\n  - Trapped ion vs. superconducting qubit trade-offs\n- These have different timelines and applications\n\n### 3. **\"Quantum Advantage\" Nuance**\n- Claims \"no universally proven advantage\" but misses:\n  - Google's 2019 quantum supremacy claim (disputed but significant)\n  - NISQ era (Noisy Intermediate-Scale Quantum) reality\n  - Advantage is problem-specific, not universal\n\n### 4. **Economic & Timeline Reality**\n- Missing: Estimated 10-15+ years before practical commercial applications\n- No mention of massive capital requirements ($billions invested)\n- Ignores: Most near-term value may be simulation, not solving \"hard\" problems\n\n### 5. **Threat to Current Security**\n- Cryptography mentioned but undersells the urgency:\n  - Post-quantum cryptography migration already underway\n  - \"Harvest now, decrypt later\" attacks are real concerns\n\n### 6. **What Quantum Computers WON'T Do**\n- Doesn't clarify: Not faster for all problems (web search, most everyday tasks)\n- Missing: Classical computers will remain dominant for most use cases\n\n## **Tone Issues**\n- Slightly overstates \"exponential scaling potential\" without caveating the practical barriers\n- \"Largely experimental\" is accurate but could emphasize: we're still in the \"can we build it?\" phase, not \"how do we use it?\"\n\n---\n\n**Verdict**: Solid overview for a general audience, but lacks technical depth on *why* quantum computing is hard and *when* it might actually",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    }
+  ],
+  "metadata": {
+    "source": "langgraph_adapter",
+    "schema_version": "1.0",
+    "collapsed_llm_spans": 3,
+    "filtered_router_spans": 0
+  }
+}

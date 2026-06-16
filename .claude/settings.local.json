@@ -38,7 +38,10 @@
       "Bash(findstr /v \"it/s\")",
       "Bash(findstr /v \"Materializing\")",
       "Bash(find *)",
-      "Bash(echo \"EXIT:$?\")"
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(gh *)",
+      "Bash(pip install *)",
+      "Bash(xargs wc *)"
     ]
   }
 }
