@@ -246,3 +246,29 @@ refinement non-waste 트윈으로 FP 표면을 검증한 뒤 도입.
 
 **금지:** φ/N/모델 변경(CLI에 임계 오버라이드 옵션 넣지 말 것 — 실험은
 field_test/에서만), detect/ 수정, 기준 사후 변경.
+
+## 11. 현재 단계 상세 — 실측 프로브 1차 (self-generated real traces)
+
+**목적:** 실제 LLM(Haiku) 멀티에이전트 트레이스에서 (1) 리포트 파이프라인이
+실데이터로 작동하는지 확인하고, (2) φ=0.514345가 실측 출력 분포에서 어떻게
+행동하는지 첫 데이터를 얻는다. 이것은 수요 검증이 아니라 채널 자료 + φ-transfer
+사전 측정이다. detect/·φ/N/모델 전부 불변.
+
+### 생성물 (field_test/ 샌드박스에만)
+- real_app.py: ChatAnthropic(Haiku) 3노드 LangGraph (researcher→summarizer→critic),
+  OpenInference 계측.
+- 트레이스 4종: (a) clean, (b) repeat_node 낭비 심음, (c) requery_known 낭비 심음,
+  (d) pingpong 낭비 심음. 각각 ingest_otel_spans로 변환해 field_test/real_*.json 저장.
+
+### 결과 보기 전 기대 기록 (pre-registration)
+- E1: clean 트레이스 → 낭비 미탐지(FP=0) 기대. 만약 FIRE면 = 실측 FP 발견(중요 신호).
+- E2: 낭비 심은 3종 → 해당 패턴 탐지 기대. 미탐지면 = 실측 recall 갭.
+- E3: 모든 비낭비 쌍의 코사인을 별도 출력 → 분포가 0.48~0.57 대역에 뭉쳐 φ에
+  걸리는지(finding3 재현 여부) 관찰만. 재현되든 아니든 φ 손대지 않는다.
+
+### 산출 기록
+- field_test/REAL_PROBE_LOG.md: 각 트레이스의 탐지 결과 + 비낭비 쌍 코사인 분포
+  (min/median/max, φ 초과 개수) + E1~E3 대조. 판정 근거를 사람이 읽을 수 있게.
+
+**금지:** φ/N/모델 변경, detect/ 수정, 결과 보고 기대 변경. φ가 실측에 안 맞으면
+그것은 발견으로 기록하며, 재보정은 별도 사전등록 실험(3~5건 실분포 확보 후)에서만.

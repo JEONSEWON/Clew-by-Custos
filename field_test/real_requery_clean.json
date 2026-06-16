@@ -1,0 +1,95 @@
+{
+  "trace_id": "09e917c3254b88d022816ccfe59001f6",
+  "spans": [
+    {
+      "trace_id": "09e917c3254b88d022816ccfe59001f6",
+      "span_id": "1c9bc72b88054704",
+      "parent_span_id": "9187f3c11671076d",
+      "agent_or_node_id": "fake_search",
+      "span_kind": "tool",
+      "start_time": "2026-06-16T06:24:34.615857Z",
+      "end_time": "2026-06-16T06:24:34.616854Z",
+      "input_text": "quantum computing basics",
+      "output_text": "Search result for 'quantum computing basics': Quantum computing leverages quantum mechanical phenomena such as superposition and entanglement to process information fundamentally differently from classical bits. Key applications include cryptography, optimization, and drug discovery simulation.",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    },
+    {
+      "trace_id": "09e917c3254b88d022816ccfe59001f6",
+      "span_id": "081dff3199468fe7",
+      "parent_span_id": "9187f3c11671076d",
+      "agent_or_node_id": "fake_search",
+      "span_kind": "tool",
+      "start_time": "2026-06-16T06:24:34.616854Z",
+      "end_time": "2026-06-16T06:24:34.616854Z",
+      "input_text": "quantum hardware advances",
+      "output_text": "Search result for 'quantum hardware advances': Quantum computing leverages quantum mechanical phenomena such as superposition and entanglement to process information fundamentally differently from classical bits. Key applications include cryptography, optimization, and drug discovery simulation.",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    },
+    {
+      "trace_id": "09e917c3254b88d022816ccfe59001f6",
+      "span_id": "9187f3c11671076d",
+      "parent_span_id": "0b06d4a077dc1733",
+      "agent_or_node_id": "searcher",
+      "span_kind": "chain",
+      "start_time": "2026-06-16T06:24:34.615857Z",
+      "end_time": "2026-06-16T06:24:34.616854Z",
+      "input_text": "{\"query\": \"quantum computing basics\", \"result\": \"\", \"loop_count\": 0, \"summary\": \"\", \"critique\": \"\"}",
+      "output_text": "Search result for 'quantum hardware advances': Quantum computing leverages quantum mechanical phenomena such as superposition and entanglement to process information fundamentally differently from classical bits. Key applications include cryptography, optimization, and drug discovery simulation.",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    },
+    {
+      "trace_id": "09e917c3254b88d022816ccfe59001f6",
+      "span_id": "100af2aea671884d",
+      "parent_span_id": "0b06d4a077dc1733",
+      "agent_or_node_id": "summarizer",
+      "span_kind": "chain",
+      "start_time": "2026-06-16T06:24:34.618365Z",
+      "end_time": "2026-06-16T06:24:36.212000Z",
+      "input_text": "{\"query\": \"quantum computing basics\", \"result\": \"Search result for 'quantum hardware advances': Quantum computing leverages quantum mechanical phenomena such as superposition and entanglement to process information fundamentally differently from classical bits. Key applications include cryptography, optimization, and drug discovery simulation.\", \"loop_count\": 2, \"summary\": \"\", \"critique\": \"\"}",
+      "output_text": "# Quantum Hardware Advances Summary\n\n• **Core Technology**: Quantum computers use superposition and entanglement—quantum mechanical phenomena—to process information in ways fundamentally different from classical computing systems.\n\n• **Primary Applications**: Key use cases include cryptography, optimization problems, and simulating molecular behavior for drug discovery.\n\n• **Transformative Potential**: The technology represents a shift in how information is processed at the quantum level, with significant implications across multiple industries.",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    },
+    {
+      "trace_id": "09e917c3254b88d022816ccfe59001f6",
+      "span_id": "3ac99e4c80969712",
+      "parent_span_id": "0b06d4a077dc1733",
+      "agent_or_node_id": "critic",
+      "span_kind": "chain",
+      "start_time": "2026-06-16T06:24:36.212000Z",
+      "end_time": "2026-06-16T06:24:40.776070Z",
+      "input_text": "{\"query\": \"quantum computing basics\", \"result\": \"Search result for 'quantum hardware advances': Quantum computing leverages quantum mechanical phenomena such as superposition and entanglement to process information fundamentally differently from classical bits. Key applications include cryptography, optimization, and drug discovery simulation.\", \"loop_count\": 2, \"summary\": \"# Quantum Hardware Advances Summary\\n\\n• **Core Technology**: Quantum computers use superposition and entanglement—quantum mechanical phenomena—to process information in ways fundamentally different from classical computing systems.\\n\\n• **Primary Applications**: Key use cases include cryptography, optimization problems, and simulating molecular behavior for drug discovery.\\n\\n• **Transformative Potential**: The technology represents a shift in how information is processed at the quantum level, with significant implications across multiple industries.\", \"critique\": \"\"}",
+      "output_text": "# Evaluation and Identified Gaps\n\n## Strengths\n- Correctly identifies fundamental quantum principles (superposition, entanglement)\n- Mentions legitimate near-term applications\n- Acknowledges broad transformative potential\n\n## Critical Gaps\n\n### 1. **Hardware Maturity & Limitations**\n- No mention of current qubit counts or error rates\n- Missing: decoherence, quantum error correction challenges\n- No discussion of why we're still in NISQ (Noisy Intermediate-Scale Quantum) era\n- Lacks timeline realism—implies readiness not yet achieved\n\n### 2. **Incomplete Application Picture**\n- **Cryptography gap**: Doesn't distinguish between threat (breaking RSA) vs. opportunity (quantum-safe encryption)\n- **Missing applications**: Machine learning, materials science, finance, sampling problems\n- No mention of hybrid classical-quantum approaches currently viable\n\n### 3. **Technical Depth Absent**\n- No reference to qubit types (superconducting, trapped ion, photonic, etc.)\n- Missing scalability barriers and engineering challenges\n- No discussion of quantum advantage/supremacy claims and their limitations\n\n### 4. **Economic & Practical Reality**\n- Ignores cost, accessibility, and infrastructure requirements\n- No mention of cloud quantum computing services\n- Missing: timeline to practical advantage (5-10+ years for most applications)\n\n### 5. **Competitive Landscape**\n- Doesn't mention major players (IBM, Google, IonQ, etc.)\n- No discussion of different technological approaches competing\n\n## Recommended Additions\n- Specific current capabilities vs. hype\n- Realistic timelines and remaining obstacles\n- Distinction between theoretical potential and practical deployment",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    },
+    {
+      "trace_id": "09e917c3254b88d022816ccfe59001f6",
+      "span_id": "0b06d4a077dc1733",
+      "parent_span_id": null,
+      "agent_or_node_id": "LangGraph",
+      "span_kind": "chain",
+      "start_time": "2026-06-16T06:24:34.614855Z",
+      "end_time": "2026-06-16T06:24:40.777082Z",
+      "input_text": "{\"query\": \"quantum computing basics\", \"result\": \"\", \"loop_count\": 0, \"summary\": \"\", \"critique\": \"\"}",
+      "output_text": "# Evaluation and Identified Gaps\n\n## Strengths\n- Correctly identifies fundamental quantum principles (superposition, entanglement)\n- Mentions legitimate near-term applications\n- Acknowledges broad transformative potential\n\n## Critical Gaps\n\n### 1. **Hardware Maturity & Limitations**\n- No mention of current qubit counts or error rates\n- Missing: decoherence, quantum error correction challenges\n- No discussion of why we're still in NISQ (Noisy Intermediate-Scale Quantum) era\n- Lacks timeline realism—implies readiness not yet achieved\n\n### 2. **Incomplete Application Picture**\n- **Cryptography gap**: Doesn't distinguish between threat (breaking RSA) vs. opportunity (quantum-safe encryption)\n- **Missing applications**: Machine learning, materials science, finance, sampling problems\n- No mention of hybrid classical-quantum approaches currently viable\n\n### 3. **Technical Depth Absent**\n- No reference to qubit types (superconducting, trapped ion, photonic, etc.)\n- Missing scalability barriers and engineering challenges\n- No discussion of quantum advantage/supremacy claims and their limitations\n\n### 4. **Economic & Practical Reality**\n- Ignores cost, accessibility, and infrastructure requirements\n- No mention of cloud quantum computing services\n- Missing: timeline to practical advantage (5-10+ years for most applications)\n\n### 5. **Competitive Landscape**\n- Doesn't mention major players (IBM, Google, IonQ, etc.)\n- No discussion of different technological approaches competing\n\n## Recommended Additions\n- Specific current capabilities vs. hype\n- Realistic timelines and remaining obstacles\n- Distinction between theoretical potential and practical deployment",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    }
+  ],
+  "metadata": {
+    "source": "langgraph_adapter",
+    "schema_version": "1.0",
+    "collapsed_llm_spans": 2,
+    "filtered_router_spans": 0
+  }
+}

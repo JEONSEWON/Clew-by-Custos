@@ -1,0 +1,95 @@
+{
+  "trace_id": "3c83759f3301b8e6b6d51770d6ea86d4",
+  "spans": [
+    {
+      "trace_id": "3c83759f3301b8e6b6d51770d6ea86d4",
+      "span_id": "23ca01ddc0966535",
+      "parent_span_id": "9d8c6ead3c31b02b",
+      "agent_or_node_id": "fake_search",
+      "span_kind": "tool",
+      "start_time": "2026-06-16T06:24:27.138832Z",
+      "end_time": "2026-06-16T06:24:27.139826Z",
+      "input_text": "quantum computing basics",
+      "output_text": "Search result for 'quantum computing basics': Quantum computing leverages quantum mechanical phenomena such as superposition and entanglement to process information fundamentally differently from classical bits. Key applications include cryptography, optimization, and drug discovery simulation.",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    },
+    {
+      "trace_id": "3c83759f3301b8e6b6d51770d6ea86d4",
+      "span_id": "dd5c632bb2a776a5",
+      "parent_span_id": "9d8c6ead3c31b02b",
+      "agent_or_node_id": "fake_search",
+      "span_kind": "tool",
+      "start_time": "2026-06-16T06:24:27.139826Z",
+      "end_time": "2026-06-16T06:24:27.140827Z",
+      "input_text": "quantum computing basics",
+      "output_text": "Search result for 'quantum computing basics': Quantum computing leverages quantum mechanical phenomena such as superposition and entanglement to process information fundamentally differently from classical bits. Key applications include cryptography, optimization, and drug discovery simulation.",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    },
+    {
+      "trace_id": "3c83759f3301b8e6b6d51770d6ea86d4",
+      "span_id": "9d8c6ead3c31b02b",
+      "parent_span_id": "6b1aee6fb64a7e9f",
+      "agent_or_node_id": "searcher",
+      "span_kind": "chain",
+      "start_time": "2026-06-16T06:24:27.138832Z",
+      "end_time": "2026-06-16T06:24:27.140827Z",
+      "input_text": "{\"query\": \"quantum computing basics\", \"result\": \"\", \"loop_count\": 0, \"summary\": \"\", \"critique\": \"\"}",
+      "output_text": "Search result for 'quantum computing basics': Quantum computing leverages quantum mechanical phenomena such as superposition and entanglement to process information fundamentally differently from classical bits. Key applications include cryptography, optimization, and drug discovery simulation.",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    },
+    {
+      "trace_id": "3c83759f3301b8e6b6d51770d6ea86d4",
+      "span_id": "12c9e6e34fb44a6e",
+      "parent_span_id": "6b1aee6fb64a7e9f",
+      "agent_or_node_id": "summarizer",
+      "span_kind": "chain",
+      "start_time": "2026-06-16T06:24:27.141826Z",
+      "end_time": "2026-06-16T06:24:29.787676Z",
+      "input_text": "{\"query\": \"quantum computing basics\", \"result\": \"Search result for 'quantum computing basics': Quantum computing leverages quantum mechanical phenomena such as superposition and entanglement to process information fundamentally differently from classical bits. Key applications include cryptography, optimization, and drug discovery simulation.\", \"loop_count\": 2, \"summary\": \"\", \"critique\": \"\"}",
+      "output_text": "# Quantum Computing Basics Summary\n\n• **Core Technology**: Quantum computers use quantum mechanical phenomena like superposition and entanglement to process information in ways fundamentally different from classical computers\n\n• **Key Applications**: Primary uses include cryptography, optimization problems, and simulating drug discovery\n\n• **Information Processing**: This approach enables quantum computers to handle certain computational tasks more efficiently than traditional binary-based systems",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    },
+    {
+      "trace_id": "3c83759f3301b8e6b6d51770d6ea86d4",
+      "span_id": "2d34ac43c7a82b4f",
+      "parent_span_id": "6b1aee6fb64a7e9f",
+      "agent_or_node_id": "critic",
+      "span_kind": "chain",
+      "start_time": "2026-06-16T06:24:29.788677Z",
+      "end_time": "2026-06-16T06:24:34.559811Z",
+      "input_text": "{\"query\": \"quantum computing basics\", \"result\": \"Search result for 'quantum computing basics': Quantum computing leverages quantum mechanical phenomena such as superposition and entanglement to process information fundamentally differently from classical bits. Key applications include cryptography, optimization, and drug discovery simulation.\", \"loop_count\": 2, \"summary\": \"# Quantum Computing Basics Summary\\n\\n• **Core Technology**: Quantum computers use quantum mechanical phenomena like superposition and entanglement to process information in ways fundamentally different from classical computers\\n\\n• **Key Applications**: Primary uses include cryptography, optimization problems, and simulating drug discovery\\n\\n• **Information Processing**: This approach enables quantum computers to handle certain computational tasks more efficiently than traditional binary-based systems\", \"critique\": \"\"}",
+      "output_text": "# Evaluation of Summary\n\n## Strengths\n- ✓ Correctly identifies superposition and entanglement as foundational concepts\n- ✓ Accurately notes the fundamental difference from classical computing\n- ✓ Lists legitimate application areas\n- ✓ Concise and accessible language\n\n## Significant Gaps\n\n### 1. **Missing Core Concept: Qubits**\n- No mention of quantum bits as the basic unit\n- Doesn't explain how qubits differ from classical bits (0/1 vs. 0/1/both)\n\n### 2. **Incomplete Mechanism Explanation**\n- Doesn't explain *why* superposition/entanglement enable efficiency\n- Missing: quantum interference, measurement collapse, probability amplification\n- No mention of quantum gates or circuits\n\n### 3. **Oversimplified Applications**\n- **Cryptography**: Vague—should specify quantum key distribution vs. breaking encryption\n- **Drug discovery**: Lacks detail on molecular simulation\n- Missing major applications: machine learning, financial modeling, materials science\n\n### 4. **Critical Limitations Not Addressed**\n- Decoherence and error rates\n- Current technological constraints (few hundred qubits vs. millions needed)\n- Not a universal speedup—only specific problem classes benefit\n- Requires quantum error correction\n\n### 5. **Missing Context**\n- Current state of technology (NISQ era—Noisy Intermediate-Scale Quantum)\n- Difference between quantum advantage and practical utility\n- Timeline/maturity of the field\n\n## Recommended Additions\n- Define qubits and superposition more precisely\n- Explain quantum advantage with a concrete example\n- Acknowledge current limitations and hype vs. reality\n- Clarify which problems quantum computers *cannot* solve faster",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    },
+    {
+      "trace_id": "3c83759f3301b8e6b6d51770d6ea86d4",
+      "span_id": "6b1aee6fb64a7e9f",
+      "parent_span_id": null,
+      "agent_or_node_id": "LangGraph",
+      "span_kind": "chain",
+      "start_time": "2026-06-16T06:24:27.136828Z",
+      "end_time": "2026-06-16T06:24:34.559811Z",
+      "input_text": "{\"query\": \"quantum computing basics\", \"result\": \"\", \"loop_count\": 0, \"summary\": \"\", \"critique\": \"\"}",
+      "output_text": "# Evaluation of Summary\n\n## Strengths\n- ✓ Correctly identifies superposition and entanglement as foundational concepts\n- ✓ Accurately notes the fundamental difference from classical computing\n- ✓ Lists legitimate application areas\n- ✓ Concise and accessible language\n\n## Significant Gaps\n\n### 1. **Missing Core Concept: Qubits**\n- No mention of quantum bits as the basic unit\n- Doesn't explain how qubits differ from classical bits (0/1 vs. 0/1/both)\n\n### 2. **Incomplete Mechanism Explanation**\n- Doesn't explain *why* superposition/entanglement enable efficiency\n- Missing: quantum interference, measurement collapse, probability amplification\n- No mention of quantum gates or circuits\n\n### 3. **Oversimplified Applications**\n- **Cryptography**: Vague—should specify quantum key distribution vs. breaking encryption\n- **Drug discovery**: Lacks detail on molecular simulation\n- Missing major applications: machine learning, financial modeling, materials science\n\n### 4. **Critical Limitations Not Addressed**\n- Decoherence and error rates\n- Current technological constraints (few hundred qubits vs. millions needed)\n- Not a universal speedup—only specific problem classes benefit\n- Requires quantum error correction\n\n### 5. **Missing Context**\n- Current state of technology (NISQ era—Noisy Intermediate-Scale Quantum)\n- Difference between quantum advantage and practical utility\n- Timeline/maturity of the field\n\n## Recommended Additions\n- Define qubits and superposition more precisely\n- Explain quantum advantage with a concrete example\n- Acknowledge current limitations and hype vs. reality\n- Clarify which problems quantum computers *cannot* solve faster",
+      "token_count": null,
+      "model": null,
+      "cost_rate": null
+    }
+  ],
+  "metadata": {
+    "source": "langgraph_adapter",
+    "schema_version": "1.0",
+    "collapsed_llm_spans": 2,
+    "filtered_router_spans": 0
+  }
+}
