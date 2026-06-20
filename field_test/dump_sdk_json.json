@@ -1,0 +1,248 @@
+[
+  {
+    "name": "FakeListLLM",
+    "context": {
+      "trace_id": "0x0de52b97723dafd08524feeecd38a1e2",
+      "span_id": "0x38903a04d66ee596",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x488fcc721cd75c3f",
+    "start_time": "2026-06-20T10:54:26.378797Z",
+    "end_time": "2026-06-20T10:54:26.378797Z",
+    "status": {
+      "status_code": "OK"
+    },
+    "attributes": {
+      "input.value": "{\"prompts\": [\"주제: 테스트 주제\"]}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"generations\": [[{\"text\": \"멀티에이전트 AI에서 토큰 낭비 주요 원인: (1) 중복 조회 (2) 출력 재생성 (3) 루프 미종료\", \"generation_info\": null, \"type\": \"Generation\"}]], \"llm_output\": null, \"run\": null, \"type\": \"LLMResult\"}",
+      "output.mime_type": "application/json",
+      "llm.prompts": [
+        "주제: 테스트 주제"
+      ],
+      "llm.invocation_parameters": "{\"responses\": [\"멀티에이전트 AI에서 토큰 낭비 주요 원인: (1) 중복 조회 (2) 출력 재생성 (3) 루프 미종료\", \"AI 멀티에이전트 시스템의 낭비 원인 요약: (1) 중복 조회 (2) 결과 재작성 (3) 무한 반복\"], \"_type\": \"fake-list\", \"stop\": null}",
+      "llm.provider": "fakelist",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 1, \"langgraph_node\": \"researcher\", \"langgraph_triggers\": [\"branch:to:researcher\"], \"langgraph_path\": [\"__pregel_pull\", \"researcher\"], \"langgraph_checkpoint_ns\": \"researcher:a4dc9737-0dd3-0248-fe70-c3b930d301f3\", \"checkpoint_ns\": \"researcher:a4dc9737-0dd3-0248-fe70-c3b930d301f3\", \"ls_provider\": \"fakelist\", \"ls_model_type\": \"llm\", \"lc_versions\": {\"langchain-core\": \"1.4.8\"}}",
+      "openinference.span.kind": "LLM"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "service.name": "unknown_service"
+      },
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "should_loop",
+    "context": {
+      "trace_id": "0x0de52b97723dafd08524feeecd38a1e2",
+      "span_id": "0x181a328f88973571",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x488fcc721cd75c3f",
+    "start_time": "2026-06-20T10:54:26.379799Z",
+    "end_time": "2026-06-20T10:54:26.379799Z",
+    "status": {
+      "status_code": "OK"
+    },
+    "attributes": {
+      "input.value": "{\"topic\": \"테스트 주제\", \"research\": \"멀티에이전트 AI에서 토큰 낭비 주요 원인: (1) 중복 조회 (2) 출력 재생성 (3) 루프 미종료\", \"loop_count\": 1}",
+      "input.mime_type": "application/json",
+      "output.value": "researcher",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 1, \"langgraph_node\": \"researcher\", \"langgraph_triggers\": [\"branch:to:researcher\"], \"langgraph_path\": [\"__pregel_pull\", \"researcher\"], \"langgraph_checkpoint_ns\": \"researcher:a4dc9737-0dd3-0248-fe70-c3b930d301f3\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "service.name": "unknown_service"
+      },
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "researcher",
+    "context": {
+      "trace_id": "0x0de52b97723dafd08524feeecd38a1e2",
+      "span_id": "0x488fcc721cd75c3f",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0xcace85d57048fe5a",
+    "start_time": "2026-06-20T10:54:26.377799Z",
+    "end_time": "2026-06-20T10:54:26.379799Z",
+    "status": {
+      "status_code": "OK"
+    },
+    "attributes": {
+      "input.value": "{\"topic\": \"테스트 주제\", \"research\": \"\", \"loop_count\": 0}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"research\": \"멀티에이전트 AI에서 토큰 낭비 주요 원인: (1) 중복 조회 (2) 출력 재생성 (3) 루프 미종료\", \"loop_count\": 1}",
+      "output.mime_type": "application/json",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 1, \"langgraph_node\": \"researcher\", \"langgraph_triggers\": [\"branch:to:researcher\"], \"langgraph_path\": [\"__pregel_pull\", \"researcher\"], \"langgraph_checkpoint_ns\": \"researcher:a4dc9737-0dd3-0248-fe70-c3b930d301f3\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "service.name": "unknown_service"
+      },
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "FakeListLLM",
+    "context": {
+      "trace_id": "0x0de52b97723dafd08524feeecd38a1e2",
+      "span_id": "0xd1505769a6b45f63",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0xa00c606918d41d9d",
+    "start_time": "2026-06-20T10:54:26.380797Z",
+    "end_time": "2026-06-20T10:54:26.381795Z",
+    "status": {
+      "status_code": "OK"
+    },
+    "attributes": {
+      "input.value": "{\"prompts\": [\"주제: 테스트 주제\"]}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"generations\": [[{\"text\": \"AI 멀티에이전트 시스템의 낭비 원인 요약: (1) 중복 조회 (2) 결과 재작성 (3) 무한 반복\", \"generation_info\": null, \"type\": \"Generation\"}]], \"llm_output\": null, \"run\": null, \"type\": \"LLMResult\"}",
+      "output.mime_type": "application/json",
+      "llm.prompts": [
+        "주제: 테스트 주제"
+      ],
+      "llm.invocation_parameters": "{\"responses\": [\"멀티에이전트 AI에서 토큰 낭비 주요 원인: (1) 중복 조회 (2) 출력 재생성 (3) 루프 미종료\", \"AI 멀티에이전트 시스템의 낭비 원인 요약: (1) 중복 조회 (2) 결과 재작성 (3) 무한 반복\"], \"_type\": \"fake-list\", \"stop\": null}",
+      "llm.provider": "fakelist",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 2, \"langgraph_node\": \"researcher\", \"langgraph_triggers\": [\"branch:to:researcher\"], \"langgraph_path\": [\"__pregel_pull\", \"researcher\"], \"langgraph_checkpoint_ns\": \"researcher:46025c0f-bdda-77f3-f79e-7e259f87a819\", \"checkpoint_ns\": \"researcher:46025c0f-bdda-77f3-f79e-7e259f87a819\", \"ls_provider\": \"fakelist\", \"ls_model_type\": \"llm\", \"lc_versions\": {\"langchain-core\": \"1.4.8\"}}",
+      "openinference.span.kind": "LLM"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "service.name": "unknown_service"
+      },
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "should_loop",
+    "context": {
+      "trace_id": "0x0de52b97723dafd08524feeecd38a1e2",
+      "span_id": "0x2b2885cb6bbb8e17",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0xa00c606918d41d9d",
+    "start_time": "2026-06-20T10:54:26.381795Z",
+    "end_time": "2026-06-20T10:54:26.381795Z",
+    "status": {
+      "status_code": "OK"
+    },
+    "attributes": {
+      "input.value": "{\"topic\": \"테스트 주제\", \"research\": \"AI 멀티에이전트 시스템의 낭비 원인 요약: (1) 중복 조회 (2) 결과 재작성 (3) 무한 반복\", \"loop_count\": 2}",
+      "input.mime_type": "application/json",
+      "output.value": "__end__",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 2, \"langgraph_node\": \"researcher\", \"langgraph_triggers\": [\"branch:to:researcher\"], \"langgraph_path\": [\"__pregel_pull\", \"researcher\"], \"langgraph_checkpoint_ns\": \"researcher:46025c0f-bdda-77f3-f79e-7e259f87a819\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "service.name": "unknown_service"
+      },
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "researcher",
+    "context": {
+      "trace_id": "0x0de52b97723dafd08524feeecd38a1e2",
+      "span_id": "0xa00c606918d41d9d",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0xcace85d57048fe5a",
+    "start_time": "2026-06-20T10:54:26.380797Z",
+    "end_time": "2026-06-20T10:54:26.381795Z",
+    "status": {
+      "status_code": "OK"
+    },
+    "attributes": {
+      "input.value": "{\"topic\": \"테스트 주제\", \"research\": \"멀티에이전트 AI에서 토큰 낭비 주요 원인: (1) 중복 조회 (2) 출력 재생성 (3) 루프 미종료\", \"loop_count\": 1}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"research\": \"AI 멀티에이전트 시스템의 낭비 원인 요약: (1) 중복 조회 (2) 결과 재작성 (3) 무한 반복\", \"loop_count\": 2}",
+      "output.mime_type": "application/json",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 2, \"langgraph_node\": \"researcher\", \"langgraph_triggers\": [\"branch:to:researcher\"], \"langgraph_path\": [\"__pregel_pull\", \"researcher\"], \"langgraph_checkpoint_ns\": \"researcher:46025c0f-bdda-77f3-f79e-7e259f87a819\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "service.name": "unknown_service"
+      },
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "LangGraph",
+    "context": {
+      "trace_id": "0x0de52b97723dafd08524feeecd38a1e2",
+      "span_id": "0xcace85d57048fe5a",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": null,
+    "start_time": "2026-06-20T10:54:26.374788Z",
+    "end_time": "2026-06-20T10:54:26.382795Z",
+    "status": {
+      "status_code": "OK"
+    },
+    "attributes": {
+      "input.value": "{\"topic\": \"테스트 주제\", \"research\": \"\", \"loop_count\": 0}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"topic\": \"테스트 주제\", \"research\": \"AI 멀티에이전트 시스템의 낭비 원인 요약: (1) 중복 조회 (2) 결과 재작성 (3) 무한 반복\", \"loop_count\": 2}",
+      "output.mime_type": "application/json",
+      "metadata": "{\"ls_integration\": \"langgraph\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {
+        "telemetry.sdk.language": "python",
+        "telemetry.sdk.name": "opentelemetry",
+        "telemetry.sdk.version": "1.42.1",
+        "service.name": "unknown_service"
+      },
+      "schema_url": ""
+    }
+  }
+]

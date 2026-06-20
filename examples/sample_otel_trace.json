@@ -1,0 +1,111 @@
+[
+  {
+    "name": "MultiAgentPipeline",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000011223344",
+      "span_id": "0x0000000000000001",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": null,
+    "start_time": "2026-06-20T00:00:00.000000Z",
+    "end_time": "2026-06-20T00:00:02.500000Z",
+    "status": {"status_code": "OK"},
+    "attributes": {
+      "openinference.span.kind": "CHAIN",
+      "input.value": "Research the impact of multi-agent AI systems on productivity.",
+      "output.value": "Research complete. Key findings: 40% reduction in task completion time when using specialized agent pipelines."
+    },
+    "events": [],
+    "links": [],
+    "resource": {"attributes": {"service.name": "my-agent-app"}, "schema_url": ""}
+  },
+  {
+    "name": "ResearchNode",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000011223344",
+      "span_id": "0x0000000000000002",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x0000000000000001",
+    "start_time": "2026-06-20T00:00:00.100000Z",
+    "end_time": "2026-06-20T00:00:01.200000Z",
+    "status": {"status_code": "OK"},
+    "attributes": {
+      "openinference.span.kind": "CHAIN",
+      "input.value": "Research the impact of multi-agent AI systems on productivity.",
+      "output.value": "Multi-agent AI systems improve productivity by enabling parallel task execution and specialization. Studies show 40% efficiency gains in complex workflows."
+    },
+    "events": [],
+    "links": [],
+    "resource": {"attributes": {"service.name": "my-agent-app"}, "schema_url": ""}
+  },
+  {
+    "name": "claude-haiku-4-5",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000011223344",
+      "span_id": "0x0000000000000003",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x0000000000000002",
+    "start_time": "2026-06-20T00:00:00.200000Z",
+    "end_time": "2026-06-20T00:00:01.100000Z",
+    "status": {"status_code": "OK"},
+    "attributes": {
+      "openinference.span.kind": "LLM",
+      "input.value": "Research the impact of multi-agent AI systems on productivity.",
+      "output.value": "Multi-agent AI systems improve productivity by enabling parallel task execution and specialization. Studies show 40% efficiency gains in complex workflows.",
+      "llm.model_name": "claude-haiku-4-5",
+      "llm.token_count.total": 120
+    },
+    "events": [],
+    "links": [],
+    "resource": {"attributes": {"service.name": "my-agent-app"}, "schema_url": ""}
+  },
+  {
+    "name": "SummaryNode",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000011223344",
+      "span_id": "0x0000000000000004",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x0000000000000001",
+    "start_time": "2026-06-20T00:00:01.300000Z",
+    "end_time": "2026-06-20T00:00:02.400000Z",
+    "status": {"status_code": "OK"},
+    "attributes": {
+      "openinference.span.kind": "CHAIN",
+      "input.value": "Multi-agent AI systems improve productivity by enabling parallel task execution and specialization. Studies show 40% efficiency gains in complex workflows.",
+      "output.value": "Key finding: 40% reduction in task completion time when using specialized agent pipelines."
+    },
+    "events": [],
+    "links": [],
+    "resource": {"attributes": {"service.name": "my-agent-app"}, "schema_url": ""}
+  },
+  {
+    "name": "claude-haiku-4-5",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000011223344",
+      "span_id": "0x0000000000000005",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x0000000000000004",
+    "start_time": "2026-06-20T00:00:01.400000Z",
+    "end_time": "2026-06-20T00:00:02.300000Z",
+    "status": {"status_code": "OK"},
+    "attributes": {
+      "openinference.span.kind": "LLM",
+      "input.value": "Multi-agent AI systems improve productivity by enabling parallel task execution and specialization. Studies show 40% efficiency gains in complex workflows.",
+      "output.value": "Key finding: 40% reduction in task completion time when using specialized agent pipelines.",
+      "llm.model_name": "claude-haiku-4-5",
+      "llm.token_count.total": 80
+    },
+    "events": [],
+    "links": [],
+    "resource": {"attributes": {"service.name": "my-agent-app"}, "schema_url": ""}
+  }
+]

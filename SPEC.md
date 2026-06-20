@@ -272,3 +272,38 @@ field_test/에서만), detect/ 수정, 기준 사후 변경.
 
 **금지:** φ/N/모델 변경, detect/ 수정, 결과 보고 기대 변경. φ가 실측에 안 맞으면
 그것은 발견으로 기록하며, 재보정은 별도 사전등록 실험(3~5건 실분포 확보 후)에서만.
+
+## 12. 현재 단계 상세 — 입력 일반화 (프레임워크 무관 진입점)
+
+**목적:** 인제스트 입구를 'LangGraph 앱 객체'에서 'OTel/OpenInference 스팬을
+내보낸 JSON 파일'로 일반화한다. 분석 결과 어댑터 코어(otel_spans_to_trace,
+preprocess)는 이미 프레임워크 무관이므로, 빠진 것은 'OTel-export JSON 파일을
+읽는 진입점'뿐이다. 이 진입점 하나로 OpenInference 계측을 쓰는 모든 프레임워크
+(LangGraph·CrewAI·AutoGen·LlamaIndex·PydanticAI·Smolagents·Google ADK +
+OpenAI/Anthropic 클라이언트 계측)가 들어온다. 동결 탐지기(detect/)·eval·
+φ/N/모델 전부 불변.
+
+### 범위
+1. ingest_from_otel_json(path): OTel/OpenInference 스팬 JSON(스팬 배열 또는
+   OTLP-JSON) → 내부 ReadableSpan-호환 표현 → otel_spans_to_trace → preprocess.
+   기존 otel_spans_to_trace/ingest_otel_spans는 불변(스팬 리스트 입력 유지).
+2. CLI 연결: `python -m clew analyze <file>` 가 (a) 직렬화된 Trace JSON,
+   (b) OTel-export 스팬 JSON 둘 다 받도록. 형식 자동 감지 또는 --format 플래그.
+3. 중립화: source_tag 기본값을 "otel_adapter"로, langgraph.py 모듈 독스트링에서
+   "LangGraph 전용" 표현 제거("LangGraph는 지원 프레임워크의 한 예"로). 단
+   기존 함수 시그니처·동작은 불변(하위 호환).
+4. capture.py의 LangGraph 실행부는 'capture_langgraph'로 명확히 표기/격리.
+   범용 경로(JSON 파일)는 capture를 거치지 않음을 문서화.
+5. examples/ 에 예제 OTel-export JSON 1개 + README에 "프레임워크별 트레이스
+   내보내기" 섹션(CrewAI/AutoGen/LlamaIndex은 OpenInference 계측 → file export).
+
+### 결과 보기 전 합격 기준 (사전등록)
+- G1 예제 OTel-export JSON → ingest_from_otel_json → analyze가 리포트 생성
+- G2 기존 직렬화 Trace JSON 입력도 여전히 analyze로 작동(하위 호환)
+- G3 기존 158 테스트 green + 누수 가드 green, detect/ diff 0
+- G4 신규 진입점 회귀 테스트: OTel-JSON 입력 → 기존 ReadableSpan 입력과
+     동일한 Trace 산출(동치성)
+- G5 README "프레임워크별 내보내기" 섹션 + 예제 파일이 실제로 실행됨
+
+**금지:** φ/N/모델 변경, detect/ 수정, otel_spans_to_trace 기존 동작 변경,
+비표준 프레임워크(n8n/Dify) 변환 추가(수요 확인 후 별도 단계).

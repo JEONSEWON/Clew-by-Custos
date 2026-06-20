@@ -41,7 +41,14 @@
       "Bash(echo \"EXIT:$?\")",
       "Bash(gh *)",
       "Bash(pip install *)",
-      "Bash(xargs wc *)"
+      "Bash(xargs wc *)",
+      "Bash(uv run *)",
+      "Bash(uv sync *)",
+      "WebSearch",
+      "WebFetch(domain:opentelemetry.io)",
+      "Bash(uv pip *)",
+      "WebFetch(domain:arize-ai.github.io)",
+      "WebFetch(domain:pypi.org)"
     ]
   }
 }

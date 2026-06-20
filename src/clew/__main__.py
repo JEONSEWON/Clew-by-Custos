@@ -14,6 +14,54 @@ import sys
 from pathlib import Path
 
 
+def _load_trace_auto(path: Path) -> "Trace":
+    """파일 형식 자동 감지 후 Trace 반환.
+
+    지원:
+      - Clew Trace JSON (최상위 dict에 "trace_id" 키)     → load_trace()
+      - OTel SDK JSON 배열 (최상위 list, "context" 키)     → ingest_from_otel_json()
+
+    명확한 에러:
+      - resource_spans/resourceSpans 키 → Format B 미지원, 변환 방법 안내
+    """
+    from clew.model import Trace  # noqa: F401 (type-only import avoidance)
+
+    text = path.read_text(encoding="utf-8").strip()
+    try:
+        obj = _json.loads(text)
+    except _json.JSONDecodeError as exc:
+        raise ValueError(f"JSON 파싱 실패: {exc}") from exc
+
+    if isinstance(obj, dict):
+        if "trace_id" in obj:
+            from clew.io import load_trace
+            return load_trace(path)
+        if "resource_spans" in obj or "resourceSpans" in obj:
+            raise ValueError(
+                "OTLP proto-JSON 형식(resource_spans)은 아직 미지원입니다.\n"
+                "Format A(OTel SDK JSON 배열)로 변환 후 재시도하세요:\n"
+                "  import json; from pathlib import Path\n"
+                "  spans = exporter.get_finished_spans()\n"
+                "  Path('trace.json').write_text(\n"
+                "      json.dumps([json.loads(s.to_json()) for s in spans])\n"
+                "  )"
+            )
+        raise ValueError(
+            f"알 수 없는 JSON 형식 — 최상위 키: {list(obj.keys())[:5]}"
+        )
+
+    if isinstance(obj, list):
+        if obj and isinstance(obj[0], dict) and "context" in obj[0]:
+            from clew.ingest.otel_json import ingest_from_otel_json
+            return ingest_from_otel_json(path)
+        raise ValueError(
+            "JSON 배열이지만 OTel SDK JSON 형식이 아닙니다. "
+            "각 스팬에 'context' 키가 있어야 합니다."
+        )
+
+    raise ValueError(f"지원하지 않는 JSON 최상위 타입: {type(obj).__name__}")
+
+
 _PHI = 0.514345
 _N = 2
 _MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
@@ -50,8 +98,7 @@ def _analyze(args: argparse.Namespace) -> int:
         print(f"Error: {trace_path} not found", file=sys.stderr)
         return 1
     try:
-        from clew.io import load_trace
-        trace = load_trace(trace_path)
+        trace = _load_trace_auto(trace_path)
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
