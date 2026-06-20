@@ -1,11 +1,12 @@
-"""src/clew/capture.py — OTel 캡처 → Trace 저장 헬퍼.
+"""src/clew/capture.py — LangGraph 앱 실행 → OTel 캡처 → Trace 저장 헬퍼.
 
-OpenInference 계측 LangGraph 앱에서:
-  InMemorySpanExporter → ingest_otel_spans → (선택) trace.json 저장.
+LangGraph 전용 경로: compiled app.invoke() → InMemorySpanExporter → ingest_otel_spans.
+범용 경로(OTel SDK JSON 파일 → Trace)는 이 함수를 거치지 않는다.
+  → clew.ingest.otel_json.ingest_from_otel_json(path) 사용.
 
 사용 예:
-    from clew.capture import capture_to_file
-    trace = capture_to_file(app, {"topic": "..."}, Path("trace.json"))
+    from clew.capture import capture_langgraph
+    trace = capture_langgraph(app, {"topic": "..."}, Path("trace.json"))
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
     pass
 
 
-def capture_to_file(
+def capture_langgraph(
     app: Any,
     inputs: dict[str, Any],
     out_path: Path,
@@ -30,8 +31,7 @@ def capture_to_file(
 ) -> Trace:
     """LangGraph 앱 실행 → ingest_otel_spans → trace.json 저장.
 
-    OTel 계측(LangChainInstrumentor)은 호출자가 이미 설정했거나,
-    이 함수가 임시 계측을 설정·해제한다.
+    LangGraph 전용. 범용 파일 입력은 ingest_from_otel_json()을 사용.
 
     Args:
         app: compiled LangGraph app (app.invoke 가능한 객체).
@@ -71,3 +71,6 @@ def capture_to_file(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     save_trace(trace, out_path)
     return trace
+
+
+capture_to_file = capture_langgraph

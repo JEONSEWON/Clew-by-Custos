@@ -1,7 +1,10 @@
-"""LangGraph 어댑터 — OpenInference/OTel 스팬 → 정규 Trace.
+"""OTel/OpenInference 스팬 어댑터 — ReadableSpan 리스트 → 정규 Trace.
 
-`openinference-instrumentation-langchain`으로 계측된 LangGraph 실행이 내보내는 OTel
-스팬을 받아 `clew.model.Trace`로 변환한다. (1단계 — plan §2)
+`openinference-instrumentation-*`으로 계측된 앱(LangGraph 포함)이 내보내는 OTel
+ReadableSpan 리스트를 받아 `clew.model.Trace`로 변환한다. (1단계 — plan §2)
+
+LangGraph는 지원 프레임워크의 한 예다. CrewAI·AutoGen·LlamaIndex 등
+OpenInference 계측을 사용하는 모든 프레임워크의 스팬을 받는다.
 
 설계 결정:
 - 단일 trace_id 강제 (다중이 섞이면 ValueError).
@@ -76,7 +79,7 @@ def otel_spans_to_trace(
     spans: Sequence["ReadableSpan"],
     *,
     cost_table: dict[str, float] | None = None,
-    source_tag: str = "langgraph_adapter",
+    source_tag: str = "otel_adapter",
 ) -> Trace:
     """OTel ReadableSpan 리스트 → 정규 `Trace`.
 
@@ -146,7 +149,7 @@ def ingest_otel_spans(
     spans: Sequence["ReadableSpan"],
     *,
     cost_table: dict[str, float] | None = None,
-    source_tag: str = "langgraph_adapter",
+    source_tag: str = "otel_adapter",
 ) -> Trace:
     """공식 인제스트 경로 = otel_spans_to_trace() + preprocess_trace().
 
