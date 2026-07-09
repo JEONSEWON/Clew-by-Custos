@@ -307,3 +307,57 @@ OpenAI/Anthropic 클라이언트 계측)가 들어온다. 동결 탐지기(detec
 
 **금지:** φ/N/모델 변경, detect/ 수정, otel_spans_to_trace 기존 동작 변경,
 비표준 프레임워크(n8n/Dify) 변환 추가(수요 확인 후 별도 단계).
+
+## 14. 현재 단계 상세 — Format C (OpenInference flat export) 입력 지원
+
+**[정정 사유]** §14 최초 가정(OTLP proto-JSON resourceSpans/Base64)은 구간1
+실제 TRAIL 덤프에서 반증됨. 실제 형식은 flat hex + dotted-key라 범위를 실제
+형식에 맞춰 정정함. 진짜 OTLP proto-JSON(resourceSpans)은 실제 파일을 확보한
+적이 없어 이번 범위에서 제외(추후 실제 파일 확보 시 별도 단계).
+
+**목적:** Phoenix/OpenInference exporter가 내보내는 Format C 형식(flat 스팬
+배열, hex string ID, dotted-key flat dict attributes)을 입력으로 받는다.
+TRAIL 공개 데이터셋이 이 형식이며, stage12에서 '미지원, 명확히 거절'로 분류된
+경로를 정식 지원한다. 동결 탐지기(detect/)·eval·φ/N/모델 전부 불변.
+otel_spans_to_trace 기존 동작 불변.
+
+**핵심 규율:** 실제 TRAIL 덤프 확인된 구조에만 맞춘다. 확인되지 않은 구조는
+가정하지 않는다.
+
+**Format C 실제 구조 (구간1 덤프 기준):**
+- 최상위: flat 스팬 배열 (resourceSpans 중첩 없음)
+- span_id / trace_id / parent_span_id: hex string, flat 위치
+- attributes: dotted-key flat dict (`{"openinference.span.kind": "AGENT", "output.value": "..."}`)
+- timestamp 단위: 실제 덤프에서 확인된 형식에 따름
+
+### 범위
+1. ingest_from_openinference_json(path): Format C → Trace.
+   - flat 스팬 배열 순회 (resourceSpans 중첩 없음)
+   - hex string span_id/trace_id/parent_span_id → 우리 ID 형식
+   - dotted-key flat dict attributes에서 openinference.span.kind,
+     output.value, input.value, llm.token_count.total 추출
+   - 내부적으로 ingest_otel_spans(shims) 경유해 preprocess 1회 보장
+2. _load_trace_auto 확장: Format A(OTel SDK flat 배열, context 중첩) /
+   Format C(OpenInference flat 배열, hex 최상위) / 직렬화 Trace JSON
+   세 형식 자동 감지.
+   - Format A: 첫 스팬에 `"context"` 키 존재
+   - Format C: 첫 스팬에 `"context"` 없고 `"span_id"` 최상위 존재
+   - 직렬화 Trace: 최상위 `"trace_id"` + `"spans"` 키
+   - `"resourceSpans"` / `"resource_spans"` 키 → 아직 미지원, 명확한 에러 유지
+3. 기존 Format A / 직렬화 Trace 경로 불변(하위 호환).
+4. 진짜 OTLP proto-JSON(resourceSpans 중첩, Base64 ID): 실제 파일 미확보.
+   해당 키 감지 시 "OTLP proto-JSON은 미지원(실제 파일 확보 후 별도 단계)"
+   에러 메시지 유지.
+
+### 결과 보기 전 합격 기준 (사전등록)
+- H1 TRAIL 실제 트레이스(작은 것) → ingest_from_openinference_json → analyze 리포트 생성
+- H2 기존 Format A 입력 여전히 작동(하위 호환)
+- H3 기존 직렬화 Trace 입력 여전히 작동
+- H4 기존 171 테스트 green + 누수 가드 green, detect/ diff 0
+- H5 Format C 동치성: 같은 논리적 트레이스를 Format A와 Format C로 각각
+     넣었을 때 동일 Trace 산출(가능한 범위에서 — span 수·kind·output_text)
+- H6 깨진 Format C(필수 필드 누락) → 명확한 에러 메시지
+
+**금지:** φ/N/모델 변경, detect/ 수정, TRAIL 형식을 상상으로 가정(실제 덤프
+확인 필수), 낭비 라벨 없는 TRAIL로 정확도/F1 산출, resourceSpans 미확인
+구조 구현.
