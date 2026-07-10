@@ -33,9 +33,6 @@ def _load_trace_auto(path: Path) -> "Trace":
         raise ValueError(f"JSON 파싱 실패: {exc}") from exc
 
     if isinstance(obj, dict):
-        if "trace_id" in obj:
-            from clew.io import load_trace
-            return load_trace(path)
         if "resource_spans" in obj or "resourceSpans" in obj:
             raise ValueError(
                 "OTLP proto-JSON 형식(resource_spans)은 아직 미지원입니다.\n"
@@ -46,17 +43,32 @@ def _load_trace_auto(path: Path) -> "Trace":
                 "      json.dumps([json.loads(s.to_json()) for s in spans])\n"
                 "  )"
             )
+        if "trace_id" in obj and "spans" in obj:
+            spans_list = obj.get("spans", [])
+            first_span = spans_list[0] if spans_list and isinstance(spans_list[0], dict) else {}
+            if "span_attributes" in first_span or "child_spans" in first_span:
+                # Format C: OpenInference nested dict (TRAIL 등)
+                from clew.ingest.otel_json import ingest_from_openinference_json
+                return ingest_from_openinference_json(path)
+            # Clew 직렬화 Trace JSON
+            from clew.io import load_trace
+            return load_trace(path)
         raise ValueError(
             f"알 수 없는 JSON 형식 — 최상위 키: {list(obj.keys())[:5]}"
         )
 
     if isinstance(obj, list):
         if obj and isinstance(obj[0], dict) and "context" in obj[0]:
+            # Format A: OTel SDK JSON 배열
             from clew.ingest.otel_json import ingest_from_otel_json
             return ingest_from_otel_json(path)
+        if obj and isinstance(obj[0], dict) and "span_id" in obj[0]:
+            # Format C flat: OpenInference flat 배열
+            from clew.ingest.otel_json import ingest_from_openinference_json
+            return ingest_from_openinference_json(path)
         raise ValueError(
-            "JSON 배열이지만 OTel SDK JSON 형식이 아닙니다. "
-            "각 스팬에 'context' 키가 있어야 합니다."
+            "JSON 배열이지만 알 수 없는 형식입니다. "
+            "각 스팬에 'context' 키(Format A) 또는 'span_id' 키(Format C)가 있어야 합니다."
         )
 
     raise ValueError(f"지원하지 않는 JSON 최상위 타입: {type(obj).__name__}")
