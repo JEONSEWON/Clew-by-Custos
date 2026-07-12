@@ -237,6 +237,110 @@ def test_tool_gate_origin_basis_recovers_aba_repeat():
     assert [(o.span_id, c.span_id) for o, c in pairs] == [("s2", "s4")]
 
 
+def test_repeat_same_agent_parent_fires():
+    """I3: 같은 부모 AGENT 아래 두 CHAIN 스팬 — 게이트 통과, 진짜 repeat 후보."""
+    agent = Span(
+        trace_id="t", span_id="agent1", parent_span_id=None,
+        agent_or_node_id="MyAgent", span_kind="agent",
+        start_time=_ts(0), end_time=_ts(1),
+        input_text="", output_text="agent out", token_count=10, model="fake", cost_rate=1e-6,
+    )
+    s1 = Span(
+        trace_id="t", span_id="s1", parent_span_id="agent1",
+        agent_or_node_id="Step 1", span_kind="chain",
+        start_time=_ts(1), end_time=_ts(2),
+        input_text="", output_text="result A", token_count=10, model="fake", cost_rate=1e-6,
+    )
+    s2 = Span(
+        trace_id="t", span_id="s2", parent_span_id="agent1",
+        agent_or_node_id="Step 1", span_kind="chain",
+        start_time=_ts(2), end_time=_ts(3),
+        input_text="", output_text="result B", token_count=10, model="fake", cost_rate=1e-6,
+    )
+    pairs = find_repeat_candidates(Trace(trace_id="t", spans=[agent, s1, s2]), n=2)
+    assert [(o.span_id, c.span_id) for o, c in pairs] == [("s1", "s2")]
+
+
+def test_repeat_different_agent_parent_blocked():
+    """E3 회귀 방지: 다른 부모 AGENT 아래 같은 이름 CHAIN 스팬 → 게이트로 필터.
+
+    E3 실측 케이스: CodeAgent.run/Step 1 vs ToolCallingAgent.run/Step 1.
+    같은 주제 어휘 → cosine > φ 이지만 역할이 다른 정당한 단계 → 후보 아님.
+    구조: root(CHAIN) → agent1(AGENT) → s1(CHAIN, "Step 1")
+                      → agent2(AGENT) → s2(CHAIN, "Step 1")
+    """
+    root = Span(
+        trace_id="t", span_id="root", parent_span_id=None,
+        agent_or_node_id="main", span_kind="chain",
+        start_time=_ts(0), end_time=_ts(5),
+        input_text="", output_text="root out", token_count=10, model="fake", cost_rate=1e-6,
+    )
+    agent1 = Span(
+        trace_id="t", span_id="agent1", parent_span_id="root",
+        agent_or_node_id="CodeAgent", span_kind="agent",
+        start_time=_ts(1), end_time=_ts(3),
+        input_text="", output_text="agent1 out", token_count=10, model="fake", cost_rate=1e-6,
+    )
+    agent2 = Span(
+        trace_id="t", span_id="agent2", parent_span_id="root",
+        agent_or_node_id="ToolCallingAgent", span_kind="agent",
+        start_time=_ts(3), end_time=_ts(5),
+        input_text="", output_text="agent2 out", token_count=10, model="fake", cost_rate=1e-6,
+    )
+    s1 = Span(
+        trace_id="t", span_id="s1", parent_span_id="agent1",
+        agent_or_node_id="Step 1", span_kind="chain",
+        start_time=_ts(2), end_time=_ts(3),
+        input_text="", output_text="Execution logs: final answer", token_count=10, model="fake", cost_rate=1e-6,
+    )
+    s2 = Span(
+        trace_id="t", span_id="s2", parent_span_id="agent2",
+        agent_or_node_id="Step 1", span_kind="chain",
+        start_time=_ts(4), end_time=_ts(5),
+        input_text="", output_text="Address: google: same topic search", token_count=10, model="fake", cost_rate=1e-6,
+    )
+    pairs = find_repeat_candidates(
+        Trace(trace_id="t", spans=[root, agent1, agent2, s1, s2]), n=2
+    )
+    assert pairs == []
+
+
+def test_repeat_mixed_depth_blocked():
+    """None/ID_X: 최상위 스팬(AGENT 조상=None) vs sub-agent 자식(AGENT 조상=agent1) → FILTER.
+
+    혼합 트레이스에서 구조 층위가 다른 스팬은 repeat 후보가 아님.
+    대안(None → PASS)은 최상위↔sub-agent 매칭으로 새 오탐을 만들 수 있어 기각.
+    """
+    root = Span(
+        trace_id="t", span_id="root", parent_span_id=None,
+        agent_or_node_id="root", span_kind="chain",
+        start_time=_ts(0), end_time=_ts(1),
+        input_text="", output_text="root out", token_count=10, model="fake", cost_rate=1e-6,
+    )
+    agent1 = Span(
+        trace_id="t", span_id="agent1", parent_span_id="root",
+        agent_or_node_id="SubAgent", span_kind="agent",
+        start_time=_ts(1), end_time=_ts(2),
+        input_text="", output_text="agent out", token_count=10, model="fake", cost_rate=1e-6,
+    )
+    s_toplevel = Span(
+        trace_id="t", span_id="s1", parent_span_id="root",
+        agent_or_node_id="Step 1", span_kind="chain",
+        start_time=_ts(2), end_time=_ts(3),
+        input_text="", output_text="top level step", token_count=10, model="fake", cost_rate=1e-6,
+    )
+    s_subagent = Span(
+        trace_id="t", span_id="s2", parent_span_id="agent1",
+        agent_or_node_id="Step 1", span_kind="chain",
+        start_time=_ts(3), end_time=_ts(4),
+        input_text="", output_text="sub agent step", token_count=10, model="fake", cost_rate=1e-6,
+    )
+    pairs = find_repeat_candidates(
+        Trace(trace_id="t", spans=[root, agent1, s_toplevel, s_subagent]), n=2
+    )
+    assert pairs == []
+
+
 def test_c1_requery_known_hard_clean_yields_no_candidates():
     """CRITERIA C1: requery_known clean 의 hard 분기 인스턴스 → 구조 후보 0개.
 

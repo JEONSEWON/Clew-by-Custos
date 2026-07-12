@@ -56,3 +56,32 @@ S4 Guardian(자율 감독) → S5 거버넌스 → S∞. **각 단계는 앞 단
 - 작은 단위로 커밋. 각 빌드 단계 끝에 "무엇을 검증했나" 한 줄 남기기.
 - 패키지/모듈명은 `clew`. 회사 표기는 Custos.
 - 막히거나 스펙에서 벗어나면 멈추고 사람에게 확인.
+
+## 7. 폴더 구조 (실제 트리 기준)
+- 패키지 코드: `src/clew/`
+  - `model.py` 데이터 모델 · `capture.py` 트레이스 캡처 · `io.py` 파일 I/O
+  - 인제스트: `src/clew/ingest/`
+    - 공식 진입점: `langgraph.py` → `ingest_otel_spans()`
+    - `otel_json.py` (OTel-JSON 파서) · `preprocess.py`
+  - 탐지: `src/clew/detect/` — `cascade.py`(조율) → `structural.py`(구조) → `semantic.py`(의미)
+  - 리포트: `src/clew/report/` — `_model.py` · `json_report.py` · `markdown.py`
+  - CLI 진입점: `python -m clew` (`__main__.py`)
+- 테스트: `tests/`
+- 평가 데이터셋: `eval/` — dev/test 각 80 traces, `labels.jsonl`, `calibrate.py`, `evaluate.py`
+- 동결 기준 문서: `validation/` — `CRITERIA_FROZEN.md` · `CALIBRATION_LOG.md` · `EVAL_RUNS.md`
+- 실측 프로브: `field_test/`
+- 스펙·전략 문서: `SPEC.md` · `docs/`
+- 새 파일은 위 구조에 맞춰서만 생성. 임의 위치 금지.
+
+## 8. 코딩 규칙
+- Python type hint 필수.
+- 프로즌 파라미터(φ=0.514, N=2, paraphrase-multilingual-MiniLM-L12-v2)는 임의 수정 금지. 재보정은 `eval/calibrate.py` 경유 별도 실험으로만 하고, 예시에 맞춘 hand-fit 금지. 변경 시 `validation/CALIBRATION_LOG.md`에 기록.
+- 합성 데이터(`eval/`) 결과와 실측(`field_test/`) 결과를 코드·주석·리포트에서 명확히 분리.
+- 탐지 로직은 정답 라벨(`labels.jsonl`)을 참조하지 않는다 (누수 가드, §4-3 재확인).
+- 성공/중단 기준은 `validation/CRITERIA_FROZEN.md`에 동결 — 결과를 본 뒤 기준을 바꾸지 않는다.
+
+## 9. 출력 형식
+- 파일 변경 시: 변경한 파일 경로 · 이유 · 실행한 검증 명령(`pytest`) 결과를 함께 보고.
+- 프로즌 파라미터·평가 로직·`validation/` 문서를 건드려야 하면 먼저 멈추고 사람에게 확인(plan-mode).
+- 되돌릴 수 없는 단계는 사람이 수동 승인한 뒤 진행.
+- 새 패키지 설치 전 먼저 묻기.
