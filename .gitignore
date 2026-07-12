@@ -23,3 +23,19 @@ eval/dev/
 
 # 임베딩 캐시
 .cache/embeddings/
+
+# Internal files — not for public repo
+.claude/
+CLAUDE.md
+SPEC.md
+진단표.md
+Day2_입력값.md
+docs/Clew_*단계_작업키트.md
+field_test/E3_DIAGNOSIS.md
+field_test/REAL_PROBE_LOG.md
+field_test/REQUERY_DIAGNOSIS.md
+field_test/TRAIL_H1_LOG.md
+field_test/WASTE_HUNT.md
+field_test/CODING_TRACE_EXPLORATION.md
+field_test/dump_otlp.json
+field_test/dump_sdk_json.json
