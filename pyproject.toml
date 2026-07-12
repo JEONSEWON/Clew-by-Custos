@@ -25,6 +25,9 @@ dev = [
     "pytest>=8.0",
 ]
 
+[project.scripts]
+clew = "clew.__main__:main"
+
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
