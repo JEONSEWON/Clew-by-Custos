@@ -4,7 +4,7 @@
 
 Clew takes a trace from any OpenInference-instrumented framework and reports which spans are doing redundant work — repeated node calls, ping-pong handoffs, re-querying known results — along with estimated wasted tokens and cost.
 
-**Current status: Stage 3 complete + real-trace validation passed + OTel-JSON input generalized (Stage 12).**
+**Current status: Stage 18 complete — requery FP diagnosis done; first real-data true-positive confirmed (Stage 17); parent-AGENT gate added (Stage 16); OTel-JSON generalized (Stage 12).**
 
 ---
 
@@ -106,7 +106,7 @@ See `examples/README.md` for setup snippets per framework.
 
 ```bash
 python tasks.py install        # install all dependencies
-python tasks.py test           # run all tests (171+)
+python tasks.py test           # run all tests (188)
 python tasks.py check-leak     # label leakage guard only
 python tasks.py dod            # DoD checks
 python tasks.py all            # install → generate-set → test → check-leak
@@ -193,7 +193,44 @@ Non-waste span cosines were above φ (0.514) in all scenarios (above-φ 100%, mi
 
 **Limitation:** n=1 topic, 5 traces. Results may differ across topics and domains.
 
-**Next step:** Semantic layer redesign deferred until 3–5 additional real traces (different topics/domains) are collected, with a separate pre-registered experiment. φ is not adjusted post-hoc.
+### Stage 16 — parent-AGENT gate (structural fix, 2026-07-12)
+
+Added parent-AGENT identity check to the structural layer: different-agent spans with the same node name are no longer treated as `repeat_node` candidates. TRAIL FP count dropped from 7 to 0; synthetic F1 0.857 / FPR 0 preserved.
+
+### Stage 17 — real-waste hunt on TRAIL traces (2026-07-12)
+
+40 TRAIL traces (GAIA + SWE Bench), stage 16 gate active.
+
+| Metric | Value |
+|--------|-------|
+| Traces processed | 40 |
+| FIRE before gate | 75 |
+| FIRE after gate | 18 |
+| True waste (human) | **1** (G8 — same-URL revisit, `requery_known`) |
+| FP (human) | 17 |
+
+**First real-data true-positive confirmed.** G8: agent revisited the same Wikipedia URL 46 seconds later with no content change; tool explicitly noted "previously visited."
+
+Two improvement targets identified:
+- (a) `requery_known` gate checks input equality but not URL/target identity — same search string on different URLs generates FP.
+- (b) Origin selection picks the wrong anchor span, missing true-duplicate pairs (e.g., G3: 3 visits to issue #22104 undetected because origin was anchored to #9533).
+
+### Stage 18 — requery FP diagnosis (2026-07-12)
+
+80 TRAIL traces, 8 `requery_known` FIREs (tool+same-input gate active).
+
+| Verdict | Count |
+|---------|-------|
+| True waste | 1 (#5 — tool confirmed "previously visited 46 s ago") |
+| FP (different target) | 6 |
+| FP (ambiguous) | 1 |
+
+**Key findings:**
+- **Cosine disproved as requery signal.** True waste cosine (0.9639) was *lower* than two FP pairs (0.9757) — φ adjustment cannot separate them. High cosine on FP cases is caused by shared "search string not found" boilerplate.
+- **Target identity = preliminary signal (FP suppression, not new detection).** When target (URL/address) differs, verdict is always FP (6/6 cases, 0 counterexamples). But n=1 true-waste case is already identified by tool-reported re-visit, so target-identity gate's unique contribution is FP suppression (6 cases), not additional true-waste detection.
+- **Data limit:** Only 8 FIRE cases available from TRAIL (source exhausted). Findings are preliminary; final validation requires real-workload traces (e.g., KAIST pipeline).
+
+**Next step (Stage 19):** Design URL-aware requery gate with goal explicitly scoped to FP suppression. Generalize target extraction beyond TRAIL-specific "Address:" regex. Final gate validation on real-workload traces only.
 
 ---
 
