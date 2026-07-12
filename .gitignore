@@ -39,3 +39,5 @@ field_test/WASTE_HUNT.md
 field_test/CODING_TRACE_EXPLORATION.md
 field_test/dump_otlp.json
 field_test/dump_sdk_json.json
+field_test/run_requery_diag.py
+field_test/run_waste_hunt.py

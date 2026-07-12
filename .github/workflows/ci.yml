@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  cold-install:
+    name: Cold install + run (no HF token, clean machine)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install clew with detect extras (cold, no cache)
+        run: pip install ".[detect]"
+      - name: Run clew analyze without HF token
+        env:
+          HF_TOKEN: ""
+          HUGGINGFACE_HUB_TOKEN: ""
+        run: |
+          clew analyze examples/sample_otel_trace.json | tee /tmp/report.txt
+          echo "exit code: ${PIPESTATUS[0]}"
+      - name: Assert report produced
+        run: |
+          grep -q "Clew Waste Report" /tmp/report.txt || (echo "리포트 생성 실패" && exit 1)
+          echo "콜드 스타트 성공: 토큰 없이 설치+실행+리포트 생성됨"
+
+  tests:
+    name: Test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install with dev + detect
+        run: pip install ".[detect,dev]"
+      - name: Run pytest
+        run: pytest -q
