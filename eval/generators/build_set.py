@@ -68,10 +68,10 @@ def build_set(*, seed: int, pairs_per_pattern: int, out_dir: Path) -> dict[str, 
                 )
 
             (traces_dir / f"{pos_tid}.json").write_text(
-                pos.trace.model_dump_json(), encoding="utf-8"
+                pos.trace.model_dump_json(), encoding="utf-8", newline="\n"
             )
             (traces_dir / f"{clean_tid}.json").write_text(
-                clean.trace.model_dump_json(), encoding="utf-8"
+                clean.trace.model_dump_json(), encoding="utf-8", newline="\n"
             )
             written_trace_files.extend([f"{pos_tid}.json", f"{clean_tid}.json"])
 
@@ -109,7 +109,7 @@ def build_set(*, seed: int, pairs_per_pattern: int, out_dir: Path) -> dict[str, 
             lengths.extend([len(pos.trace.spans), len(clean.trace.spans)])
             pattern_counts[pattern] += 1
 
-    labels_path.write_text("\n".join(labels_lines) + "\n", encoding="utf-8")
+    labels_path.write_text("\n".join(labels_lines) + "\n", encoding="utf-8", newline="\n")
 
     # 산출물 sha — 트레이스 본문 변경이 manifest sha에 반영되도록.
     labels_sha = hashlib.sha256(labels_path.read_bytes()).hexdigest()
@@ -146,6 +146,7 @@ def build_set(*, seed: int, pairs_per_pattern: int, out_dir: Path) -> dict[str, 
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True),
         encoding="utf-8",
+        newline="\n",
     )
 
     manifest_sha = hashlib.sha256(manifest_path.read_bytes()).hexdigest()

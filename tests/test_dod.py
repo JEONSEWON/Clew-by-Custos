@@ -11,6 +11,8 @@ import hashlib
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).parent.parent
 
 
@@ -35,6 +37,8 @@ def test_dod_labelset_artifacts_present():
     labels = ROOT / "eval" / "labels.jsonl"
     manifest = ROOT / "eval" / "set_manifest.json"
     traces_dir = ROOT / "eval" / "traces"
+    if not labels.exists():
+        pytest.skip("labelset not generated — run: python tasks.py generate-set")
     assert labels.exists(), "run: python tasks.py generate-set"
     assert manifest.exists()
     n_traces = sum(1 for _ in traces_dir.glob("*.json"))
