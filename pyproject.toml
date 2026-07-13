@@ -2,7 +2,7 @@
 name = "clew"
 version = "0.1.0"
 description = "Detect wasteful cycles in multi-agent traces (Custos / Clew, S0 MVP)."
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.6",
 ]
