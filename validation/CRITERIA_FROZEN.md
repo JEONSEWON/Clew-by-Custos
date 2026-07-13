@@ -9,8 +9,8 @@
 - 동결: git tag `stage1-freeze` (본 커밋 시점 고정)
 - 라벨셋: `eval/labels.jsonl` (seed=42, 4 패턴 × 10쌍 = positive 40 / negative 40)
 - `eval/set_manifest.json` sha256:
-  `6d4efdb05e8b6de3931c965353ad78e9632d94a308d82c996ff43d3b018d4e01`
-  <!-- stage2 재동결값; stage1 원본 sha f3369b7cf598d4aa6f764ec2f56fa9aa437f4603d4ea84a88cb114ec7eb9069b 는 tag stage1-freeze (0fa25e0) 에 보존 -->
+  `12ad33bb3b412bbc8ff1639775a9b264c9bcc6ad938a073c0eb07acf23551b52`
+  <!-- LF 고정(CRLF→LF, OS 독립 재현성) 후 재동결. 탐지 파라미터·트레이스 내용 불변, 직렬화 개행 바이트만 변경. 이전값(Windows CRLF 기준): 6d4efdb05e8b6de3931c965353ad78e9632d94a308d82c996ff43d3b018d4e01. stage1 원본: f3369b7cf598d4aa6f764ec2f56fa9aa437f4603d4ea84a88cb114ec7eb9069b (tag stage1-freeze 0fa25e0) -->
 - 길이 분포: min=5, max=7, mean=6.0 (paired structural matching — positive/clean
   트윈은 동일 토폴로지)
 
