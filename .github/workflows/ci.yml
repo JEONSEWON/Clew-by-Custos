@@ -38,6 +38,12 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install with dev + detect
-        run: pip install ".[detect,dev]"
+        run: |
+          pip install --no-cache-dir --upgrade ".[detect,dev]"
+          pip install --no-cache-dir --force-reinstall "sentence-transformers==5.5.1" "transformers==5.0.0"
+      - name: Show installed versions (debug)
+        run: |
+          python -c "import sentence_transformers as s, transformers as t; print('st', s.__version__); print('transformers', t.__version__)"
+          pip show sentence-transformers transformers torch | grep -E "^(Name|Version)"
       - name: Run pytest
         run: pytest -q
