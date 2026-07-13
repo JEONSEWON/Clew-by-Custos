@@ -2,6 +2,9 @@
 name = "clew"
 version = "0.1.0"
 description = "Detect wasteful cycles in multi-agent traces (Custos / Clew, S0 MVP)."
+authors = [{ name = "Custos" }]
+license = "MIT"
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.6",
@@ -25,6 +28,10 @@ detect = [
 dev = [
     "pytest>=8.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/JEONSEWON/Clew-by-Custos"
+Repository = "https://github.com/JEONSEWON/Clew-by-Custos"
 
 [project.scripts]
 clew = "clew.__main__:main"
