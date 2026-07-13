@@ -16,8 +16,9 @@ adapter = [
     "opentelemetry-api>=1.25",
 ]
 detect = [
-    # 정확한 핀은 stage2-params-freeze 동결 시점에 == 로 갱신.
-    "sentence-transformers>=3.0",
+    # 재현성 동결: 이 버전 조합에서 SHA 재현 검증됨 (stage18 배포준비).
+    "sentence-transformers==5.5.1",
+    "transformers==5.0.0",
     "torch>=2.0",
     "huggingface_hub>=0.20",
 ]
