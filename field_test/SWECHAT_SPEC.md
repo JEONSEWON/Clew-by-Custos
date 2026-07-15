@@ -21,6 +21,15 @@
 2. **그 사이(`turn_number` 기준)에 해당 `norm_path`에 대한 Edit/Write/MultiEdit 턴이 없음**
    → 2번이 핵심. Edit 후 재읽기는 정당하므로 낭비 아님.
 
+Edit 계열 도구 범위: `Edit`, `Write`, `MultiEdit` 3종만 (Claude Code 실측 분포 기준. NotebookEdit/Update/str_replace 0건).
+
+## 미확인 Edit 처리 (보수적 판정)
+- Edit 계열의 `tool_input_json`도 정확히 50% None (Edit 63,489 / Write 8,629 / MultiEdit 134).
+  → 두 Read 사이에 `tool_input_json`이 None인 Edit/Write/MultiEdit 턴이 존재하면 그 턴이 해당 파일을 수정했는지 알 수 없음.
+- 이 경우 해당 Read 쌍은 **낭비 아님으로 판정** (보수적).
+- 이 케이스 건수를 별도 카운트하여 결과에 명시: "판정 불가로 제외된 후보 N건".
+- 근거: 낭비를 과대평가하는 것보다 과소평가가 정직한 방향. FP=0 원칙과 일치.
+
 ## 측정 지표 (사전 확정)
 1. 낭비 1건 이상 있는 세션 비율 (분모: Read 보유 Claude Code 세션)
 2. 낭비 Read 턴 / 전체 Read 턴
