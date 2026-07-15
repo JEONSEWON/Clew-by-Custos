@@ -13,7 +13,11 @@
 ## 대상(target) 정의
 - `offset`·`limit` 둘 다 있음 → `(norm_path, offset, limit)`
 - `offset` 또는 `limit` 결측 → `(norm_path, "FULL")`  ※ 전체 읽기로 취급
-- `norm_path` = `os.path.normpath` 적용. 세션 내 절대·상대 혼용 89 세션(2%)은 basename fallback, 발동 건수 별도 카운트
+- PDF Read (`pages` 키, 46건 / 0.07%)는 offset/limit 결측이므로 `(norm_path, "FULL")` 카테고리로 자동 처리.
+- `norm_path` = `os.path.normpath` 적용.
+- **절대·상대 경로 혼용 세션(89개, 2%)은 분석에서 제외.**
+  → basename fallback은 `src/utils.py`와 `tests/utils.py`를 동일 파일로 오탐할 위험 있음.
+  → 제외 세션 수를 결과에 명시.
 - `offset`/`limit`이 str인 35건 → int 캐스팅, 실패 시 해당 Read drop (건수 기록)
 
 ## 낭비 판정 (2조건 AND — 사전 확정)
@@ -35,6 +39,13 @@ Edit 계열 도구 범위: `Edit`, `Write`, `MultiEdit` 3종만 (Claude Code 실
 2. 낭비 Read 턴 / 전체 Read 턴
 3. **낭비 턴의 토큰 합** (`input_tokens + output_tokens`) 및 전체 대비 비율
 4. **대조군**: file-level만으로 판정 시 낭비 수 (target = `norm_path`만). range-level 대비 차이 = 정밀 대상 정의가 거른 오탐 수
+
+## 낭비 사례 덤프 (필수)
+숫자만으로는 검증 불가 (TRAIL 8건 실측 판정 경험). 낭비로 잡힌 Read 전건을 저장:
+- 경로: `field_test/swechat_waste_cases.csv`
+- 컬럼: `session_id`, `turn_id`, `turn_number`, `norm_path`, `offset`, `limit`, `prev_turn_number`, `between_edit_count`, `input_tokens`, `output_tokens`
+- 무작위 20건 사람 판정용 별도 덤프: `field_test/swechat_waste_sample20.json` (seed=42 고정)
+- 판정 후 진짜 낭비 / 정당한 재읽기 라벨링해서 정밀도(precision) 산출
 
 ## 음성 결과 정의 (미리 확정)
 - 낭비 세션 비율이 낮게 나오면 → 코딩 에이전트 방향의 신호가 약하다는 **정직한 음성**. 그대로 기록·발표.
