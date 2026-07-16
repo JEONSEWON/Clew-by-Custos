@@ -64,6 +64,22 @@ Edit 계열 도구 범위: `Edit`, `Write`, `MultiEdit` 3종만 (Claude Code 실
 8. **사전등록 커밋은 분석 실행 전에 push한다.** 로컬 커밋은 순서(DAG)만 증명하고 시각을 증명하지 않는다. `GIT_COMMITTER_DATE`는 조작 가능하고, 순서는 분석 후에도 만들 수 있다. 외부 타임스탬프는 GitHub push 이벤트(서버 측)에서만 나온다. **push하지 않은 사전등록은 사전등록이 아니다.**
    근거 사례: 2026-07-16 — §19 사전등록(9ddb9bc / 9d9fab9 / b1450f1)과 §19.1 개정(00e1d32)이 모두 결과 산출 이후 push됨. 규칙 7과 동일한 실패 유형(기록은 남겼으나 검증 가능한 곳에 두지 않음).
 
+   **부칙 (2026-07-16, main 브랜치 보호 확인 후)**: main은 PR 경유만 허용된다 (GH006: `Protected branch update failed for refs/heads/main`). 규칙 8의 실무 형태는 다음과 같다.
+
+   1. 사전등록 커밋 작성 → 사전등록 브랜치로 push + PR 오픈 → **여기서 외부 타임스탬프 확정.**
+   2. 분석 실행 → 같은 브랜치에 결과·개정 커밋 push.
+   3. **머지는 반드시 merge commit.** squash / rebase 금지.
+
+   근거:
+   - **PR 오픈 시점이 타임스탬프.** 머지를 기다릴 필요 없음.
+   - PR 타임라인의 "commits added" 시각은 영구 보존되며 공개 레포에서 누구나 검증 가능 (GitHub events API는 ~90일 후 만료되나 PR 페이지는 영구).
+   - **머지 방식 제약**: SPEC이 커밋 해시(예: `8018ae0`, `00e1d32`, `911eeda`, `3fa82c7`, `8caf456`)를 증거로 인용한다.
+     * squash merge → 9커밋이 1개로 붕괴, 순서 소멸, 인용 해시 dangling.
+     * rebase merge → SHA 전부 재작성, 인용 해시 dangling.
+     * merge commit → DAG 보존. **이것만 사전등록 논증을 유지한다.**
+   - 스타일 선택 아님. 사전등록 논증 전체가 커밋 순서에 걸려 있다.
+   - GitHub 레포 설정: Settings → General → Pull Requests에서 "Allow merge commits" 활성 필수. squash/rebase만 켜져 있으면 증거가 파괴된다.
+
 ---
 
 ## v1 결과 (사전등록 정의 그대로, frozen)
