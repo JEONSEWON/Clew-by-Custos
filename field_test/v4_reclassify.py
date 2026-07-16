@@ -1,9 +1,17 @@
-"""v4 재산출: Read tool_result를 성공 패턴(라인번호 접두어)으로 판정.
+"""v4' 재산출: Read tool_result를 성공 패턴(라인번호 접두어)으로 판정.
+
+로직은 §19.1 개정 이후에도 유효 (role == 'tool_result' ↔ turn_type == 'tool_result',
+2026-07-16 전수 검증 완료: 408,572건 완전 일치). 입력(v3 후보)만 바뀐다.
 
 - 성공(실제 파일 내용): r'^\s*\d+→' 로 시작
-- 캐시 응답: 'File unchanged since last read'로 시작 (벤더가 이미 방지 중)
+- 캐시 응답: 'File unchanged since last read'로 시작
 - 실패/에러: 그 외
+
+Usage:
+  python v4_reclassify.py --pool <analysis_pool_size>
+  (pool은 run_swechat_waste_scan.py의 reads_after_mixed_exclusion 값)
 """
+import argparse
 import csv
 import re
 from collections import Counter
@@ -42,6 +50,11 @@ def load_ctx(sids):
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--pool", type=int, required=True,
+                    help="분석 pool 크기 (reads_after_mixed_exclusion)")
+    args = ap.parse_args()
+
     with open(CASES_CSV, encoding="utf-8") as f:
         cases = list(csv.DictReader(f))
     v3 = [c for c in cases if int(c["turn_number"]) != int(c["prev_turn_number"])]
@@ -85,7 +98,7 @@ def main():
     print()
     # v4 = success (진짜 재읽기) 만
     v4 = stats["all_success"]
-    v4_pool = 60778 - 56  # gap==0 데이터 중복 제외한 pool
+    v4_pool = args.pool
     print(f"=== v4 산출 ===")
     print(f"v4 낭비 후보 (사이 Read 성공만): {v4}")
     print(f"v4 밀도: {v4} / {v4_pool} = {v4/v4_pool*100:.3f}%")

@@ -1,6 +1,12 @@
-"""SPEC §19 SWE-chat waste density scan.
+"""SPEC §19 SWE-chat waste density scan (v1'~v4' — post-amendment).
 
-Pre-registered: field_test/SWECHAT_SPEC.md (commits 9ddb9bc, 9d9fab9, b1450f1).
+Pre-registered: field_test/SWECHAT_SPEC.md.
+Amendment 2026-07-16 (§19.1): EDIT_TOOLS pool contamination fix —
+tool_name is on BOTH tool_use and tool_result rows. Filter edits to
+turn_type == 'tool_use' before path-matching between Read pairs.
+"미확인 Edit → 낭비 아님" 조항 제거. unresolved_between 카운터는
+검증용으로 유지 (0이 나와야 정상).
+
 Do NOT modify pool/target/waste rules after seeing results.
 """
 import csv
@@ -62,8 +68,8 @@ def parse_args(s):
 
 
 def load():
-    cols = ['turn_id', 'session_id', 'turn_number', 'tool_name', 'file_path',
-            'tool_input_json', 'agent', 'input_tokens', 'output_tokens']
+    cols = ['turn_id', 'session_id', 'turn_number', 'turn_type', 'tool_name',
+            'file_path', 'tool_input_json', 'agent', 'input_tokens', 'output_tokens']
     p = hf_hub_download('SALT-NLP/SWE-chat', 'conversations.parquet', repo_type='dataset')
     return pq.read_table(p, columns=cols).to_pandas()
 
@@ -83,10 +89,29 @@ def scan():
     df = load()
     df = df[df.agent == "Claude Code"]
 
-    reads_raw = df[(df.tool_name == "Read") & df.tool_input_json.notna()].copy()
-    edits_raw = df[df.tool_name.isin(EDIT_TOOLS)].copy()
+    # turn_id 데이터셋 중복 제외 (v3 계기: 같은 turn_id 2회 발생 원본 행)
+    before_dedup = len(df)
+    df = df.drop_duplicates(subset=['turn_id']).copy()
+    turn_id_dupes_dropped = before_dedup - len(df)
+
+    # pool 정의 (변경 없음): Claude Code Read + tool_input_json IS NOT NULL
+    reads_tij_notna = df[(df.tool_name == "Read") & df.tool_input_json.notna()]
+    # 검증: turn_type == 'tool_use' 필터와 결과가 같아야 함. 다르면 즉시 assert.
+    reads_ttuse = df[(df.tool_name == "Read") & (df.turn_type == "tool_use")]
+    if len(reads_tij_notna) != len(reads_ttuse):
+        raise RuntimeError(
+            f"POOL SANITY FAILED: tij_notna={len(reads_tij_notna)} "
+            f"vs turn_type=='tool_use'={len(reads_ttuse)}. "
+            "pool 정의 오류 가능성 — SPEC §19.1 중단조건 2 발동."
+        )
+    reads_raw = reads_tij_notna.copy()
+
+    # §19.1 핵심 수정: edits 필터에 turn_type == 'tool_use' 강제
+    # (기존은 tool_name만 필터하여 tool_result 행까지 포함 → 1,115건 부당 drop 원인)
+    edits_raw = df[df.tool_name.isin(EDIT_TOOLS) & (df.turn_type == "tool_use")].copy()
 
     counters = Counter()
+    counters["turn_id_dupes_dropped"] = turn_id_dupes_dropped
     counters["reads_in_pool"] = len(reads_raw)
 
     reads_raw["_args"] = reads_raw.tool_input_json.apply(parse_args)
@@ -129,7 +154,10 @@ def scan():
     waste_cases = []
     file_level_waste_ids = set()
     waste_sessions = set()
+    # 검증용 카운터 — turn_type=='tool_use' 필터로 edits._path가 결측일 리 없음.
+    # 0이 나와야 정상 (SPEC §19.1 중단조건 1).
     unresolved_between = 0
+    file_unresolved_between = 0
 
     for sid, s_reads in reads_by_sess.items():
         s_edits = edits_by_sess.get(sid)
@@ -151,10 +179,11 @@ def scan():
                 else:
                     known_hit = unknown_hit = between_count = 0
 
+                if unknown_hit > 0:
+                    unresolved_between += 1
+
                 if known_hit > 0:
                     pass
-                elif unknown_hit > 0:
-                    unresolved_between += 1
                 else:
                     off = tgt[1] if len(tgt) == 3 else ""
                     lim = tgt[2] if len(tgt) == 3 else ""
@@ -177,7 +206,9 @@ def scan():
                 prev_tn = seen_path[path]
                 if s_edits is not None:
                     between = s_edits[(s_edits.turn_number > prev_tn) & (s_edits.turn_number < tn)]
-                    if int((between._path == path).sum()) == 0 and int(between._path.isna().sum()) == 0:
+                    if int(between._path.isna().sum()) > 0:
+                        file_unresolved_between += 1
+                    if int((between._path == path).sum()) == 0:
                         file_level_waste_ids.add(r.turn_id)
                 else:
                     file_level_waste_ids.add(r.turn_id)
@@ -188,15 +219,18 @@ def scan():
     total_tokens = int((reads.input_tokens.fillna(0) + reads.output_tokens.fillna(0)).sum())
     waste_token_sum = sum(c["input_tokens"] + c["output_tokens"] for c in waste_cases)
 
-    print("=== SPEC §19 SWE-chat 낭비 밀도 결과 ===")
+    print("=== SPEC §19 SWE-chat 낭비 밀도 결과 (v1' 재실행, EDIT_TOOLS 오염 수정) ===")
+    print(f"turn_id 데이터셋 중복 drop: {counters['turn_id_dupes_dropped']}")
     print(f"pool: Claude Code Read + tool_input_json non-null = {counters['reads_in_pool']}")
+    print(f"  (pool sanity 검증: turn_type=='tool_use'와 일치 확인 통과)")
     print(f"target 파싱 실패 drop: {counters['reads_dropped_no_target']}")
     print(f"절대·상대 혼용으로 제외된 세션: {counters['sessions_excluded_mixed_paths']}")
     print(f"분석 대상 Read: {counters['reads_after_mixed_exclusion']}")
     print(f"분석 대상 세션: {n_read_sessions}")
-    print(f"Edit 계열 미확인 (tool_input_json None): "
-          f"{counters['edits_unknown_path']}/{counters['edits_total']}")
-    print(f"미확인 Edit로 판정 유보된 후보: {unresolved_between}")
+    print(f"Edit 계열 tool_use 총: {counters['edits_total']}  "
+          f"(_path 결측: {counters['edits_unknown_path']} — 0이어야 정상)")
+    print(f"[검증] unresolved_between (range-level): {unresolved_between} — 0이어야 정상")
+    print(f"[검증] file_unresolved_between: {file_unresolved_between} — 0이어야 정상")
     print()
     print(f"[1] 낭비 1건+ 세션 비율: {len(waste_sessions)}/{n_read_sessions} = "
           f"{len(waste_sessions)/max(n_read_sessions,1)*100:.2f}%")
@@ -206,6 +240,9 @@ def scan():
           f"{waste_token_sum/max(total_tokens,1)*100:.3f}%")
     print(f"[4] File-level 대조군 낭비 Read: {len(file_level_waste_ids)} "
           f"(range-level 대비 +{len(file_level_waste_ids)-len(waste_cases)})")
+    if len(file_level_waste_ids) > 0:
+        removal_rate = (1 - len(waste_cases) / len(file_level_waste_ids)) * 100
+        print(f"    오탐 제거율: {removal_rate:.1f}%")
 
     fields = ["session_id", "turn_id", "turn_number", "norm_path", "offset", "limit",
               "prev_turn_number", "between_edit_count", "input_tokens", "output_tokens"]
