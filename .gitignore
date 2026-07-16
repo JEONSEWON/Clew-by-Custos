@@ -24,6 +24,9 @@ eval/dev/
 # 임베딩 캐시
 .cache/embeddings/
 
+# 일회성 진단 스크립트 워크 디렉토리
+.tmp/
+
 # Internal files — not for public repo
 .claude/
 CLAUDE.md
