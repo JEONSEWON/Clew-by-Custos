@@ -211,3 +211,139 @@ input 게이트 (structural.py:68) 가 range-level target 과 동등하게 작�
 1. Pydantic 검증 실패 → 즉시 멈추고 raw 출력. 매핑을 자체 판단으로 바꾸지 마라.
 2. 조인 실패 (고아 `tool_use` / `tool_result`) 발생 → 멈추고 건수 보고. Q6 에서 0건이었다. 나오면 다른 세션 특성이다.
 3. 파싱 실패 시 **조용히 skip 금지. 명시적 에러** (§21.4 어댑터 설계 지침).
+
+### §22.5 — tool_result content 렌더링 규약 (2026-07-17 addendum)
+
+**발견 (2026-07-17, 어댑터 첫 실행)**:
+- 대상 세션 `f96aee88-...` tool_result 180건 중 **179건 `content: str`, 1건 `content: list`**.
+- 그 1건은 `{"type":"tool_reference","tool_name":"TaskCreate"}` × 3 으로만 구성.
+- text 블록 이어붙이기 → 빈 문자열 → Pydantic `output_text must be non-empty` raise.
+- **§22.4 중단조건 1 이 정상 발동했다. 조용히 넘어가지 않았다.**
+- tool_use raw: `id=toolu_01NmEu17XyHpHxm5ck1qCxb8, name=ToolSearch, input={query: "select:TaskCreate,TaskUpdate,TaskList", max_results: 3}, caller={type: direct}`. Q6 의 `ToolSearch: 1` 과 동일 메타 도구.
+
+**전 세션 실측 근거 (20 파일 = 9 프로젝트 전수)**:
+- list-form tool_result: **71건**.
+- 블록 타입 value_counts: `text=34, image=15, tool_reference=36`.
+- text-only list: 33.
+- **non-text-only (text 블록 전무): 38건** ← 현재 케이스와 동일. `tool_reference` 만, 혹은 `image` 만으로 채워진 tool_result.
+- mixed: 0.
+
+**규약 (§22.1 output_text 행 개정)**:
+- `content` 가 `str` → 그대로 사용.
+- `content` 가 `list` → 블록별 렌더링 후 `"\n"` 으로 결합:
+  - `type == "text"` → `block["text"]`
+  - **그 외 모든 타입** → `json.dumps(block, sort_keys=True, ensure_ascii=False)` 로 직렬화
+  - 매 블록에 대해 `warnings.warn` 으로 타입명 경고 (신호 보존)
+- 렌더링 후에도 strip 결과가 빈 문자열 → **raise 유지** (진짜 빈 출력)
+
+**설계 근거**:
+1. **버리지 않는다.** 모르는 블록을 drop 하는 것은 `field_test/SWECHAT_SPEC.md` §19.1 `EDIT_TOOLS unknown_hit` ("미확인 Edit → 낭비 아님") 와 동일 계열의 실패다. 이름만 다르다.
+2. **신호를 유지한다.** 경고가 계속 뜬다. 벤더 포맷 변경을 알아챌 수 있다 (§21.4). LINE_PREFIX 는 경고 없이 9,941건 (15.66%) 을 오분류했다.
+3. **결정론적.** `sort_keys=True` — §22.2 와 동일 근거.
+4. **특정 타입을 하드코딩하지 않는다.** `tool_reference` 만 특별 처리하면 다음 타입에서 재발한다. 벤더는 앞으로도 블록 타입을 추가한다.
+5. **φ 에 의미가 있다.** 동일 인자로 같은 메타 도구를 두 번 호출하면 동일 `output_text` → cosine 높음 → 낭비 판정. 의미상 맞다.
+
+**§22.4 예측 유지**: pingpong ≥ 10건, repeat 1~10건. 이 addendum 은 output_text 표현 규약이며 **탐지 정의를 바꾸지 않는다.** 예측 조정 없음.
+
+### §22.6 — 첫 실행 결과 (2026-07-17)
+
+**대상**: `f96aee88-df87-41a6-8f6e-be05d3928018.jsonl` (§21 리콘 세션과 동일).
+
+**실행 명령**: `python -m clew analyze <path>.jsonl --no-snippets`
+
+**어댑터 결과**:
+- total_spans: 181 (synthetic root 1 + tool 180)
+- tool_name_counts: `{Bash: 108, Read: 25, Write: 11, Edit: 31, Grep: 4, ToolSearch: 1}`
+- 경고 (tool_reference): 3건 (모두 동일 tool_use = ToolSearch 1건)
+- 조인 실패: 0
+- Pydantic 검증 실패: 0 (§22.5 addendum 반영 후)
+
+**§22.4 예측 대조**:
+
+| 지표 | 예측 | 실측 | 판정 |
+|---|---|---|---|
+| pingpong 후보 | ≥ 10 | **6** | **빗나감** |
+| repeat 후보 | 1 ~ 10 | **0** | **빗나감** |
+| 최종 waste (φ ≥ 0.514345 통과) | — | **3** | Edit(cos=1.0000), Write(0.9959), Bash(0.6577) |
+
+**빗나감 사실 기록 (조정 금지)**:
+- pingpong 6 < 10: 4-window 교대 패턴이 예상보다 적었다. 실측 pair 분포: Bash-Bash × 2, Write-Write × 2, Read-Read × 1, Edit-Edit × 1 (원소 개수 6 = 3 페어 × 2).
+- repeat 0: `sort_keys` 직렬화 후 완전 동일 인자 재호출 부재. 25 Read / 108 Bash 이 있음에도 인자가 매번 달랐다는 뜻. 이 세션 특성.
+- 예측이 틀린 방향: 둘 다 **과대 예측**. 낭비 시그널이 예측보다 희소.
+
+**함의 (추측 아닌 관찰)**:
+- 이 세션 하나에서 pingpong 원소 6 중 3 (50%) 이 φ 통과. 단일 세션 표본으로 일반화 금지.
+- repeat 0 은 이 세션이 "range/keyset 이 매번 다른 세션" 임을 의미. 다른 세션에서 재확인 필요 (백로그).
+- Edit cos=1.0000 은 완전 동일 output_text 를 의미 — 세션 내 검사 필요 (백로그, transcript 노출 없이).
+
+### §22.7 — 첫 실행 결과 진단 (2026-07-17 fold-back, 규칙 7)
+
+**결과 요약**: waste 3건 **전부 오탐**.
+
+| # | node | cosine | 실제 내용 | 판정 |
+|---|---|---|---|---|
+| 1 | Edit | 1.0000 | 같은 파일 (SWECHAT_SPEC.md), **다른 new_string** | 오탐 |
+| 2 | Write | 0.9959 | **다른 파일 2개 생성** (basename 다름) | 오탐 |
+| 3 | Bash | 0.6577 | 다른 스크립트, 출력 로그 상이 | 오탐 |
+
+**근거 스크립트**: `field_test/diagnostics/diag_cc_first_run.py` (Q1~Q5).
+
+#### 결함 1 — origin 고정 (structural.py:64,68)
+
+```
+origin = occurrences[0]
+for cand in occurrences[1:]:
+    ...
+    _normalize_input(cand.input_text) == _normalize_input(origin.input_text)
+```
+
+- origin 이 그룹 **첫 등장 하나로 고정**된다. occurrences[i] 와 occurrences[j] (i, j ≥ 1) 가 동일해도 origin 과 다르면 **둘 다 탈락**.
+- **실측 증거**: Read `(file_path, offset, limit)` 완전 동일 재호출 4건 존재. **repeat 후보 0건.**
+- `field_test/SWECHAT_SPEC.md` §19 분석은 모든 쌍을 비교했다. **제품과 분석의 알고리즘이 다르다.**
+- 영향 범위: repeat_node, requery_known (requery 는 repeat 의 특수형, structural.py:8 주석).
+
+#### 결함 2 — pingpong 에 input 게이트 부재 (structural.py:85-88, 99)
+
+- `find_candidates = find_repeat_candidates ∪ find_pingpong_candidates` (structural.py:99).
+- pingpong 조건은 `agent_or_node_id` 만 비교 — input_text 무시.
+- **waste 3건 전부 pingpong 출처** (repeat=0 이므로 논리적 귀결).
+- §22.4 예측 1 은 **건수로는 빗나감 (6 < 10), 오탐 방향으로는 적중** — 6 pingpong 원소 중 3이 φ 통과, **3/3 오탐**.
+- `field_test/SWECHAT_SPEC.md` §19.1 `EDIT_TOOLS unknown_hit`, §19.2 `all_success` 와 동일 계열 (라벨/주석과 로직 불일치, 대상 미확인).
+
+#### 결함 3 — Edit/Write output_text 가 템플릿 (φ 계층 무력화)
+
+- Edit 31건: **distinct output_text 5/31 (16%)**. len 94~120. `"The file <path> has been updated successfully."` 순수 성공 문구.
+- Write 11건: distinct 11/11 이나 접두사 `"File created successfully at: <path>"`. path 만 변수 → embedding 유사도 ≈ 1.
+- **φ 는 output_text 를 비교한다** (`src/clew/detect/cascade.py:36`). 템플릿 위에서는 항상 높은 cos.
+- **함의**: Edit/Write 에 대해 semantic 계층은 판별력이 없다. **구조 게이트가 유일한 방어**다. 결함 1·2 가 그 방어를 뚫는다.
+- `docs/ARCHITECTURE.md` E3 (semantic 이 실데이터 same-topic 분리 실패) 보다 심각. 여기선 topic 도 아니고 **고정 템플릿**이다.
+
+#### 결함 4 — Bash `description` 이 command 재호출을 가림
+
+- Bash 108건 key-set: 97× `(command, description)`, 10× +`timeout`, 1× +`run_in_background`.
+- `description` distinct **106/108** — 매 호출 새 문구.
+- `command` distinct 99/108 (91.7%). **command-only 동일 재호출 9건** (`git status --porcelain` × 3, `cd ... && git log ...` × 4, `cd ... && git status` × 3, `git diff pyproject.toml` × 2, `ls field...` × 2).
+- input 전체 직렬화 (§22.1) 가 이 9건을 소실시킨다. **repeat=0 의 직접 원인 중 하나.**
+- ※ `field_test/SWECHAT_SPEC.md` §20 은 command 문자열만 보는 설계였다. **여기서 갈린다.**
+
+#### 관찰 — §19 87.0% 의 자기 데이터 재현 (방향만, 값 인용 금지)
+
+| | 건수 |
+|---|---|
+| `file_path` 만 같은 Read 재호출 | 13 |
+| `(file_path, offset, limit)` 전부 같은 재호출 | 4 |
+| **차이 (range 다른 재읽기)** | **9 = 69.2%** |
+
+- `field_test/SWECHAT_SPEC.md` §19.1 오탐 제거율 87.0% 와 **같은 방향**. 값은 다름.
+- **n=25. 단일 세션. 인용 절대 금지.** 방향 재현 사실만 기록.
+- **이는 남의 데이터 (SWE-chat) 로 잰 논지가 자기 데이터에서 처음 재현된 사례**다.
+
+#### 정직 경계 갱신
+
+- **"clew analyze 가 Claude Code 세션에서 낭비 N건 검출" 인용 금지.** 첫 실행 3/3 오탐. 결함 1~4 수정 전까지 검출 수치는 무의미하다.
+- T1 달성 사실 ("CC 로그를 읽고 파이프라인을 통과시킨다") 은 사실이다. 그건 말할 수 있다.
+
+#### 미해결
+
+- 결함 3 의 해법이 정해지지 않았다. Edit/Write 는 **input 이 신호이고 output 이 노이즈**로 보이나 (같은 파일 + 같은 new_string 재적용 = 낭비), 이는 §22 매핑과 cascade 설계 양쪽에 걸린다. **§22.8 사전등록 대상.**
+- φ=0.514345 는 frozen 이다. **결함 3 을 φ 조정으로 풀지 않는다.**
