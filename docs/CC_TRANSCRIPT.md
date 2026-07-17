@@ -475,3 +475,112 @@ find_candidates = find_repeat_candidates ∪ find_pingpong_candidates      ← :
 - 이 커밋은 코드 수정 전에 push 되어 PR 오픈 시각으로 외부 타임스탬프 확정.
 - §22.8 본문은 이 커밋 이후 무수정. 관찰은 별도 섹션 (§22.8 결과, 추후 추가).
 - 병합은 반드시 merge commit (SPEC §19 규칙 8 부칙).
+
+### §22.8.8 — 재실행 결과 및 관찰 (2026-07-17)
+
+§22.8 본문은 사전등록 시점 (`031639f`) 그대로. 결과와 관찰만 이 섹션.
+
+**대상**: `f96aee88-df87-41a6-8f6e-be05d3928018.jsonl` (§22.6 과 동일).
+**코드 커밋**: `ed58d5d` (structural.py 수정, `031639f` 이후, 결과 산출 전).
+**테스트**: `python -m pytest -q` → **198 passed** (`tests/test_claude_code_ingest.py` UserWarning 1건 = §22.5 image 타입 신호 보존).
+
+#### 예측 대조 (§22.8.4)
+
+| 지표 | §22.6 실측 | 예측 (§22.8.4) | 이번 실측 | 판정 |
+|---|---|---|---|---|
+| pingpong 후보 | 6 | **0** | **0** | **적중** |
+| repeat 후보 | 0 | **4 (±2)** | **6** | **적중 (상한선)** |
+| 최종 waste (φ ≥ 0.514345 통과) | 3 | **4 (±2)** | **4** | **적중** |
+| 오탐 판정 | 3/3 (§22.7) | **0/N** | **판정 대기** (raw 아래) | 세션 소유자 판정 |
+
+**예측 근거 성립 확인**:
+- pingpong 0: §22.8.2 `span_kind == "llm"` 필터로 CC (tool 스팬만) 에서 전멸. 의도된 결과.
+- repeat 6: §22.7 결함 1 실측 4건은 origin 고정 해제 후 하한. 상한 6 은 origin 이 여러 cand 와 페어링된 경우 포함 (예: waste #1·#2 는 동일 origin 이 2 cand 와 각각 페어링).
+
+#### waste 4건 raw (§22.7 Q2 형식, 경로 basename 마스킹, output 앞 200자)
+
+##### waste #1 — cos=0.7888
+- `origin.name=Read` span_id=`toolu_01FpniGnXxoE4AXg1R5SodkT`
+- `cand.name=Read` span_id=`toolu_01JRtN5gD5Kasqx6s5uZ7eZA`
+- **input_text (len=103, 동일)**:
+  ```json
+  {"file_path": "C:\\Users\\User\\Desktop\\Custos - clwe project\\field_test\\run_swechat_waste_scan.py"}
+  ```
+- origin.output_text[0:200]:
+  `'1\t"""SPEC §19 SWE-chat waste density scan.\n2\t\n3\tPre-registered: field_test/SWECHAT_SPEC.md (commits 9ddb9bc, 9d9fab9, b1450f1).\n4\tDo NOT modify poolBASENAME(waste rules after seeing results.\n5\t)"""\n6\tim'`
+- cand.output_text[0:200]:
+  `'1\t"""SPEC §19 SWE-chat waste density scan (v1\'~v4\' — post-amendment).\n2\t\n3\tPre-registered: field_test/SWECHAT_SPEC.md.\n4\tAmendment 2026-07-16 (§19.1): EDIT_TOOLS pool contamination fix —\n5\ttool_name i'`
+- same_basename: True (`run_swechat_waste_scan.py`)
+- **output_text 다름** (원본 vs post-amendment). 판정 재료: origin↔cand 사이 파일 편집 있었는지.
+
+##### waste #2 — cos=0.7888
+- `origin.name=Read` span_id=`toolu_01FpniGnXxoE4AXg1R5SodkT` **(waste #1 과 동일 origin)**
+- `cand.name=Read` span_id=`toolu_019vePnaQrtbXGzKLNvF7pUn`
+- **input_text (len=103, waste #1 과 동일)**:
+  ```json
+  {"file_path": "C:\\Users\\User\\Desktop\\Custos - clwe project\\field_test\\run_swechat_waste_scan.py"}
+  ```
+- origin.output_text[0:200] — waste #1 origin 과 동일.
+- cand.output_text[0:200] — waste #1 cand 와 동일 (동일 post-amendment 상태를 두 번 재읽기?).
+- same_basename: True.
+- 판정 재료: waste #1 과 waste #2 의 cand 두 개가 서로 같은 상태인지 (post-amendment 후 반복 재읽기) 다른 상태인지.
+
+##### waste #3 — cos=1.0000
+- `origin.name=Read` span_id=`toolu_016ruLyijuJSr2qDxWRagJen`
+- `cand.name=Read` span_id=`toolu_01FyRBDgmMtoMk83jhGPbfpY`
+- **input_text (len=93, 동일)**:
+  ```json
+  {"file_path": "C:\\Users\\User\\Desktop\\Custos - clwe project\\field_test\\SWECHAT_SPEC.md"}
+  ```
+- origin.output_text[0:200]:
+  `'1\t# SPEC §19 — SWE-chat 실사용 코딩 세션 낭비 밀도 측정 (사전등록)\n2\t\n3\t## 목적\n4\t실사용 Claude Code 세션에 "같은 대상 + 실질 변화 없음" 낭비가 존재하는지, 밀도가 얼마인지 측정.\n5\t\n6\t## 분석 pool (frozen)\n7\t- \`agent == "Claude Code"\`\n8\t- \`tool_name == "R'`
+- cand.output_text[0:200] — **origin 과 완전 동일 문자 (cos=1.0000)**.
+- same_basename: True (`SWECHAT_SPEC.md`).
+- 판정 재료: 앞 200자만 동일한지, 전문이 동일한지. cos=1.0000 은 전체 output_text 문자열 embedding 일치.
+
+##### waste #4 — cos=0.5359
+- `origin.name=Bash` span_id=`toolu_017bFHLqnQgAawh1jtWVMy3g`
+- `cand.name=Bash` span_id=`toolu_01YSSm43o4VmMzA17sX8Cqqb`
+- **input_text (len=127, 동일)**:
+  ```json
+  {"command": "cd \"C:/Users/User/Desktop/Custos - clwe project\" && git status --short 2>&1", "description": "Git status short"}
+  ```
+- origin.output_text[0:200]:
+  `' M field_test/SWECHAT_SPEC.md\n M pyproject.toml\n?? field_test/diagnostics/'`
+- cand.output_text[0:200]:
+  `' M pyproject.toml'`
+- same_command: True.
+- **output_text 다름** (git 상태 변화). 판정 재료: 상태가 바뀔 만한 이벤트 (커밋/스테이징) 가 사이에 있었는지.
+
+#### 관찰 1 — 결함 4 (Bash description) 는 이 세션에서 우회됨
+- waste #4 는 `description="Git status short"` 로 완전 일치. §22.7 결함 4 (description distinct 106/108) 는 통계이며, description 이 동일한 경우도 존재한다는 것.
+- **§22.9 (결함 4 별도 사전등록) 필요성 유지**: waste 로 검출되지 않은 command-only 재호출 9건은 여전히 소실 (input 전체 문자열 비교 상). 이번 세션에서는 우연히 하나 잡힌 것.
+
+#### 관찰 2 — repeat 상한선 (6 = 예측 4±2 최댓값)
+- §22.7 결함 1 진단 시 "full_input 재호출 4건" 이었으나 이번 repeat 6.
+- 차이 원인: origin 이 여러 cand 와 각각 페어링. (예: waste #1·#2 는 동일 origin span_id 가 두 cand 와 각각 페어. `find_repeat_candidates` 는 하위그룹 내 (origin, cand_i) 쌍을 모두 반환).
+- Distinct cand span_id 기준으로는 4~5 정도 (waste 4건 = distinct cand span_id 4).
+- §22.8.1 개정 의도 부합 — "같은 서명 재등장 모두 페어링" 이므로 origin 1 × cand 2 = pair 2 가 정상 산출.
+
+#### 관찰 3 — repeat 6 vs waste 4 의 gap
+- repeat 6 중 waste 4 = φ 통과 4건. 2건은 φ < 0.514345 (탈락).
+- φ 계층이 여기서 판별력 있는 사례. Read output 이 파일 내용이라 cos 이 실제 유사도 반영.
+- §22.7 결함 3 (Edit/Write output_text 무판별력) 은 이번 세션에서 트리거 안 됨 — Edit/Write 재호출 자체가 하위그룹핑 후 부재.
+
+#### 정직 경계 (§22.8.8 시점)
+
+**말할 수 있는 것**:
+- §22.8.1 (origin 고정 해제) · §22.8.2 (pingpong llm 필터) 코드 개정 완료. pytest 198 통과.
+- 예측 3개 (pingpong · repeat · waste) 모두 사전등록 구간 내 적중.
+- **오탐 판정은 세션 소유자 몫**: 4건 raw 전문 위에 제시. 그중 waste #1·#2 는 output 이 다르므로 파일 편집이 있었을 가능성 (§19 낭비 정의: 그 사이 Edit 있으면 낭비 아님). waste #4 는 git 상태 변화 (정당한 재확인 가능성). waste #3 은 output 완전 동일 (재읽기 후보 성립).
+
+**말할 수 없는 것**:
+- **"clew analyze 가 4건 낭비를 검출했다" 단독 인용 금지.** §21.1 thinking 부재로 "왜 다시 읽었나" 판정 근거 약함 유지. **후보이지 확정 낭비 아님.**
+- **오탐 0/N 예측 적중 여부는 판정 이후에만 결론.** 지금은 판정 대기.
+- **§22.8.8 결과를 다른 CC 세션으로 일반화 금지.** 단일 세션.
+
+#### 미해결
+
+- **결함 3 (Edit/Write output 템플릿)**: 이 세션에서 트리거 안 되어 실증 없음. Edit/Write 재호출이 있는 다른 세션에서 재확인 필요. 백로그.
+- **결함 4 (Bash description)**: `field_test/diagnostics/diag_cc_first_run.py --q 4` 로 확인된 command-only 재호출 9건은 여전히 후보로 안 뜬다. §22.9 별도 사전등록 대상.
+- **세션 소유자 판정 반영**: waste 4건 오탐/진성 라벨링 후 §22.8.8 에 추가.
