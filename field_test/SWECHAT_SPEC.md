@@ -144,9 +144,28 @@ v3 761건 분류 결과:
 | v3 (데이터셋 중복 제외) | 761 | 1.253% | parquet 원본 duplicated row 56건 |
 | **v4 (성공 패턴 판정)** | **424** | **0.698%** | 첫 Read 실패 재시도 317건 + 벤더 캐시 15건 제외 |
 
-## 핵심 한계 (필수 명시)
+## 핵심 한계 (필수 명시, 근거 교체 — 2026-07-16 A recon)
 
-**데이터셋에 assistant 텍스트 턴이 없다.** tool_use / tool_result 만 있고 "왜 다시 읽었나"를 결정할 assistant reasoning은 손실됨. 따라서 v1~v4 숫자 모두 **낭비 "후보"이지 확정 낭비가 아님.** 정밀도 산출을 위한 사람 판정은 판정 근거가 약함 (CASE 2/4/8 검증 시 확인).
+**"assistant 텍스트 턴 없음" 최초 서술은 무검증이었음 (편차 5 참조). 실측 후 결론(판정 불가)은 유지하되 근거를 교체한다.**
+
+- Claude Code `assistant_thinking` = 128건 (Claude Code assistant 행 37,978의 0.34%) — 추론 과정이 사실상 미수집.
+- `assistant_response` = 37,850건, content 100% 채움 (median 447자). 그러나 **사용자 대상 요약**이며 후보 target을 명시적으로 지칭하지 않는다.
+
+**실측 (v1' 200 표본 중 텍스트 보유 98 창문, word-boundary regex 매칭)**:
+
+| 매칭 수준 | 히트 / 창문 | 비율 |
+|---|---|---|
+| full path | 0 / 98 | 0.00% |
+| basename (L1) | 16 / 98 | 16.33% (substring 23 은 오탐 7 포함한 상한) |
+| 2 컴포넌트 (L2) | 2 / 98 | 2.04% |
+| 3 컴포넌트 (L3) | 6 / 98 | 6.12% |
+| 4 컴포넌트 (L4) | 2 / 98 | 2.04% |
+
+`offset` / `limit` 은 산문에 미등장.
+
+→ **"왜 이 target 을 다시 읽었나" 는 판정 불가.** v1~v4 숫자 모두 **낭비 "후보" 이지 확정 낭비가 아님.** 정밀도 산출을 위한 사람 판정은 판정 근거가 약함.
+
+근거 스크립트: `field_test/diagnostics/verify_assistant_text.py`, `verify_assistant_text_followup.py`, `verify_assistant_text_followup2.py` (2026-07-16).
 
 ## 핵심 발견 (무결한 성과)
 
@@ -162,6 +181,21 @@ v3 761건 분류 결과:
 - 나머지(v3 424 / v3' 858)는 조건이 같은데도(같은 target 재읽기) 정상 파일 내용을 응답받음.
 - **왜 일부에만 캐시가 걸리고 나머지에는 안 걸렸는지는 미해결.** 벤더 캐시의 트리거 조건은 이 데이터로 판단 불가.
 - 함의: "벤더가 이미 최적화 중"으로 결론 내리기엔 근거 부족.
+
+## 벤더 골드셋 (2026-07-16 A recon — 참양성 하한)
+
+**후보 자신의 tool_result 가 `"File unchanged since last read"` 로 시작하는 v1' 후보는 벤더가 명시적으로 "재읽기"라고 라벨한 참양성 하한이다.**
+
+- **조인 방법**: `tool_call_id` (tool_use ↔ tool_result 정확 매칭).
+  * v1' 2,053 중 조인 성공 2,041. 짝 없음 8. dup_tcid 배제 4.
+  * adjacency (turn_number + 1) 방식은 progress 행이 전체의 49% 라 구조적으로 부적합 (44% 미탐). **사용하지 않는다.** 교차검증: adjacency hit 774 건 중 tcid 불일치 0 건 — 잡힌 것은 정확하나 잡히지 않은 것이 압도적.
+- **결과**: **71 / 2,053 = 3.458%** (전체 분모 기준), 조인 성공 분모(2,041) 기준 **3.479%**.
+- **이것은 정밀도가 아니라 확인된 참양성의 하한이다.** 나머지 1,982 건에 대해 벤더는 아무 판정도 하지 않았다. "정밀도 X%" 류 서술 금지.
+- gap 구간별 (tcid 조인):
+  * gap < 20: 26 / 708 = 3.672%
+  * 20 ≤ gap < 100: 27 / 523 = 5.163%
+  * gap ≥ 100: 18 / 822 = 2.190%
+- 근거: `field_test/diagnostics/verify_assistant_text_followup2.py` (Task 1).
 
 ## 편향 방향에 대한 정정 (개정)
 
@@ -262,11 +296,18 @@ v1 SPEC의 "미확인 Edit(`tool_input_json=None`) 사이 존재 → 낭비 아�
 
 ### 예측 적중 여부
 
-**예측 적중** — 오탐 제거율 91.7% → 87.0%로 하락. 예측 근거대로 range-level의 부당 drop 비중이 file-level보다 컸음.
+**예측 1 (§19.1 재실행 오탐 제거율 하락) — 적중**. 91.7% → 87.0%. 예측 근거대로 range-level의 부당 drop 비중이 file-level보다 컸음.
 - 예측: "994가 11,963보다 비율상 더 크게 증가" — 실측 검증:
   * 994 → 2,053 = ×2.066
   * 11,963 → 15,787 = ×1.320
   * range-level 증가율이 file-level보다 큼 → 예측대로.
+
+**예측 2 (2026-07-16 A recon — assistant 텍스트에서 경로 표기) — 빗나감**.
+- 예측: "Claude Code 산문은 상대경로를 자주 쓸 것 → basename(L1)보다 상대경로(L2/L3)가 더 잘 매칭될 것."
+- 실측 (word-boundary regex, n=98 텍스트 보유 창문): L1 16 / L2 2 / L3 6 / L4 2 — **단조 감소 (L1 > L2)**. Claude Code 산문은 basename 만 언급한다.
+- `basename_ambiguous` 12건 (세션 내 같은 basename 이 2 이상) 중 L2 로 해소 = 1 / 12 = 8.33%.
+- 변명 없이 예측 1(적중)과 예측 2(빗나감) 둘 다 남긴다.
+- 근거: `field_test/diagnostics/verify_assistant_text_followup2.py`.
 
 ### 결정표 적용 (v1' 밀도 = 3.381%)
 
@@ -327,6 +368,16 @@ v1~v4 결과는 오염된 판정 기반이지만 이력으로 남긴다. v1'~v4'
 - **원인**: 코드를 읽지 않고 추정. 규율 3(raw 확인) 위반. 사람 측 오류.
 - **결과 영향**: 없음. 실측(재현 스크립트)이 추정을 덮었다.
 - **기록 이유**: 편차 1(중단조건 미작동)과 대칭. 자체 판단이 옳았던 경우와 사람 판단이 틀린 경우를 함께 남긴다.
+
+### 편차 5 — 데이터 구조 주장 무검증 (2건 누적)
+
+- **사실**: 2026-07-16 하루에 데이터 구조에 관한 주장 **2건**이 검증 없이 SPEC / 인수인계에 실려 전략 결론을 만든 것이 확인됨.
+  1. "`tool_input_json` 50% 결측" → 결측 아님. tool_use / tool_result 반반 (§19.1 사실 절 참조). EDIT_TOOLS pool 오염의 근원이었음.
+  2. "assistant 텍스트 턴 없음" → Claude Code 에 37,850 건 존재 (핵심 한계 절 개정 참조). 결론(판정 불가)은 유지되나 근거가 다름.
+- **규칙 3(raw 확인)이 이미 이를 금지**한다. 새 규칙은 만들지 않는다.
+- **실패 원인**: 데이터 구조 주장을 "발견"이 아닌 "배경 사실"로 취급하여 규칙 3의 적용 대상에서 무의식적으로 제외했다.
+- **적용 노트**: 규칙 3은 발견뿐 아니라 **배경 사실 서술에도 적용된다.** SPEC 에 데이터 구조를 서술할 때는 산출 스크립트를 명시한다 (예: "`recon_bash2.py` Q1", "`verify_assistant_text.py`").
+- 근거: `field_test/diagnostics/verify_assistant_text.py`, `verify_assistant_text_followup2.py` (2026-07-16).
 
 ---
 
@@ -389,6 +440,16 @@ elif unknown_hit > 0:
 - 그러나 189턴 간격이면 그 사이 Read tool_result만 median 1,883자씩 누적. 긴 gap 재읽기가 짧은 gap 재읽기와 **동일한 성격의 낭비인지 판단 불가.**
 - **함의**: v4' 858건은 v4 424건의 2배가 아니라 **성격이 다른 858건**. "2배 증가"로 서술할 때 이 단서가 필요.
 - 이 데이터로는 답할 수 없다. 판단 경로: 벤더 라벨(`File unchanged`), 사람 표본 판정, 실제 사용자 확인. 백로그.
+
+### 관찰 4 — `os.path.normpath` OS 의존성 (2026-07-16 A recon)
+
+- **사실**: `run_swechat_waste_scan.py:53` 이 `os.path.normpath(fp)` 를 쓴다. 원본 SWE-chat 경로는 POSIX (`/home/rob/...`). Windows 실행 시 `ntpath.normpath` 가 호출돼 `\home\rob\...` 로 뒤집힌다. Linux 실행 시 `posixpath.normpath` 로 그대로 유지된다. 커밋된 CSV(`swechat_waste_cases.csv`) 에 `\Users\...` 리터럴이 박혀 있다.
+- **카운트 영향 (부분 검증)**:
+  * target tuple `(np, off, lim)` 그룹핑은 세션 내 자기일관 (같은 OS 재실행 시 동일 카운트). 같은 OS 안에서 waste 후보 수는 안정.
+  * `is_abs` 는 자체 로직 (`p.startswith('/') or (len(p) >= 2 and p[1] == ':')`), `ntpath.isabs` / `posixpath.isabs` 를 사용하지 않음 → 혼용 판정(89 세션 제외)은 OS 무관. **검증됨.**
+  * 다른 OS 간 재실행 시 CSV 리터럴 표기가 달라진다. 상대·절대 매칭이 구분자에 의존하면 결과 달라질 가능성 — **미검증.**
+- **상위 진술**: SHA 재현성을 죽였던 CRLF vs LF 편차와 **같은 계열의 2번째 사례** (플랫폼 결정론적이지 않은 텍스트 정규화). 지금 고치지 않는다. 기록만.
+- 근거: `field_test/diagnostics/verify_assistant_text_followup2.py` (Task 4).
 
 ---
 
