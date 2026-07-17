@@ -144,9 +144,28 @@ v3 761건 분류 결과:
 | v3 (데이터셋 중복 제외) | 761 | 1.253% | parquet 원본 duplicated row 56건 |
 | **v4 (성공 패턴 판정)** | **424** | **0.698%** | 첫 Read 실패 재시도 317건 + 벤더 캐시 15건 제외 |
 
-## 핵심 한계 (필수 명시)
+## 핵심 한계 (필수 명시, 근거 교체 — 2026-07-16 A recon)
 
-**데이터셋에 assistant 텍스트 턴이 없다.** tool_use / tool_result 만 있고 "왜 다시 읽었나"를 결정할 assistant reasoning은 손실됨. 따라서 v1~v4 숫자 모두 **낭비 "후보"이지 확정 낭비가 아님.** 정밀도 산출을 위한 사람 판정은 판정 근거가 약함 (CASE 2/4/8 검증 시 확인).
+**"assistant 텍스트 턴 없음" 최초 서술은 무검증이었음 (편차 5 참조). 실측 후 결론(판정 불가)은 유지하되 근거를 교체한다.**
+
+- Claude Code `assistant_thinking` = 128건 (Claude Code assistant 행 37,978의 0.34%) — 추론 과정이 사실상 미수집.
+- `assistant_response` = 37,850건, content 100% 채움 (median 447자). 그러나 **사용자 대상 요약**이며 후보 target을 명시적으로 지칭하지 않는다.
+
+**실측 (v1' 200 표본 중 텍스트 보유 98 창문, word-boundary regex 매칭)**:
+
+| 매칭 수준 | 히트 / 창문 | 비율 |
+|---|---|---|
+| full path | 0 / 98 | 0.00% |
+| basename (L1) | 16 / 98 | 16.33% (substring 23 은 오탐 7 포함한 상한) |
+| 2 컴포넌트 (L2) | 2 / 98 | 2.04% |
+| 3 컴포넌트 (L3) | 6 / 98 | 6.12% |
+| 4 컴포넌트 (L4) | 2 / 98 | 2.04% |
+
+`offset` / `limit` 은 산문에 미등장.
+
+→ **"왜 이 target 을 다시 읽었나" 는 판정 불가.** v1~v4 숫자 모두 **낭비 "후보" 이지 확정 낭비가 아님.** 정밀도 산출을 위한 사람 판정은 판정 근거가 약함.
+
+근거 스크립트: `field_test/diagnostics/verify_assistant_text.py`, `verify_assistant_text_followup.py`, `verify_assistant_text_followup2.py` (2026-07-16).
 
 ## 핵심 발견 (무결한 성과)
 
@@ -162,6 +181,21 @@ v3 761건 분류 결과:
 - 나머지(v3 424 / v3' 858)는 조건이 같은데도(같은 target 재읽기) 정상 파일 내용을 응답받음.
 - **왜 일부에만 캐시가 걸리고 나머지에는 안 걸렸는지는 미해결.** 벤더 캐시의 트리거 조건은 이 데이터로 판단 불가.
 - 함의: "벤더가 이미 최적화 중"으로 결론 내리기엔 근거 부족.
+
+## 벤더 골드셋 (2026-07-16 A recon — 참양성 하한)
+
+**후보 자신의 tool_result 가 `"File unchanged since last read"` 로 시작하는 v1' 후보는 벤더가 명시적으로 "재읽기"라고 라벨한 참양성 하한이다.**
+
+- **조인 방법**: `tool_call_id` (tool_use ↔ tool_result 정확 매칭).
+  * v1' 2,053 중 조인 성공 2,041. 짝 없음 8. dup_tcid 배제 4.
+  * adjacency (turn_number + 1) 방식은 progress 행이 전체의 49% 라 구조적으로 부적합 (44% 미탐). **사용하지 않는다.** 교차검증: adjacency hit 774 건 중 tcid 불일치 0 건 — 잡힌 것은 정확하나 잡히지 않은 것이 압도적.
+- **결과**: **71 / 2,053 = 3.458%** (전체 분모 기준), 조인 성공 분모(2,041) 기준 **3.479%**.
+- **이것은 정밀도가 아니라 확인된 참양성의 하한이다.** 나머지 1,982 건에 대해 벤더는 아무 판정도 하지 않았다. "정밀도 X%" 류 서술 금지.
+- gap 구간별 (tcid 조인):
+  * gap < 20: 26 / 708 = 3.672%
+  * 20 ≤ gap < 100: 27 / 523 = 5.163%
+  * gap ≥ 100: 18 / 822 = 2.190%
+- 근거: `field_test/diagnostics/verify_assistant_text_followup2.py` (Task 1).
 
 ## 편향 방향에 대한 정정 (개정)
 
@@ -262,11 +296,18 @@ v1 SPEC의 "미확인 Edit(`tool_input_json=None`) 사이 존재 → 낭비 아�
 
 ### 예측 적중 여부
 
-**예측 적중** — 오탐 제거율 91.7% → 87.0%로 하락. 예측 근거대로 range-level의 부당 drop 비중이 file-level보다 컸음.
+**예측 1 (§19.1 재실행 오탐 제거율 하락) — 적중**. 91.7% → 87.0%. 예측 근거대로 range-level의 부당 drop 비중이 file-level보다 컸음.
 - 예측: "994가 11,963보다 비율상 더 크게 증가" — 실측 검증:
   * 994 → 2,053 = ×2.066
   * 11,963 → 15,787 = ×1.320
   * range-level 증가율이 file-level보다 큼 → 예측대로.
+
+**예측 2 (2026-07-16 A recon — assistant 텍스트에서 경로 표기) — 빗나감**.
+- 예측: "Claude Code 산문은 상대경로를 자주 쓸 것 → basename(L1)보다 상대경로(L2/L3)가 더 잘 매칭될 것."
+- 실측 (word-boundary regex, n=98 텍스트 보유 창문): L1 16 / L2 2 / L3 6 / L4 2 — **단조 감소 (L1 > L2)**. Claude Code 산문은 basename 만 언급한다.
+- `basename_ambiguous` 12건 (세션 내 같은 basename 이 2 이상) 중 L2 로 해소 = 1 / 12 = 8.33%.
+- 변명 없이 예측 1(적중)과 예측 2(빗나감) 둘 다 남긴다.
+- 근거: `field_test/diagnostics/verify_assistant_text_followup2.py`.
 
 ### 결정표 적용 (v1' 밀도 = 3.381%)
 
@@ -328,13 +369,23 @@ v1~v4 결과는 오염된 판정 기반이지만 이력으로 남긴다. v1'~v4'
 - **결과 영향**: 없음. 실측(재현 스크립트)이 추정을 덮었다.
 - **기록 이유**: 편차 1(중단조건 미작동)과 대칭. 자체 판단이 옳았던 경우와 사람 판단이 틀린 경우를 함께 남긴다.
 
-### 편차 5 — §19.2 사전등록 커밋 82d905d 누락분 (사람 측 지정 오류)
+### 편차 5 — 데이터 구조 주장 무검증 (2건 누적)
+
+- **사실**: 2026-07-16 하루에 데이터 구조에 관한 주장 **2건**이 검증 없이 SPEC / 인수인계에 실려 전략 결론을 만든 것이 확인됨.
+  1. "`tool_input_json` 50% 결측" → 결측 아님. tool_use / tool_result 반반 (§19.1 사실 절 참조). EDIT_TOOLS pool 오염의 근원이었음.
+  2. "assistant 텍스트 턴 없음" → Claude Code 에 37,850 건 존재 (핵심 한계 절 개정 참조). 결론(판정 불가)은 유지되나 근거가 다름.
+- **규칙 3(raw 확인)이 이미 이를 금지**한다. 새 규칙은 만들지 않는다.
+- **실패 원인**: 데이터 구조 주장을 "발견"이 아닌 "배경 사실"로 취급하여 규칙 3의 적용 대상에서 무의식적으로 제외했다.
+- **적용 노트**: 규칙 3은 발견뿐 아니라 **배경 사실 서술에도 적용된다.** SPEC 에 데이터 구조를 서술할 때는 산출 스크립트를 명시한다 (예: "`recon_bash2.py` Q1", "`verify_assistant_text.py`").
+- 근거: `field_test/diagnostics/verify_assistant_text.py`, `verify_assistant_text_followup2.py` (2026-07-16).
+
+### 편차 6 — §19.2 사전등록 커밋 82d905d 누락분 (사람 측 지정 오류)
 
 - **사실**: §19.2 사전등록 커밋 82d905d 에 사실 B 근거 스크립트 `field_test/diagnostics/verify_v4_filter_contradiction.py` 가 누락. 후속 커밋으로 보완. 규칙 7 부칙(재현 경로 남기기) 적용 누락 — 사람 측 지정 오류.
 - **결과 영향**: 없음. 보완 커밋은 v4'' 재계산 실행 **이전** 이므로 §19.2 사전등록 무결성(예측·중단조건·정의)에 영향 없음. 다만 82d905d 하나로는 사실 B 재현이 불완전했다.
 - **재발 방지**: 사전등록 커밋에 근거 스크립트 포함 여부를 diff 로 사전 점검.
 
-### 편차 6 — 사전등록 문자열 무검증 (사람 측)
+### 편차 7 — 사전등록 문자열 무검증 (사람 측)
 
 - §19.2 개정 3 의 우선순위에 `'exceeds max tokens'` 를 박았으나 벤더 실제 문자열은 `"exceeds maximum allowed tokens"`. **0건 매치.**
 - 벤더 출력 문자열을 실측 확인하지 않고 사전등록했다. 사람 측 오류.
@@ -403,6 +454,16 @@ elif unknown_hit > 0:
 - **함의**: v4' 858건은 v4 424건의 2배가 아니라 **성격이 다른 858건**. "2배 증가"로 서술할 때 이 단서가 필요.
 - 이 데이터로는 답할 수 없다. 판단 경로: 벤더 라벨(`File unchanged`), 사람 표본 판정, 실제 사용자 확인. 백로그.
 
+### 관찰 4 — `os.path.normpath` OS 의존성 (2026-07-16 A recon)
+
+- **사실**: `run_swechat_waste_scan.py:53` 이 `os.path.normpath(fp)` 를 쓴다. 원본 SWE-chat 경로는 POSIX (`/home/rob/...`). Windows 실행 시 `ntpath.normpath` 가 호출돼 `\home\rob\...` 로 뒤집힌다. Linux 실행 시 `posixpath.normpath` 로 그대로 유지된다. 커밋된 CSV(`swechat_waste_cases.csv`) 에 `\Users\...` 리터럴이 박혀 있다.
+- **카운트 영향 (부분 검증)**:
+  * target tuple `(np, off, lim)` 그룹핑은 세션 내 자기일관 (같은 OS 재실행 시 동일 카운트). 같은 OS 안에서 waste 후보 수는 안정.
+  * `is_abs` 는 자체 로직 (`p.startswith('/') or (len(p) >= 2 and p[1] == ':')`), `ntpath.isabs` / `posixpath.isabs` 를 사용하지 않음 → 혼용 판정(89 세션 제외)은 OS 무관. **검증됨.**
+  * 다른 OS 간 재실행 시 CSV 리터럴 표기가 달라진다. 상대·절대 매칭이 구분자에 의존하면 결과 달라질 가능성 — **미검증.**
+- **상위 진술**: SHA 재현성을 죽였던 CRLF vs LF 편차와 **같은 계열의 2번째 사례** (플랫폼 결정론적이지 않은 텍스트 정규화). 지금 고치지 않는다. 기록만.
+- 근거: `field_test/diagnostics/verify_assistant_text_followup2.py` (Task 4).
+
 ---
 
 ## §19.1 결정표 설계 결함 (2026-07-16)
@@ -436,6 +497,7 @@ elif unknown_hit > 0:
 - **오탐 제거율 87.0%** (file-level 15,787 → range-level 2,053). 출처(SPEC §19.1, 재검증 후) 표기 필수.
 - 기존 91.7%는 "오염된 EDIT 판정 기반"이라는 단서와 병기.
 - **예측 적중**: range-level 증가율 ×2.066 > file-level ×1.320 (예측 근거대로).
+- **단서 (2026-07-17, §19.3 fold-back)**: 87.0% 는 "순진한 file-level 매칭 대비" 방법론 근거로만 유효하다. read-once (tools/read-once, Bande-a-Bonnot/Boucle-framework, MIT) 는 partial read 를 애초에 캐시하지 않아 (사실 B, offset/limit pass-through) 동일한 오탐(13,734건)을 만들지 않는다. **read-once 대비 차별점으로 인용 금지.** 두 도구는 같은 목표에 다른 경로 (측정 vs 회피). §19.3 참조.
 
 ### 말할 수 없는 것
 - **"세션의 22.42%에서 낭비 발견" 단독 인용 금지.** 이유: v1' 기준이고, 실패 재시도 29.87% + compact/agent 38.04%를 포함한 raw 후보 위 값. 기존 14.31% 금지와 같은 원리.
@@ -648,9 +710,154 @@ elif unknown_hit > 0:
 | 커밋 | 목적 | 결과 산출 이전/이후 |
 |---|---|---|
 | `82d905d` | §19.2 사전등록 (본문 · 예측 · 중단조건) | 이전 |
-| `d7e1689` | verify_v4_filter_contradiction.py 추가 + 편차 5 | 이전 |
+| `d7e1689` | verify_v4_filter_contradiction.py 추가 + 편차 6 | 이전 |
 | `95fa58b` | v4_reclassify.py §19.2 개정 (코드만) | 이전 |
 | 이 결과 커밋 | 실행 결과 + 관찰 (본문 무수정) | 이후 |
 
 - 결과 산출 코드(95fa58b)가 결과 커밋보다 먼저. 원자적 한 커밋 없음.
 - §19.2 본문은 82d905d 이후 무수정. 관찰은 별도 섹션(본 §19.2 결과).
+
+---
+
+## §19.3 read-once 후속 도구 분석 (2026-07-17, 규칙 7 적용)
+
+**본 섹션은 사전등록 대상이 아님.** read-once 는 이미 공개된 도구이므로 규칙 8(사전등록)의 대상이 되지 않는다. 외부 사실을 raw 로 확인하고 SPEC 에 fold back 하는 규칙 7 만 적용한다.
+
+**출처**: `Bande-a-Bonnot/Boucle-framework`, `tools/read-once/` (MIT). 2026-07-17 raw 확인.
+
+### 사실 A — 캐시 키는 `(file_path, mtime)`
+
+`hook.sh` (PreToolUse) 의 캐시 기록부 (raw 인용):
+```bash
+write_cache_entry() {
+  jq -cn --arg path "$FILE_PATH" --arg mtime "$CURRENT_MTIME" \
+    --argjson ts "$NOW" --argjson tokens "$ESTIMATED_TOKENS" \
+    '{path:$path,mtime:$mtime,ts:$ts,tokens:$tokens}' >> "$CACHE_FILE"
+}
+```
+- 캐시 키는 `path` + `mtime`. 파일 편집으로 mtime 이 바뀌면 새 항목으로 취급되어 히트하지 않는다.
+
+### 사실 B — offset / limit non-empty 는 pass-through
+
+`hook.sh` 조기 종료 분기 (raw 인용):
+```bash
+# Partial reads (offset/limit) are never cached — user is exploring
+# a large file piece by piece, each chunk is different content
+if [ -n "$OFFSET" ] || [ -n "$LIMIT" ]; then
+  exit 0
+fi
+```
+- offset 또는 limit 이 주어진 Read 호출은 캐시 기록·조회 대상이 아니다. exit 0 으로 훅이 빠져나온다.
+
+### 사실 C — 세션 캐시 초기화 (PostCompact) · TTL 기본 1200s
+
+- `compact.sh` (PostCompact 훅) 로 Claude Code `/compact` 시점에 세션 캐시가 초기화된다. compact 후 동일 파일 재읽기는 새로 캐시되므로 pass-through.
+- TTL 은 기본 1200초 (20분). TTL 만료 후 재읽기는 새로 캐시된다.
+- 두 경로 모두 "정당한 재읽기" 를 캐시 히트에서 빼주지만 **실패 재시도(tool_result 가 error) 를 구분하지는 않는다**. PreToolUse 훅은 tool_result 에 접근할 수 없기 때문.
+
+### 사실 D — 실행 모드 (deny 대 warn)
+
+- 기본 모드는 warn (프롬프트에 안내만 삽입). deny 모드는 재읽기를 차단.
+- warn 은 자문 목적이라 Edit 재-Read 데드락을 회피한다. deny 는 차단이지만 정당한 재읽기까지 막을 위험.
+
+### 가설 기각 기록 (규칙 6)
+
+- **가설 (이전 대화 인수인계)**: "read-once 는 file-level 예방 도구이므로 Clew 의 file-level 낭비 후보(15,787건)를 모두 커버할 것이다. 따라서 §19.1 의 오탐 제거율 87.0% 는 read-once 대비 차별점이 아니다."
+- **기각 근거**:
+  1. read-once 는 `(path, mtime)` 로 캐시한다(사실 A). mtime 이 변한 재읽기(외부 편집 · Edit tool 호출 후 재-Read) 는 pass-through.
+  2. Clew 의 낭비 후보 CSV 에는 mtime 이 없다. read-once 가 실제로 얼마나 잡는지·놓치는지 산출 불가.
+  3. 87.0% 는 "file-level 15,787 → range-level 2,053" 감소율 (§19.1). 세션 토큰 절감 비율이 아니다. read-once 의 "40% 절감" 서술과 **범주가 다르다** (감소 대상이 다름). 직접 비교는 category error.
+- 결론: "87.0% 는 read-once 로 대체된다" 는 무효. 동시에 "Clew 가 read-once 를 능가한다" 도 무근거. 두 도구는 다른 axis 에서 동작한다.
+
+### X 측정 (2026-07-17, 밀도 재계산 아님 — 컬럼 집계)
+
+`swechat_waste_cases.csv` (v1' 2,053) 및 `swechat_waste_cases_v2.csv` (v3' 1,272) 의 `offset`, `limit`, `between_edit_count` 컬럼 집계:
+
+| 셋 | n | offset 또는 limit non-empty (read-once pass-through 대상) | 둘 다 empty (FULL read) | between_edit_count > 0 (창문 내 다른 파일 Edit) |
+|---|---:|---:|---:|---:|
+| v1' | 2,053 | 93 (4.53%) | 1,960 (95.47%) | 1,117 (54.41%) |
+| v3' | 1,272 | 67 (5.27%) | 1,205 (94.73%) | 511 (40.17%) |
+
+gap 구간별 offset/limit non-empty 비율:
+
+| 셋 | gap <20 | gap 20-99 | gap ≥100 |
+|---|---|---|---|
+| v1' | 29/708 (4.10%) | 25/523 (4.78%) | 39/822 (4.74%) |
+| v3' | 27/653 (4.13%) | 21/387 (5.43%) | 19/232 (8.19%) |
+
+- Clew 낭비 후보의 대다수(95%)는 FULL read. 사실 B 의 pass-through 는 4-5% 만 해당.
+- FULL read 95% 는 read-once 가 (path, mtime) 로 캐시 대상. 실제 캐시 히트 여부는 mtime 데이터 없이 판정 불가.
+
+### X 결과 함의 (2026-07-17)
+
+X 측정 결과는 우연이 아니다. 두 도구는 **다른 경로로 같은 오탐을 제거한다**:
+
+- **Clew**: `(path, offset, limit)` target 정의로 file-level 15,787 → range-level 2,053 (오탐 13,734 = 87.0%) 를 사후 측정으로 제거 (§19.1).
+- **read-once**: partial read 를 애초에 캐시 안 함 (사실 B, `if [ -n "$OFFSET" ] || [ -n "$LIMIT" ]; then exit 0; fi`) → **동일한 오탐을 만들지 않음.**
+- §19.1 의 file-level 15,787 → range-level 2,053 감소분 13,734 는 정의상 offset 이 다른 읽기들이며, read-once 는 이들을 애초에 건드리지 않는다.
+
+따라서:
+- **§19.1 의 87.0% 는 read-once 대비 이중으로 무효**: (a) 범주 다름 (감소율 vs 세션 토큰 절감률), (b) read-once 는 그 오탐을 만들지 않음.
+- **87.0% 는 read-once 와 무관하게 "순진한 file-level 매칭 대비" 방법론 근거로만 유효.** §19.1 정직 경계 단서 참조.
+
+### 미해결 관찰 §19.3-1 — mtime 사각지대 (양쪽 도구 모두)
+
+- Clew 측: turn-level trace 에 mtime 없음 → read-once 예방 범위 실측 불가.
+- read-once 측: trace 순서 없음 → 실패 재시도(에러 후 재-Read) 를 정상 재읽기와 구분 불가.
+- 시도한 대리 지표: `between_edit_count`. **`run_swechat_waste_scan.py` line 175-178 raw 확인** (원 §19.3 v1 은 이걸 무검증으로 대리 지표로 사용 → §19.3 편차 참조):
+  ```python
+  between = s_edits[(s_edits.turn_number > prev_tn) & (s_edits.turn_number < tn)]
+  known_hit = int((between._path == path).sum())  # target 파일에 대한 Edit
+  unknown_hit = int(between._path.isna().sum())
+  between_count = len(between)                     # 창문 내 전체 Edit (path 무관)
+  ```
+- 낭비 판정은 `known_hit == 0` (line 185-186) 이므로 waste 후보는 정의상 target 파일 Edit = 0. `between_edit_count > 0` 은 창문 내 **다른 파일** Edit 이다.
+- **따라서 target 파일 mtime 은 창문 내 agent Edit 만으로는 변하지 않는다. read-once 는 이 후보들을 pass-through 가 아니라 캐시 히트로 잡을 가능성이 높다** (원 §19.3 v1 서술은 방향이 반대였다).
+- 단 외부 수정(IDE 저장, 다른 터미널, git checkout, 다른 프로세스) 은 trace 에 안 남는다. mtime 변화 여부는 여전히 측정 불가. **`between_edit_count` 는 mtime 대리 지표가 아니다.**
+- **말할 수 있는 것**: (mtime 대리 지표 부재) 정직한 미해결. Clew CSV 에서 read-once 예방 범위를 추정할 방법이 현재 없다.
+- **말할 수 없는 것**: "read-once 가 X% 를 놓친다" · "read-once 가 X% 를 잡는다" · "Clew 의 87.0% 중 X% 만 read-once 로 대체 가능" 등 정량 비교. mtime 실측 부재.
+
+### §19.3 편차 — 대리 지표 무검증 (2026-07-17 자체 감사)
+
+- 원 §19.3 (커밋 9704d2c) 의 "말할 수 있는 것" 은 `between_edit_count > 0` 을 "mtime 변화 유력" 대리 지표로 사용하여 "v1' 2,053 중 최소 54.41% 는 read-once pass-through 가능성이 높다" 고 서술했다.
+- `run_swechat_waste_scan.py` 를 raw 로 확인하지 않고 필드명에서 의미를 추측했다. 실제로는 창문 내 **모든** Edit tool_use 수 (path 무관). 낭비 정의(target Edit=0) 상 target mtime 은 창문 내 agent 행동으로는 안 바뀐다. 서술 방향이 반대였다.
+- **규율 3 (raw 확인) 위반.** 2026-07-16~17 배경 사실 무검증 4번째:
+  1. `tool_input_json` 50% 결측 (§19 v1 사후 발견)
+  2. assistant 텍스트 부재 (§19 핵심 한계 사후 발견)
+  3. `exceeds max tokens` 문자열 무검증 (§19.2 편차 7)
+  4. **`between_edit_count` 의미 무검증 (본 편차).**
+- **적용 노트 (강화)**: 규칙 3 은 "말할 수 있는 것" · "미해결 관찰" · "정직 경계" 섹션에 **가장 엄격하게** 적용된다. 그 섹션들은 외부 발표 문구가 되기 때문. 필드명·용어 의미는 코드로 확인한 후에만 정직 경계에 진입시킨다.
+- §19.3-scoped. 전역 편차 번호 미사용 (PR #7 / #8 편차 5·6 과 충돌 회피).
+
+### 유효 차별점 (크기 주장 없음, 카테고리 명시)
+
+1. **분석 시점의 axis 차이 — 예방(prevention) 대 사후 측정(measurement).**
+   - read-once: PreToolUse 훅에서 캐시 히트면 warn/deny. 실행 시점 개입.
+   - Clew: 완료 trace 위 dataset-level 통계 산출. 시점 개입 없음.
+   - 두 도구는 배타적이 아니며, 같은 파이프라인에 병립 가능.
+
+2. **관측 축의 차이 — file state 대 tool sequence.**
+   - read-once: `(path, mtime)`. 파일 시스템 상태 기반.
+   - Clew: `(turn_id, prev_turn_number, between_edit_count, gap)`. 파일 상태 무관, 도구 호출 순서 기반.
+
+3. **실패 재시도 감지.**
+   - read-once: PreToolUse 훅은 tool_result 를 볼 수 없음(문서화된 훅 제약). 캐시는 성공/실패와 무관하게 기록.
+   - Clew: trace 위에서 prev_turn 의 tool_result 를 관찰 가능. §19.2 관찰 4·5 (prev-tcid 직접 조인) 는 이 축의 실측 결과.
+
+4. **분석 대상의 축.**
+   - read-once: 단일 세션(설치된 유저 기준) 내 캐시. cross-session 데이터 미보유.
+   - Clew: 300+ 세션 SWE-chat 데이터셋의 낭비 패턴 통계. 벤치마크 · 예측 · 반복 재검증(§19 · §19.1 · §19.2) 대상.
+
+### 인용 금지
+
+- **"read-once 의 40% 세션 토큰 절감" 을 Clew 의 87.0% file-level→range-level 감소율과 직접 비교하지 말 것.** 범주 다름. 감소 대상 다름.
+- **"read-once 는 partial read 를 pass-through 하므로 Clew 만 잡는다" 도 금지.** partial 은 4-5% 뿐. 나머지 95% FULL read 는 read-once 도 (path, mtime) 로 캐시 대상.
+- **"read-once 는 mtime 만 봐서 X% 를 놓친다" 금지.** mtime 데이터 부재로 실측 불가.
+- **"Clew 는 read-once 를 대체한다" · "read-once 는 Clew 를 대체한다" 둘 다 금지.** 다른 axis.
+- **read-once 코드/설계를 "경쟁자" 로 프레이밍 금지.** 다른 도구, 다른 문제, MIT 라이센스 하 각자 존재.
+- **"87.0% 는 read-once 도 못 잡는 것을 우리가 잡은 것" 서술 금지.** 반대다. read-once 는 partial read 를 애초에 안 잡고 (사실 B, offset/limit pass-through), Clew 는 사후 측정에서 제거한다 (§19.1). **같은 목표에 다른 경로.** 87.0% 는 read-once 와 무관하게 "순진한 file-level 매칭 대비" 방법론 근거로만 유효.
+
+### 규칙 7 fold-back 커밋 (사전등록 대상 아님)
+
+- 이 섹션 = 외부 raw 확인 후 즉시 SPEC 반영. 코드/데이터 변경 없음.
+- §19.3-1 관찰은 §19.3 로 범위 한정. 전역 편차 번호(§19.1 편차 4 다음)를 사용하지 않아 PR #7 / PR #8 의 편차 5·6 과 번호 충돌하지 않음.
