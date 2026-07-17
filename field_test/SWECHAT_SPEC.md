@@ -438,3 +438,114 @@ elif unknown_hit > 0:
 - Read 반복은 벤더 캐시가 부분적으로만 관여 (v3 오염 기반 1.97% / v3' 재검증 2.28%). 상당수 재읽기는 정상 응답.
 - Bash 239,553건 / Grep 56,593건 (Claude Code) — 벤더 방지 장치 미확인 영역.
 - 그러나 §19의 primary 결론은 Read 범위 재실행(v1'~v4')이 확정된 다음에 결정. Bash 조사는 **본 문서 개정 이후 별도 SPEC**으로.
+
+---
+
+## §19.3 read-once 후속 도구 분석 (2026-07-17, 규칙 7 적용)
+
+**본 섹션은 사전등록 대상이 아님.** read-once 는 이미 공개된 도구이므로 규칙 8(사전등록)의 대상이 되지 않는다. 외부 사실을 raw 로 확인하고 SPEC 에 fold back 하는 규칙 7 만 적용한다.
+
+**출처**: `Bande-a-Bonnot/Boucle-framework`, `tools/read-once/` (MIT). 2026-07-17 raw 확인.
+
+### 사실 A — 캐시 키는 `(file_path, mtime)`
+
+`hook.sh` (PreToolUse) 의 캐시 기록부 (raw 인용):
+```bash
+write_cache_entry() {
+  jq -cn --arg path "$FILE_PATH" --arg mtime "$CURRENT_MTIME" \
+    --argjson ts "$NOW" --argjson tokens "$ESTIMATED_TOKENS" \
+    '{path:$path,mtime:$mtime,ts:$ts,tokens:$tokens}' >> "$CACHE_FILE"
+}
+```
+- 캐시 키는 `path` + `mtime`. 파일 편집으로 mtime 이 바뀌면 새 항목으로 취급되어 히트하지 않는다.
+
+### 사실 B — offset / limit non-empty 는 pass-through
+
+`hook.sh` 조기 종료 분기 (raw 인용):
+```bash
+# Partial reads (offset/limit) are never cached — user is exploring
+# a large file piece by piece, each chunk is different content
+if [ -n "$OFFSET" ] || [ -n "$LIMIT" ]; then
+  exit 0
+fi
+```
+- offset 또는 limit 이 주어진 Read 호출은 캐시 기록·조회 대상이 아니다. exit 0 으로 훅이 빠져나온다.
+
+### 사실 C — 세션 캐시 초기화 (PostCompact) · TTL 기본 1200s
+
+- `compact.sh` (PostCompact 훅) 로 Claude Code `/compact` 시점에 세션 캐시가 초기화된다. compact 후 동일 파일 재읽기는 새로 캐시되므로 pass-through.
+- TTL 은 기본 1200초 (20분). TTL 만료 후 재읽기는 새로 캐시된다.
+- 두 경로 모두 "정당한 재읽기" 를 캐시 히트에서 빼주지만 **실패 재시도(tool_result 가 error) 를 구분하지는 않는다**. PreToolUse 훅은 tool_result 에 접근할 수 없기 때문.
+
+### 사실 D — 실행 모드 (deny 대 warn)
+
+- 기본 모드는 warn (프롬프트에 안내만 삽입). deny 모드는 재읽기를 차단.
+- warn 은 자문 목적이라 Edit 재-Read 데드락을 회피한다. deny 는 차단이지만 정당한 재읽기까지 막을 위험.
+
+### 가설 기각 기록 (규칙 6)
+
+- **가설 (이전 대화 인수인계)**: "read-once 는 file-level 예방 도구이므로 Clew 의 file-level 낭비 후보(15,787건)를 모두 커버할 것이다. 따라서 §19.1 의 오탐 제거율 87.0% 는 read-once 대비 차별점이 아니다."
+- **기각 근거**:
+  1. read-once 는 `(path, mtime)` 로 캐시한다(사실 A). mtime 이 변한 재읽기(외부 편집 · Edit tool 호출 후 재-Read) 는 pass-through.
+  2. Clew 의 낭비 후보 CSV 에는 mtime 이 없다. read-once 가 실제로 얼마나 잡는지·놓치는지 산출 불가.
+  3. 87.0% 는 "file-level 15,787 → range-level 2,053" 감소율 (§19.1). 세션 토큰 절감 비율이 아니다. read-once 의 "40% 절감" 서술과 **범주가 다르다** (감소 대상이 다름). 직접 비교는 category error.
+- 결론: "87.0% 는 read-once 로 대체된다" 는 무효. 동시에 "Clew 가 read-once 를 능가한다" 도 무근거. 두 도구는 다른 axis 에서 동작한다.
+
+### X 측정 (2026-07-17, 밀도 재계산 아님 — 컬럼 집계)
+
+`swechat_waste_cases.csv` (v1' 2,053) 및 `swechat_waste_cases_v2.csv` (v3' 1,272) 의 `offset`, `limit`, `between_edit_count` 컬럼 집계:
+
+| 셋 | n | offset 또는 limit non-empty (read-once pass-through 대상) | 둘 다 empty (FULL read) | between_edit_count > 0 (mtime 변화 유력) |
+|---|---:|---:|---:|---:|
+| v1' | 2,053 | 93 (4.53%) | 1,960 (95.47%) | 1,117 (54.41%) |
+| v3' | 1,272 | 67 (5.27%) | 1,205 (94.73%) | 511 (40.17%) |
+
+gap 구간별 offset/limit non-empty 비율:
+
+| 셋 | gap <20 | gap 20-99 | gap ≥100 |
+|---|---|---|---|
+| v1' | 29/708 (4.10%) | 25/523 (4.78%) | 39/822 (4.74%) |
+| v3' | 27/653 (4.13%) | 21/387 (5.43%) | 19/232 (8.19%) |
+
+- Clew 낭비 후보의 대다수(95%)는 FULL read. 사실 B 의 pass-through 는 4-5% 만 해당.
+- FULL read 95% 는 read-once 가 (path, mtime) 로 캐시 대상. 실제 캐시 히트 여부는 mtime 데이터 없이 판정 불가.
+
+### 미해결 관찰 §19.3-1 — mtime 사각지대 (양쪽 도구 모두)
+
+- Clew 측: turn-level trace 에 mtime 없음 → read-once 예방 범위 실측 불가.
+- read-once 측: trace 순서 없음 → 실패 재시도(에러 후 재-Read) 를 정상 재읽기와 구분 불가.
+- 관측 가능한 대리 지표: `between_edit_count` (동일 세션 내 Read 사이 Edit 호출 수). 값 > 0 이면 mtime 이 바뀌었을 가능성이 높다 (agent 가 그 사이 파일을 수정). v1' 54.41%, v3' 40.17%.
+- **말할 수 있는 것**: v1' 2,053 중 최소 54.41% 는 mtime 변화가 유력해 read-once pass-through 가능성이 높다. 이 구간에서 Clew 는 read-once 와 무관하게 신호를 잡는다.
+- **말할 수 없는 것**: "read-once 가 X% 를 놓친다" · "Clew 의 87.0% 중 X% 만 read-once 로 대체 가능" · "read-once 가 X% 를 예방한다" 등 정량 비교. mtime 실측 부재.
+
+### 유효 차별점 (크기 주장 없음, 카테고리 명시)
+
+1. **분석 시점의 axis 차이 — 예방(prevention) 대 사후 측정(measurement).**
+   - read-once: PreToolUse 훅에서 캐시 히트면 warn/deny. 실행 시점 개입.
+   - Clew: 완료 trace 위 dataset-level 통계 산출. 시점 개입 없음.
+   - 두 도구는 배타적이 아니며, 같은 파이프라인에 병립 가능.
+
+2. **관측 축의 차이 — file state 대 tool sequence.**
+   - read-once: `(path, mtime)`. 파일 시스템 상태 기반.
+   - Clew: `(turn_id, prev_turn_number, between_edit_count, gap)`. 파일 상태 무관, 도구 호출 순서 기반.
+
+3. **실패 재시도 감지.**
+   - read-once: PreToolUse 훅은 tool_result 를 볼 수 없음(문서화된 훅 제약). 캐시는 성공/실패와 무관하게 기록.
+   - Clew: trace 위에서 prev_turn 의 tool_result 를 관찰 가능. §19.2 관찰 4·5 (prev-tcid 직접 조인) 는 이 축의 실측 결과.
+
+4. **분석 대상의 축.**
+   - read-once: 단일 세션(설치된 유저 기준) 내 캐시. cross-session 데이터 미보유.
+   - Clew: 300+ 세션 SWE-chat 데이터셋의 낭비 패턴 통계. 벤치마크 · 예측 · 반복 재검증(§19 · §19.1 · §19.2) 대상.
+
+### 인용 금지
+
+- **"read-once 의 40% 세션 토큰 절감" 을 Clew 의 87.0% file-level→range-level 감소율과 직접 비교하지 말 것.** 범주 다름. 감소 대상 다름.
+- **"read-once 는 partial read 를 pass-through 하므로 Clew 만 잡는다" 도 금지.** partial 은 4-5% 뿐. 나머지 95% FULL read 는 read-once 도 (path, mtime) 로 캐시 대상.
+- **"read-once 는 mtime 만 봐서 X% 를 놓친다" 금지.** mtime 데이터 부재로 실측 불가.
+- **"Clew 는 read-once 를 대체한다" · "read-once 는 Clew 를 대체한다" 둘 다 금지.** 다른 axis.
+- **read-once 코드/설계를 "경쟁자" 로 프레이밍 금지.** 다른 도구, 다른 문제, MIT 라이센스 하 각자 존재.
+
+### 규칙 7 fold-back 커밋 (사전등록 대상 아님)
+
+- 이 섹션 = 외부 raw 확인 후 즉시 SPEC 반영. 코드/데이터 변경 없음.
+- §19.3-1 관찰은 §19.3 로 범위 한정. 전역 편차 번호(§19.1 편차 4 다음)를 사용하지 않아 PR #7 / PR #8 의 편차 5·6 과 번호 충돌하지 않음.
