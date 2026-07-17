@@ -347,3 +347,131 @@ for cand in occurrences[1:]:
 
 - 결함 3 의 해법이 정해지지 않았다. Edit/Write 는 **input 이 신호이고 output 이 노이즈**로 보이나 (같은 파일 + 같은 new_string 재적용 = 낭비), 이는 §22 매핑과 cascade 설계 양쪽에 걸린다. **§22.8 사전등록 대상.**
 - φ=0.514345 는 frozen 이다. **결함 3 을 φ 조정으로 풀지 않는다.**
+
+---
+
+## §22.8 — 구조 계층 결함 2건 사전등록 (2026-07-17, 규칙 8)
+
+**범위**: 결함 1 (origin 고정) · 결함 2 (pingpong kind 필터). ①② 만.
+**제외**: 결함 3 (Edit/Write output 템플릿) · 결함 4 (Bash description).
+
+**사전등록 원칙**: 이 문서를 push 후 PR 오픈 (외부 타임스탬프 확정) 이후에만 코드 수정. 결과 보고 예측·중단조건·정의를 바꾸지 않는다. 규칙 8 실무 형태 (§19 부칙).
+
+### §22.8.1 — 결함 1 수정: origin 고정 해제
+
+**현재 (`src/clew/detect/structural.py:57-73`)**:
+```python
+groups: dict[str, list[Span]] = {}
+for s in ordered:
+    groups.setdefault(s.agent_or_node_id, []).append(s)
+...
+for occurrences in groups.values():
+    if len(occurrences) < n:
+        continue
+    origin = occurrences[0]
+    is_tool = origin.span_kind == "tool"
+    ...
+    for cand in occurrences[1:]:
+        if is_tool and _normalize_input(cand.input_text) != _normalize_input(origin.input_text):
+            continue
+        ...
+        pairs.append((origin, cand))
+```
+
+- origin 이 그룹 첫 등장 하나로 고정. occurrences[i], occurrences[j] (i,j ≥ 1) 가 동일해도 origin 과 다르면 둘 다 탈락.
+- **실측 증거 (§22.7)**: Read `(file_path, offset, limit)` 완전 동일 재호출 4건 존재. repeat 후보 0건.
+
+**개정**:
+- **tool kind**: `(agent_or_node_id, _normalize_input(input_text))` 로 그룹핑. 각 하위그룹 내에서 `len(group) >= n` 확인 후 `origin = group[0]`, `cand = group[1:]`.
+- **tool 아닌 kind**: 기존 동작 유지 (`agent_or_node_id` 만으로 그룹핑). 현재 코드가 tool kind 에만 input 게이트를 걸었으므로 이 구분을 보존한다.
+- **O(n²) 아님.** dict 하위그룹핑으로 O(n).
+- **Parent-AGENT gate (SPEC §16) 유지.** 하위그룹 내에서도 origin/cand 각각의 `_nearest_agent_ancestor_id` 를 비교.
+
+**버그인가 정의 변경인가**:
+- **의도** (`structural.py:2-6` docstring): "같은 노드를 같은 입력으로 반복 호출 = 낭비"
+- **현재 코드**: "첫 등장과 같은 입력으로 호출"
+- 의도와 코드가 불일치. **버그로 판단하나, 결과가 바뀌므로 사전등록한다.**
+- `field_test/SWECHAT_SPEC.md` §19 분석은 모든 target 재등장을 카운트했다. **제품이 분석을 따라간다.**
+
+### §22.8.2 — 결함 2 수정: pingpong kind 필터 추가
+
+**현재 (`structural.py:76-92, 99`)**:
+```python
+# 핑퐁 노드는 kind=="llm" 이므로 입력 게이트 대상 아님(SPEC §8 2.1).   ← 주석 (L79)
+if (
+    a1.agent_or_node_id == a2.agent_or_node_id
+    and b1.agent_or_node_id == b2.agent_or_node_id
+    and a1.agent_or_node_id != b1.agent_or_node_id
+):                                                                       ← 코드. kind 필터 없음
+    pairs.append((a1, a2))
+    pairs.append((b1, b2))
+
+find_candidates = find_repeat_candidates ∪ find_pingpong_candidates      ← :99
+```
+
+- 주석은 llm 대상이라 하고, 코드엔 필터 없음.
+- `field_test/SWECHAT_SPEC.md` §19.1 `EDIT_TOOLS unknown_hit`, §19.2 `all_success` 와 동일 계열 (라벨/주석과 로직 불일치).
+- **실측 증거 (§22.7)**: waste 3건 전부 pingpong 출처, 3/3 오탐. CC 에서 `Edit → Bash → Edit → Bash` 는 정상 작업 패턴.
+
+**개정**:
+- `find_pingpong_candidates` 에 4-window 4개 스팬 모두 `span_kind == "llm"` 필터 추가.
+- **주석(의도)에 코드를 맞춘다.**
+
+**근거**:
+- pingpong 의 의미는 "노드 A 와 B 가 서로 넘긴다" 는 멀티에이전트 패턴.
+- tool 호출 교대는 정상 작업이지 pingpong 이 아니다.
+- CC 어댑터는 tool 스팬만 만든다 (§22.3). 따라서 **CC 트레이스에서 pingpong = 0.** 의도된 결과 — CC 는 단일 에이전트 세션.
+- LangGraph / OTel 트레이스 (Format A/C) 에서는 llm 스팬이 존재하므로 계속 동작.
+
+### §22.8.3 — 기록만 (수정 없음, 이번 라운드 범위 밖)
+
+#### 결함 3 — Edit/Write output_text 무판별력 (§22.7 결함 3 재기록)
+- Edit 31건 distinct output 5/31 (16%). Write 접두사 `"File created successfully at: <path>"` 템플릿.
+- **φ 는 Edit/Write 에 대해 판별력이 없다.** 구조 게이트가 유일한 방어.
+- §22.8.1 수정으로 구조 게이트가 input 동일을 요구하게 되므로 실질 위험은 감소한다 (같은 파일 + 같은 `new_string` 이면 낭비, 다른 `new_string` 이면 하위그룹 분리로 후보 자체가 안 만들어짐).
+- **φ = 0.514345 는 frozen. 조정하지 않는다.**
+- **정직 경계**: 캐스케이드 2단계 (semantic φ) 가 Edit/Write 도구군에 대해 무의미하다는 사실을 남긴다. 향후 캐스케이드 설계 시 도구별 계층 활용도 차이를 명시.
+
+#### 결함 4 — Bash `description` 이 command 재호출을 가림 (§22.7 결함 4 재기록)
+- `description` distinct 106/108. command-only 재호출 9건 (`git status --porcelain` × 3 등) 이 input 전체 직렬화 (§22.1) 에서 소실.
+- 해법 후보 "어댑터가 CC 도구 스키마를 안다 → Bash 는 command 만 서명" 은 하드코딩이며 `docs/CC_TRANSCRIPT.md` §21.4 어댑터 설계 지침 ("하드코딩 정규식에 의존하지 마라") 이 경고한 계열이다.
+- **§22.9 별도 사전등록.** 어댑터가 도구 스키마를 아는 것이 정당한지 판단 필요.
+
+### §22.8.4 — 재실행 전 예측 (결과 보기 전 기록)
+
+대상 세션: `f96aee88-df87-41a6-8f6e-be05d3928018.jsonl` (§22.6 과 동일).
+
+| 지표 | §22.6 실측 | 예측 | 근거 |
+|---|---|---|---|
+| pingpong 후보 | 6 | **0** | CC 는 tool 스팬만 (§22.3). llm 필터로 전멸 (§22.8.2) |
+| repeat 후보 | 0 | **4 (±2)** | §22.7 결함 1 실측: Read full_input 재호출 4건 |
+| 최종 waste (φ ≥ 0.514345 통과) | 3 | **4 (±2)** | Read output_text = 파일 내용. 동일 range 재읽기 → cos ≈ 1 |
+| 오탐 (사람 판정) | 3/3 | **0/N** | §22.6 3건은 전부 pingpong 출처. pingpong 제거 시 소멸 |
+
+**예측 근거 부기**:
+- Bash command-only 재호출 9건은 §22.8 범위 밖 (결함 4). **후보로 안 나온다.** description 필드 차이로 input_text 하위그룹이 서로 다르게 분리됨.
+- 최종 waste 가 나와도 **"후보"이지 확정 낭비가 아니다** (§21.1: thinking 부재로 판정 근거 약함). 판정은 세션 소유자가 한다.
+- **예측이 틀리면 틀렸다고 기록한다.** 예측에 맞춰 정의 조정 금지.
+
+### §22.8.5 — 음성 결과 정의
+
+- **repeat 후보가 0 이면 수정 실패가 아니다.** `_normalize_input` 은 `strip().casefold()` 뿐이므로 JSON 직렬화 차이 (공백, 유니코드 정규화 등) 로 놓칠 수 있다. 그 경우 **원인을 raw 로 규명하고 기록.** 정의를 바꾸지 않는다.
+- **오탐이 0 이 아니면 그대로 적고 원인 진단.** 결함 3·4 로 설명되는지 확인.
+
+### §22.8.6 — 중단 조건
+
+1. **기존 테스트 회귀** → 즉시 멈추고 실패 테스트명 + 전문 출력. 특히 pingpong / repeat 테스트가 tool 스팬 가정 위에 있으면 그 테스트가 무엇을 의도했는지 확인 필요. **테스트를 고쳐서 통과시키지 마라.**
+2. **Format A / Format C (OTel / OpenInference) 트레이스 결과가 바뀜** → 멈추고 보고. §22.8.1 의 tool 하위그룹핑이 기존 로더에 영향을 줄 수 있다.
+3. **φ / N / model 상수를 건드려야 하는 상황** → 즉시 멈춤. **frozen.**
+
+### §22.8.7 — 규칙 8 커밋 체인 (사전등록 시각 증명)
+
+| 커밋 | 목적 | 결과 산출 이전/이후 |
+|---|---|---|
+| (이 커밋) | §22.8 사전등록 (본문 · 예측 · 중단조건) | 이전 |
+| (다음) | `structural.py` 수정 (§22.8.1 + §22.8.2) | 이전 |
+| (그 다음) | 재실행 결과 + 관찰 | 이후 |
+
+- 이 커밋은 코드 수정 전에 push 되어 PR 오픈 시각으로 외부 타임스탬프 확정.
+- §22.8 본문은 이 커밋 이후 무수정. 관찰은 별도 섹션 (§22.8 결과, 추후 추가).
+- 병합은 반드시 merge commit (SPEC §19 규칙 8 부칙).
