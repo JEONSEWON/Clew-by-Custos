@@ -211,3 +211,36 @@ input 게이트 (structural.py:68) 가 range-level target 과 동등하게 작�
 1. Pydantic 검증 실패 → 즉시 멈추고 raw 출력. 매핑을 자체 판단으로 바꾸지 마라.
 2. 조인 실패 (고아 `tool_use` / `tool_result`) 발생 → 멈추고 건수 보고. Q6 에서 0건이었다. 나오면 다른 세션 특성이다.
 3. 파싱 실패 시 **조용히 skip 금지. 명시적 에러** (§21.4 어댑터 설계 지침).
+
+### §22.5 — tool_result content 렌더링 규약 (2026-07-17 addendum)
+
+**발견 (2026-07-17, 어댑터 첫 실행)**:
+- 대상 세션 `f96aee88-...` tool_result 180건 중 **179건 `content: str`, 1건 `content: list`**.
+- 그 1건은 `{"type":"tool_reference","tool_name":"TaskCreate"}` × 3 으로만 구성.
+- text 블록 이어붙이기 → 빈 문자열 → Pydantic `output_text must be non-empty` raise.
+- **§22.4 중단조건 1 이 정상 발동했다. 조용히 넘어가지 않았다.**
+- tool_use raw: `id=toolu_01NmEu17XyHpHxm5ck1qCxb8, name=ToolSearch, input={query: "select:TaskCreate,TaskUpdate,TaskList", max_results: 3}, caller={type: direct}`. Q6 의 `ToolSearch: 1` 과 동일 메타 도구.
+
+**전 세션 실측 근거 (20 파일 = 9 프로젝트 전수)**:
+- list-form tool_result: **71건**.
+- 블록 타입 value_counts: `text=34, image=15, tool_reference=36`.
+- text-only list: 33.
+- **non-text-only (text 블록 전무): 38건** ← 현재 케이스와 동일. `tool_reference` 만, 혹은 `image` 만으로 채워진 tool_result.
+- mixed: 0.
+
+**규약 (§22.1 output_text 행 개정)**:
+- `content` 가 `str` → 그대로 사용.
+- `content` 가 `list` → 블록별 렌더링 후 `"\n"` 으로 결합:
+  - `type == "text"` → `block["text"]`
+  - **그 외 모든 타입** → `json.dumps(block, sort_keys=True, ensure_ascii=False)` 로 직렬화
+  - 매 블록에 대해 `warnings.warn` 으로 타입명 경고 (신호 보존)
+- 렌더링 후에도 strip 결과가 빈 문자열 → **raise 유지** (진짜 빈 출력)
+
+**설계 근거**:
+1. **버리지 않는다.** 모르는 블록을 drop 하는 것은 `field_test/SWECHAT_SPEC.md` §19.1 `EDIT_TOOLS unknown_hit` ("미확인 Edit → 낭비 아님") 와 동일 계열의 실패다. 이름만 다르다.
+2. **신호를 유지한다.** 경고가 계속 뜬다. 벤더 포맷 변경을 알아챌 수 있다 (§21.4). LINE_PREFIX 는 경고 없이 9,941건 (15.66%) 을 오분류했다.
+3. **결정론적.** `sort_keys=True` — §22.2 와 동일 근거.
+4. **특정 타입을 하드코딩하지 않는다.** `tool_reference` 만 특별 처리하면 다음 타입에서 재발한다. 벤더는 앞으로도 블록 타입을 추가한다.
+5. **φ 에 의미가 있다.** 동일 인자로 같은 메타 도구를 두 번 호출하면 동일 `output_text` → cosine 높음 → 낭비 판정. 의미상 맞다.
+
+**§22.4 예측 유지**: pingpong ≥ 10건, repeat 1~10건. 이 addendum 은 output_text 표현 규약이며 **탐지 정의를 바꾸지 않는다.** 예측 조정 없음.
