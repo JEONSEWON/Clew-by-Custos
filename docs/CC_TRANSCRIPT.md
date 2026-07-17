@@ -584,3 +584,85 @@ find_candidates = find_repeat_candidates ∪ find_pingpong_candidates      ← :
 - **결함 3 (Edit/Write output 템플릿)**: 이 세션에서 트리거 안 되어 실증 없음. Edit/Write 재호출이 있는 다른 세션에서 재확인 필요. 백로그.
 - **결함 4 (Bash description)**: `field_test/diagnostics/diag_cc_first_run.py --q 4` 로 확인된 command-only 재호출 9건은 여전히 후보로 안 뜬다. §22.9 별도 사전등록 대상.
 - **세션 소유자 판정 반영**: waste 4건 오탐/진성 라벨링 후 §22.8.8 에 추가.
+
+---
+
+## §22.10 — tool 스팬 동일성 게이트 사전등록 (2026-07-17, 규칙 8)
+
+**범위**: `span_kind == "tool"` 스팬의 φ 게이트 앞에 sha256 바이트 동일성 게이트 추가.
+**제외**: φ 값 조정, 모델 교체, LLM 스팬 처리 (§8 2.2 원 정의 유지).
+
+**사전등록 원칙**: 이 문서를 push 후 PR 오픈 (외부 타임스탬프 확정) 이후에만 코드 수정. 결과 보고 예측·중단조건·정의를 바꾸지 않는다.
+
+### §22.10.1 — 사실 (전부 실측)
+
+근거: `field_test/diagnostics/diag_phi_truncation.py`, `field_test/diagnostics/diag_waste_context.py` (2026-07-17 실행).
+
+- **묵시적 절단**. `tokenizer.model_max_length = 128`, `truncation_side = "right"`. `SentenceTransformer.encode(text, normalize_embeddings=True, convert_to_numpy=True)` 에 truncation 인자 없음 → 내부 `tokenize()` 가 `model.max_seq_length = 128` 로 자름.
+- **waste #3 (SWECHAT_SPEC.md Read)**: origin 7,732 tok / cand 9,943 tok. **앞 128 토큰의 token_id sha256 이 완전 동일** (`60f9095f5eef479ac21a411f7dd0f302d42b3b65b29c934230b971d9e4704f86`) → cosine 1.0000. **전문 sha256 은 불일치** (24,872B vs 32,163B).
+- **세션 규모**: Read 25건 중 **24건 (96.0%)** 이 128 토큰 초과. p50=1,237 / max=9,943 tok.
+- **무관 파일 φ 통과**: `cosine(SWECHAT_SPEC.md, run_swechat_waste_scan.py) = 0.517910 > φ=0.514345`. 두 파일은 md vs py 로 완전히 다른 내용.
+- **모델은 정상**: `cosine('안녕하세요, 오늘 날씨가 참 좋네요.', 'The mitochondria is the powerhouse of the cell.') = -0.024409`. **긴 텍스트에서만 무너진다** (앞 128 토큰이 같으면 뒤가 어떻든 벡터 동일).
+- **Q5 sha256 게이트 시뮬레이션**: §22.8.8 repeat 후보 6건 전부 `sha256_equal = False`. `edits_in_window = [3, 5, 5, 0, 9, —]` 로 독립 확증 (창문 안에 target 파일 편집이 있었음). **이 세션에 진짜 낭비 0건.**
+
+### §22.10.2 — 개정
+
+**tool 스팬에 대해 φ 앞에 바이트 동일성 게이트를 추가한다. 캐스케이드 3단.**
+
+```
+구조:      (agent_or_node_id, normalize(input_text)) 하위그룹 (§22.8.1)
+동일성:    sha256(origin.output_text) == sha256(cand.output_text)   ← 신규
+semantic:  φ                                                        ← llm 스팬만
+```
+
+- **`span_kind == "tool"`**: 2단에서 판정 종료. **φ 를 호출하지 않는다.** 출력이 바이트 동일이면 상태가 안 변한 것이고, 다르면 변한 것이다. 도구에는 패러프레이즈가 없다.
+- **`span_kind != "tool"`**: 기존대로 φ. LLM 출력은 같은 말을 다르게 할 수 있다.
+- **φ=0.514345 는 손대지 않는다. frozen.** 모델도 교체하지 않는다. **이것은 φ 조정이 아니라 게이트 추가다.**
+
+### §22.10.3 — 정직 경계 갱신 (필수)
+
+- **"캐스케이드 2단 구조가 F1 0.857"** → 이 F1 은 합성 데이터 결과이며, **실데이터 tool output 에 대해 2단(φ)은 판별력이 없다** (이 세션 Read 96%가 128 토큰 절단). 이 단서 없이 F1 0.857 인용 금지.
+- **E3 재해석**: "semantic layer 가 실데이터 same-topic 을 분리 못 한다" 의 **원인이 128 토큰 절단으로 확인됨.** 기존 서술에 원인 병기.
+- **"cosine 은 단독 신호가 아니다"** → **"cosine 은 128 토큰 초과 tool output 에 대해 신호가 아니다 (절단)."** 원인이 다르면 해법이 다르다.
+
+### §22.10.4 — 미해결 (기록만, 이 라운드에서 확인 금지 — 범위 밖)
+
+- **[미검증] φ 캘리브레이션 데이터의 텍스트 길이.** 합성 데이터가 128 토큰 이하였다면 절단이 드러나지 않았을 것이다. `validation/CALIBRATION_LOG.md` 및 캘리브레이션 입력의 토큰 길이 분포 확인 필요. **백로그.**
+- **Edit 후보 #4** (`.gitignore`, `edits_in_window=0`, `o_len=96 / c_len=94`): output 이 템플릿인데 길이가 다르다. 미규명. 백로그 (§22.9 결함 4 재검과 별개).
+
+### §22.10.5 — 재실행 전 예측 (결과 보기 전)
+
+**대상**: `f96aee88-df87-41a6-8f6e-be05d3928018.jsonl` (§22.8.8 동일).
+
+| 지표 | §22.8.8 실측 | 예측 (§22.10.5) |
+|---|---|---|
+| repeat 후보 | 6 | **6** (구조 계층 무변) |
+| 최종 waste | 4 | **0** |
+| 오탐 | 4/4 | **0/0** |
+
+근거: Q5 `sha256_equal 0/6`. 게이트가 6건 전부 차단한다.
+**틀리면 틀렸다고 기록한다.**
+
+#### 음성 결과 정의
+
+- **waste 0 은 실패가 아니다.** 이 세션에 진짜 낭비가 없다는 뜻이다. `edits_in_window` (3, 5, 5, 0, 9) 가 독립 확증.
+- **0 이 나왔다고 게이트를 완화하지 않는다.**
+
+#### 중단 조건
+
+1. **기존 198 테스트 회귀** → 즉시 멈춤. **테스트를 고쳐서 통과시키지 마라.** 무엇을 의도한 테스트인지 확인 후 보고.
+2. **OTel/OpenInference (llm 스팬) 결과 변화** → 즉시 멈춤. 이 개정은 tool 스팬만 대상. `span_kind != "tool"` 분기가 기존 φ 경로를 그대로 통과해야 한다.
+3. **φ / N / model 상수를 건드려야 하는 상황** → 즉시 멈춤. **frozen.**
+
+### §22.10.6 — 규칙 8 커밋 체인 (사전등록 시각 증명)
+
+| 커밋 | 목적 | 결과 산출 이전/이후 |
+|---|---|---|
+| (이 커밋) | §22.10 사전등록 (본문 · 예측 · 중단조건) | 이전 |
+| (다음) | `cascade.py` 수정 (§22.10.2 3단 게이트, tool kind 만) | 이전 |
+| (그 다음) | 재실행 결과 + 관찰 → §22.10.7 신설 | 이후 |
+
+- 이 커밋은 코드 수정 전에 push 되어 PR 오픈 시각으로 외부 타임스탬프 확정.
+- §22.10 본문은 이 커밋 이후 무수정. 관찰은 §22.10.7 로 별도.
+- 병합은 반드시 merge commit (§19 규칙 8 부칙).
+
