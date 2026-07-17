@@ -20,11 +20,16 @@ def _load_trace_auto(path: Path) -> "Trace":
     지원:
       - Clew Trace JSON (최상위 dict에 "trace_id" 키)     → load_trace()
       - OTel SDK JSON 배열 (최상위 list, "context" 키)     → ingest_from_otel_json()
+      - Claude Code JSONL (.jsonl 확장자)                  → ingest_claude_code_jsonl()
 
     명확한 에러:
       - resource_spans/resourceSpans 키 → Format B 미지원, 변환 방법 안내
     """
     from clew.model import Trace  # noqa: F401 (type-only import avoidance)
+
+    if path.suffix == ".jsonl":
+        from clew.ingest.claude_code import ingest_claude_code_jsonl
+        return ingest_claude_code_jsonl(path)
 
     text = path.read_text(encoding="utf-8").strip()
     try:
