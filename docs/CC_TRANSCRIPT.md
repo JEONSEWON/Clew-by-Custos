@@ -244,3 +244,34 @@ input 게이트 (structural.py:68) 가 range-level target 과 동등하게 작�
 5. **φ 에 의미가 있다.** 동일 인자로 같은 메타 도구를 두 번 호출하면 동일 `output_text` → cosine 높음 → 낭비 판정. 의미상 맞다.
 
 **§22.4 예측 유지**: pingpong ≥ 10건, repeat 1~10건. 이 addendum 은 output_text 표현 규약이며 **탐지 정의를 바꾸지 않는다.** 예측 조정 없음.
+
+### §22.6 — 첫 실행 결과 (2026-07-17)
+
+**대상**: `f96aee88-df87-41a6-8f6e-be05d3928018.jsonl` (§21 리콘 세션과 동일).
+
+**실행 명령**: `python -m clew analyze <path>.jsonl --no-snippets`
+
+**어댑터 결과**:
+- total_spans: 181 (synthetic root 1 + tool 180)
+- tool_name_counts: `{Bash: 108, Read: 25, Write: 11, Edit: 31, Grep: 4, ToolSearch: 1}`
+- 경고 (tool_reference): 3건 (모두 동일 tool_use = ToolSearch 1건)
+- 조인 실패: 0
+- Pydantic 검증 실패: 0 (§22.5 addendum 반영 후)
+
+**§22.4 예측 대조**:
+
+| 지표 | 예측 | 실측 | 판정 |
+|---|---|---|---|
+| pingpong 후보 | ≥ 10 | **6** | **빗나감** |
+| repeat 후보 | 1 ~ 10 | **0** | **빗나감** |
+| 최종 waste (φ ≥ 0.514345 통과) | — | **3** | Edit(cos=1.0000), Write(0.9959), Bash(0.6577) |
+
+**빗나감 사실 기록 (조정 금지)**:
+- pingpong 6 < 10: 4-window 교대 패턴이 예상보다 적었다. 실측 pair 분포: Bash-Bash × 2, Write-Write × 2, Read-Read × 1, Edit-Edit × 1 (원소 개수 6 = 3 페어 × 2).
+- repeat 0: `sort_keys` 직렬화 후 완전 동일 인자 재호출 부재. 25 Read / 108 Bash 이 있음에도 인자가 매번 달랐다는 뜻. 이 세션 특성.
+- 예측이 틀린 방향: 둘 다 **과대 예측**. 낭비 시그널이 예측보다 희소.
+
+**함의 (추측 아닌 관찰)**:
+- 이 세션 하나에서 pingpong 원소 6 중 3 (50%) 이 φ 통과. 단일 세션 표본으로 일반화 금지.
+- repeat 0 은 이 세션이 "range/keyset 이 매번 다른 세션" 임을 의미. 다른 세션에서 재확인 필요 (백로그).
+- Edit cos=1.0000 은 완전 동일 output_text 를 의미 — 세션 내 검사 필요 (백로그, transcript 노출 없이).
