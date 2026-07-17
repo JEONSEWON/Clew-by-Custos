@@ -423,6 +423,7 @@ elif unknown_hit > 0:
 - **오탐 제거율 87.0%** (file-level 15,787 → range-level 2,053). 출처(SPEC §19.1, 재검증 후) 표기 필수.
 - 기존 91.7%는 "오염된 EDIT 판정 기반"이라는 단서와 병기.
 - **예측 적중**: range-level 증가율 ×2.066 > file-level ×1.320 (예측 근거대로).
+- **단서 (2026-07-17, §19.3 fold-back)**: 87.0% 는 "순진한 file-level 매칭 대비" 방법론 근거로만 유효하다. read-once (tools/read-once, Bande-a-Bonnot/Boucle-framework, MIT) 는 partial read 를 애초에 캐시하지 않아 (사실 B, offset/limit pass-through) 동일한 오탐(13,734건)을 만들지 않는다. **read-once 대비 차별점으로 인용 금지.** 두 도구는 같은 목표에 다른 경로 (측정 vs 회피). §19.3 참조.
 
 ### 말할 수 없는 것
 - **"세션의 22.42%에서 낭비 발견" 단독 인용 금지.** 이유: v1' 기준이고, 실패 재시도 29.87% + compact/agent 38.04%를 포함한 raw 후보 위 값. 기존 14.31% 금지와 같은 원리.
@@ -495,7 +496,7 @@ fi
 
 `swechat_waste_cases.csv` (v1' 2,053) 및 `swechat_waste_cases_v2.csv` (v3' 1,272) 의 `offset`, `limit`, `between_edit_count` 컬럼 집계:
 
-| 셋 | n | offset 또는 limit non-empty (read-once pass-through 대상) | 둘 다 empty (FULL read) | between_edit_count > 0 (mtime 변화 유력) |
+| 셋 | n | offset 또는 limit non-empty (read-once pass-through 대상) | 둘 다 empty (FULL read) | between_edit_count > 0 (창문 내 다른 파일 Edit) |
 |---|---:|---:|---:|---:|
 | v1' | 2,053 | 93 (4.53%) | 1,960 (95.47%) | 1,117 (54.41%) |
 | v3' | 1,272 | 67 (5.27%) | 1,205 (94.73%) | 511 (40.17%) |
@@ -510,13 +511,46 @@ gap 구간별 offset/limit non-empty 비율:
 - Clew 낭비 후보의 대다수(95%)는 FULL read. 사실 B 의 pass-through 는 4-5% 만 해당.
 - FULL read 95% 는 read-once 가 (path, mtime) 로 캐시 대상. 실제 캐시 히트 여부는 mtime 데이터 없이 판정 불가.
 
+### X 결과 함의 (2026-07-17)
+
+X 측정 결과는 우연이 아니다. 두 도구는 **다른 경로로 같은 오탐을 제거한다**:
+
+- **Clew**: `(path, offset, limit)` target 정의로 file-level 15,787 → range-level 2,053 (오탐 13,734 = 87.0%) 를 사후 측정으로 제거 (§19.1).
+- **read-once**: partial read 를 애초에 캐시 안 함 (사실 B, `if [ -n "$OFFSET" ] || [ -n "$LIMIT" ]; then exit 0; fi`) → **동일한 오탐을 만들지 않음.**
+- §19.1 의 file-level 15,787 → range-level 2,053 감소분 13,734 는 정의상 offset 이 다른 읽기들이며, read-once 는 이들을 애초에 건드리지 않는다.
+
+따라서:
+- **§19.1 의 87.0% 는 read-once 대비 이중으로 무효**: (a) 범주 다름 (감소율 vs 세션 토큰 절감률), (b) read-once 는 그 오탐을 만들지 않음.
+- **87.0% 는 read-once 와 무관하게 "순진한 file-level 매칭 대비" 방법론 근거로만 유효.** §19.1 정직 경계 단서 참조.
+
 ### 미해결 관찰 §19.3-1 — mtime 사각지대 (양쪽 도구 모두)
 
 - Clew 측: turn-level trace 에 mtime 없음 → read-once 예방 범위 실측 불가.
 - read-once 측: trace 순서 없음 → 실패 재시도(에러 후 재-Read) 를 정상 재읽기와 구분 불가.
-- 관측 가능한 대리 지표: `between_edit_count` (동일 세션 내 Read 사이 Edit 호출 수). 값 > 0 이면 mtime 이 바뀌었을 가능성이 높다 (agent 가 그 사이 파일을 수정). v1' 54.41%, v3' 40.17%.
-- **말할 수 있는 것**: v1' 2,053 중 최소 54.41% 는 mtime 변화가 유력해 read-once pass-through 가능성이 높다. 이 구간에서 Clew 는 read-once 와 무관하게 신호를 잡는다.
-- **말할 수 없는 것**: "read-once 가 X% 를 놓친다" · "Clew 의 87.0% 중 X% 만 read-once 로 대체 가능" · "read-once 가 X% 를 예방한다" 등 정량 비교. mtime 실측 부재.
+- 시도한 대리 지표: `between_edit_count`. **`run_swechat_waste_scan.py` line 175-178 raw 확인** (원 §19.3 v1 은 이걸 무검증으로 대리 지표로 사용 → §19.3 편차 참조):
+  ```python
+  between = s_edits[(s_edits.turn_number > prev_tn) & (s_edits.turn_number < tn)]
+  known_hit = int((between._path == path).sum())  # target 파일에 대한 Edit
+  unknown_hit = int(between._path.isna().sum())
+  between_count = len(between)                     # 창문 내 전체 Edit (path 무관)
+  ```
+- 낭비 판정은 `known_hit == 0` (line 185-186) 이므로 waste 후보는 정의상 target 파일 Edit = 0. `between_edit_count > 0` 은 창문 내 **다른 파일** Edit 이다.
+- **따라서 target 파일 mtime 은 창문 내 agent Edit 만으로는 변하지 않는다. read-once 는 이 후보들을 pass-through 가 아니라 캐시 히트로 잡을 가능성이 높다** (원 §19.3 v1 서술은 방향이 반대였다).
+- 단 외부 수정(IDE 저장, 다른 터미널, git checkout, 다른 프로세스) 은 trace 에 안 남는다. mtime 변화 여부는 여전히 측정 불가. **`between_edit_count` 는 mtime 대리 지표가 아니다.**
+- **말할 수 있는 것**: (mtime 대리 지표 부재) 정직한 미해결. Clew CSV 에서 read-once 예방 범위를 추정할 방법이 현재 없다.
+- **말할 수 없는 것**: "read-once 가 X% 를 놓친다" · "read-once 가 X% 를 잡는다" · "Clew 의 87.0% 중 X% 만 read-once 로 대체 가능" 등 정량 비교. mtime 실측 부재.
+
+### §19.3 편차 — 대리 지표 무검증 (2026-07-17 자체 감사)
+
+- 원 §19.3 (커밋 9704d2c) 의 "말할 수 있는 것" 은 `between_edit_count > 0` 을 "mtime 변화 유력" 대리 지표로 사용하여 "v1' 2,053 중 최소 54.41% 는 read-once pass-through 가능성이 높다" 고 서술했다.
+- `run_swechat_waste_scan.py` 를 raw 로 확인하지 않고 필드명에서 의미를 추측했다. 실제로는 창문 내 **모든** Edit tool_use 수 (path 무관). 낭비 정의(target Edit=0) 상 target mtime 은 창문 내 agent 행동으로는 안 바뀐다. 서술 방향이 반대였다.
+- **규율 3 (raw 확인) 위반.** 2026-07-16~17 배경 사실 무검증 4번째:
+  1. `tool_input_json` 50% 결측 (§19 v1 사후 발견)
+  2. assistant 텍스트 부재 (§19 핵심 한계 사후 발견)
+  3. `exceeds max tokens` 문자열 무검증 (§19.2 편차 6)
+  4. **`between_edit_count` 의미 무검증 (본 편차).**
+- **적용 노트 (강화)**: 규칙 3 은 "말할 수 있는 것" · "미해결 관찰" · "정직 경계" 섹션에 **가장 엄격하게** 적용된다. 그 섹션들은 외부 발표 문구가 되기 때문. 필드명·용어 의미는 코드로 확인한 후에만 정직 경계에 진입시킨다.
+- §19.3-scoped. 전역 편차 번호 미사용 (PR #7 / #8 편차 5·6 과 충돌 회피).
 
 ### 유효 차별점 (크기 주장 없음, 카테고리 명시)
 
@@ -544,6 +578,7 @@ gap 구간별 offset/limit non-empty 비율:
 - **"read-once 는 mtime 만 봐서 X% 를 놓친다" 금지.** mtime 데이터 부재로 실측 불가.
 - **"Clew 는 read-once 를 대체한다" · "read-once 는 Clew 를 대체한다" 둘 다 금지.** 다른 axis.
 - **read-once 코드/설계를 "경쟁자" 로 프레이밍 금지.** 다른 도구, 다른 문제, MIT 라이센스 하 각자 존재.
+- **"87.0% 는 read-once 도 못 잡는 것을 우리가 잡은 것" 서술 금지.** 반대다. read-once 는 partial read 를 애초에 안 잡고 (사실 B, offset/limit pass-through), Clew 는 사후 측정에서 제거한다 (§19.1). **같은 목표에 다른 경로.** 87.0% 는 read-once 와 무관하게 "순진한 file-level 매칭 대비" 방법론 근거로만 유효.
 
 ### 규칙 7 fold-back 커밋 (사전등록 대상 아님)
 
