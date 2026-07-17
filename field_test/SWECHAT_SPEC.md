@@ -148,7 +148,7 @@ v3 761건 분류 결과:
 
 **"assistant 텍스트 턴 없음" 최초 서술은 무검증이었음 (편차 5 참조). 실측 후 결론(판정 불가)은 유지하되 근거를 교체한다.**
 
-- Claude Code `assistant_thinking` = 128건 (Claude Code assistant 행 37,978의 0.34%) — 추론 과정이 사실상 미수집.
+- Claude Code `assistant_thinking` = 128건 (Claude Code assistant 행 37,978의 0.34%) — 추론 과정이 사실상 미수집. **원본 리콘으로 확증됨 (파이프라인 손실 아님, 벤더 구조 한계): [`docs/CC_TRANSCRIPT.md`](../docs/CC_TRANSCRIPT.md) §21.1.**
 - `assistant_response` = 37,850건, content 100% 채움 (median 447자). 그러나 **사용자 대상 요약**이며 후보 target을 명시적으로 지칭하지 않는다.
 
 **실측 (v1' 200 표본 중 텍스트 보유 98 창문, word-boundary regex 매칭)**:
