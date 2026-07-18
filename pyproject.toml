@@ -1,5 +1,5 @@
 [project]
-name = "clew"
+name = "clew-custos"
 version = "0.1.0"
 description = "Detect wasteful cycles in multi-agent traces (Custos / Clew, S0 MVP)."
 authors = [{ name = "Custos" }]
