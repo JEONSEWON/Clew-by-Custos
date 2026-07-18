@@ -316,7 +316,7 @@ telecom recall 이 낮은 이유는 `role=user` 발행 tool 이 GT_set 에 남�
 
 ### 미탐 duplicated 상위 (GT duplicated ∈ Pred^c) — 5건
 
-**retail task=11 turn=14,15**: `reason='Repeat for step 7, 8'` — 우리 detector 가 turn 7,8 과 14,15 사이 다른 툴콜을 여러 건 감지해서 N=2 구조 게이트 인접성 불충족 (compact 창문 밖). 개선 여지: N=3+ 로 확장하거나 compact window 확장. **단, φ/N 은 frozen** (중단조건 3).
+**retail task=11 turn=14,15**: `reason='Repeat for step 7, 8'` — 실측 원인은 §25 리콘 참고 (`sha256_mismatch` 또는 span→pair 매핑 미규명 케이스). **N=2 는 창(window) 이 아니라 등장 횟수 임계** (structural.py:69 `len(occurrences) < n`); cascade 에 간격/창 인자 없음.
 
 **retail task=58, task=79**: 유사 원인.
 
@@ -411,13 +411,15 @@ Recall 예측(0.03–0.12) 이 duplicated recall(0.6077) 과 혼동됐는지 재
 
 ### 미탐 39% 원인 (Q4 raw)
 
-전 duplicated 미탐 51건이 `in_pair_but_not_wasted` 태그 — 어댑터 페어링 성공, cascade(φ + sha256 게이트)가 waste 판정 안 함:
+전 duplicated 미탐 51건이 `in_pair_but_not_wasted` 태그 — 어댑터 페어링 성공, cascade(φ + sha256 게이트)가 waste 판정 안 함.
 
-- **retail task=11 turn 14/15**: reason `Repeat for step 7, 8` — turn 7→14 (7턴 차이) **N=2 창 밖**. 게이트 정의상 정당.
-- **telecom [mobile_data_issue]…turn 29/30**: reason `Permintaan timeout` — 타임아웃 재시도. output 상이(다른 tool result) → sha256 미매칭. 정당.
-- **telecom …turn 10/11**: reason `This step is not necessary to obtain the business route…` — 재호출 아니라 "불필요한 단발성 호출" 을 duplicated 라벨. 우리 정의 밖.
+**주의**: 아래 서술은 §24.7 fold-back 시점 조기 요약이며, N=2 를 "창(window)" 로 오해한 표현을 포함했다. 실측 재분석은 §25 (`recon_N_window.py` Q2) 참고. 요약:
 
-**요약**: 미탐 39% 는 φ/N 정의 경계 밖 케이스 (창 폭, 카테고리 정의 차). 게이트 버그 아님.
+- **sha256_mismatch (24/51)**: origin·candidate 페어는 잡혔으나 output 해시 상이. e.g. telecom timeout retry (`error → success`). 게이트 정의상 정당.
+- **sha256_equal_but_not_in_waste (27/51)**: 리콘 스크립트 결과 origin·candidate 페어 sha256 은 같은데 cascade waste 명단 미포함. 스크립트의 span→pair 매핑에 부정 gap(-3) 등 이상 케이스 포함 → **미규명, 별도 확인 필요** (§25 Q2 raw 참조).
+- 등장 간 turn gap 분포: n=51, min=-3, max=30, median=8, p25=3, p75=16. **N 은 창이 아니므로 gap 자체가 페어링을 막지 않는다.**
+
+**요약**: 미탐 39% 는 sha256 게이트 정의 경계 (24) + 미규명 매핑 (27). 이전 판(§24.8) 의 "N=2 창 밖" 표현은 오류; 정정은 §25.
 
 ### 정직 경계 (§24.8 사용 가능/불가 문구)
 
@@ -465,3 +467,90 @@ Recall 예측(0.03–0.12) 이 duplicated recall(0.6077) 과 혼동됐는지 재
 
 **사용 불가**: "22건 전부 낭비다" — 창 밖 상태변화·비-tool 컨텍스트 미검사, 소유자 확인 전.
 
+---
+
+## §25 — N=2 파라미터 사후 검증 (2026-07-18, post-hoc, roadmap ②)
+
+§24.8 fold-back 에서 "N=2 창 밖" 표현이 나왔다. **틀렸다**. `recon_N_window.py` (규칙 7 부칙, raw only) 로 N 의 정확한 의미와 후처 최적성을 확인한 결과 기록.
+
+### Q1 — N=2 의 출처와 정확한 의미
+
+**출처**: `validation/CRITERIA_FROZEN.md:23` — "반복 임계 N: 2". **캘리브레이션 흔적 없음** (grep `N=2` 로 `src/`, `docs/` 스캔; ARCHITECTURE.md 는 결정 사실만 언급, 유도 절차 부재). 즉 **N=2 는 임의값** (§0 착수 시점 default), 유도된 값 아님.
+
+**정확한 의미** (`src/clew/detect/structural.py:56-77`):
+```python
+if n < 2:
+    raise ValueError("n must be >= 2 (a single occurrence is not a repeat)")
+...
+for occurrences in groups.values():
+    if len(occurrences) < n:
+        continue
+    origin = occurrences[0]
+    ...
+    for cand in occurrences[1:]:
+        ...
+        pairs.append((origin, cand))
+```
+
+- N 은 **같은 하위그룹 (tool 은 `(agent_or_node_id, normalized_input)`, 그 외는 `agent_or_node_id`) 내 등장 횟수 임계**.
+- **창(window) 이 아니다.** cascade (`src/clew/detect/cascade.py`) 에 간격·거리 인자 없음. 두 등장이 몇 턴 떨어져도 (compact 경계만 없으면) 페어링·waste 판정 가능.
+- N=k 는 "k회 이상 등장 시 (첫 등장, 이후 등장 각각) 쌍 반환" 을 의미.
+
+### Q2 — §24.9 duplicated 미탐 51건 실측 원인
+
+`recon_N_window.py` Q2 로 51 미탐 각각 span→pair 매칭 후 이유 태그:
+
+| reason | count |
+|---|---:|
+| `sha256_mismatch` (페어 성립, output 해시 상이) | 24 |
+| `sha256_equal_but_not_in_waste` (해시는 같은데 cascade waste 미포함) | 27 |
+
+**gap 분포** (첫 등장 turn → 재등장 turn 차이): n=51, min=**-3**, max=30, median=8, p25=3, p75=16.
+
+- `sha256_mismatch` 24 건: 정당한 미탐. e.g. telecom `mobile_data_issue` timeout 재시도 (error → success), retail 상태변화 후 재조회 (다른 output).
+- `sha256_equal_but_not_in_waste` 27 건: **미규명**. 리콘 스크립트의 span→pair 매칭 로직에 부정 gap (-3) 등 이상 케이스 포함. 별도 확인 필요, 이 절에서는 raw 만 기록.
+
+**결정적 사실**: gap ≥ 6 인 미탐이 30/51. **N 을 어떻게 잡아도 (임계이지 창이 아니므로) 등장 간 거리 자체는 페어링을 막지 않는다**. gap 이 크더라도 sha256 이 같으면 waste. sha256 이 다르면 아무리 가까워도 미탐. **N 은 recall 자원이 아니다.**
+
+### Q3 — N∈{2,3,5,∞} 시뮬 (적용 X, 리콘만)
+
+**RB 전체 (airline 40 + retail 48 + telecom 112)**:
+
+| N | tp | fp | fn | P | R | F1 | waste spans | traj_acc |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **2** | 218 | 46 | 1168 | 0.8258 | 0.1573 | **0.2642** | 132 | 0.5000 |
+| 3 | 63 | 11 | 1323 | 0.8514 | 0.0455 | 0.0863 | 37 | 0.1735 |
+| 5 | 8 | 0 | 1378 | 1.0000 | 0.0058 | 0.0115 | 4 | 0.0714 |
+| ∞ | 0 | 0 | 1386 | 0.0000 | 0.0000 | 0.0000 | 0 | 0.0663 |
+
+**CC (`~/.claude/projects/**/*.jsonl`, 54 세션 중 50 ingest)**:
+
+| N | sessions_with_waste | total_waste_spans |
+|---:|---:|---:|
+| **2** | 3 | 5 |
+| 3 | 0 | 0 |
+| 5 | 0 | 0 |
+| ∞ | 0 | 0 |
+
+### Q4 — 결론
+
+- **N=2 는 F1 최적 (4-value 후처 비교).** 단조 감소. RB 3 도메인 전부 동일 패턴.
+- **최적성은 후처 확인 (post-hoc)**, 캘리브레이션으로 유도된 값 아님. 자백해야 함.
+- Recall 상한: 미탐 51 중 30 이 gap ≥ 6. N 조정으로 잡을 수 없다 (N 은 창이 아님). **인접성 필터 (별도 파라미터 W)** 를 도입하려면 사전등록 필요; 이 리콘 스코프 밖.
+- **N=2 유지.** frozen 대상 (`validation/CRITERIA_FROZEN.md`).
+
+### 정직 경계 (§25 사용 가능/불가)
+
+**사용 가능**:
+- "N=2 는 F1 후처 최적으로 확인 (RB 3 도메인 + CC 20 세션, N∈{2,3,5,∞} 비교; 단조 감소)."
+- "N 은 등장 횟수 임계이지 창이 아니다 (structural.py:69). cascade 에 거리 인자 없음."
+- "duplicated 미탐 51 중 30 이 gap≥6. N 조정으로 미해결 (별도 인접성 파라미터 필요)."
+
+**사용 불가**:
+- "N=2 는 캘리브레이션으로 유도됐다" — grep 결과 유도 절차 없음, 임의 default 였음.
+- "N 을 늘리면 precision 은 오르지만 recall 이 떨어진다는 트레이드오프" 만 언급 — 후처 결과이므로 "**측정된 후처 관측**" 임을 명시해야.
+- §24.8 미탐 서술의 "N=2 창 밖" 표현 — **오류**, §25 로 정정.
+
+### 편차 등록 — 규칙 3 (외과적 변경)
+
+§24.7~§24.8 문서 작성 시 "N=2 창 밖" 표현이 코드 확인 없이 SPEC 층에 진입. **미확인 가정이 SPEC 에 유입되는 패턴** (규칙 3 위반: 근거 없는 서술). 재발 방지: 파라미터 언급 시 반드시 `src/clew/detect/*.py` 인용, "창/거리/N/φ" 등 용어는 코드 정의부터.
