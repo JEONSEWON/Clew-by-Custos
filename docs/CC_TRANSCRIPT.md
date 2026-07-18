@@ -910,3 +910,55 @@ ExitPlanMode 재검색 (agent=="ToolSearch" AND input 에 "ExitPlanMode") 3 건 
 - §22.11 본문은 사전등록 커밋 이후 무수정. 관찰은 §22.11.7 로 별도.
 - 병합은 반드시 merge commit (§19 규칙 8 부칙).
 - **규칙 7 부칙 (근거 스크립트 커밋) 이번엔 사전에 적용**: §22.8/§22.10 사전등록에서 각각 1건씩 누락되었던 계열 오류를 이번 라운드에서 예방.
+
+### §22.11.7 — 재실행 결과 (2026-07-18)
+
+**커밋**: `42c3439` (`src/clew/ingest/claude_code.py` + `src/clew/detect/cascade.py` + `tests/test_cascade.py` compact 창문 게이트).
+**테스트**: `python -m pytest -q` → **204 passed, 1 warning in 22.54s** (기존 198 + 신규 6, 회귀 0).
+**대상**: `~/.claude/projects/**/*.jsonl` 20 세션 전수 (§22.11.5 동일 집합).
+**실행 명령**: `python field_test/diagnostics/scan_all_cc_sessions.py`.
+
+**§22.11.5 예측 vs §22.11.7 실측**:
+
+| 지표 | §22.10 실측 | 예측 (§22.11.5) | 실측 (§22.11.7) | 판정 |
+|---|---|---|---|---|
+| 총 waste | 21 | 5 | **5** | 적중 |
+| compact 세션 waste | 16 | 0 | **0** | 적중 |
+| ExitPlanMode ToolSearch | 3 | 2 | **2** | 적중 |
+| 나머지 (cmp=N, usr≥2) | 3 | 3 | **3** | 적중 |
+
+**세션별 waste 변화 (compact 제거 내역)**:
+
+| session (앞8) | §22.10 waste | §22.11.7 waste | compact 제거 | compact_boundaries 수 |
+|---|---:|---:|---:|---:|
+| 07f97584 (self) | 13 | 0 | −13 | 12 (6 compact × 2 마커) |
+| 72015129 | 2 | 0 | −2 | 2 (1 compact) |
+| c848299d | 3 | 2 | −1 | 2 (1 compact, #2 ToolSearch 창문 안) |
+| 2502fe9a | 1 | 1 | 0 | 0 (compact 없음) |
+| 8228879e | 2 | 2 | 0 | 2 (compact 07:58:09Z, 원조회 07:58:22Z 이전 — 창문 밖) |
+| **합계** | **21** | **5** | **−16** | — |
+
+**남는 5건 상세**:
+
+```
+1. 2502fe9a #1 ToolSearch target=None gap=1140.0s   (ExitPlanMode 재검색, cmp=N)
+2. 8228879e #1 ToolSearch target=None gap=2985.4s   (ExitPlanMode 재검색, cmp=N)
+3. 8228879e #2 Bash       target=None gap=2998.8s   ('(Bash completed with no output)' 재실행, cmp=N)
+4. c848299d #1 Read       target=run_e3_diagnosis.py gap=3830.1s (cmp=N, usr=9)
+5. c848299d #4 Bash       target=None gap=1505.0s   ('(Bash completed with no output)' 재실행, cmp=N)
+```
+
+- 5 건 전부 **compact_in_win == False** (§22.11.5 예측 정확). §22.11 게이트는 정의대로 작동.
+- 2 건 (1, 2) 은 §22.11.4 대로 ExitPlanMode 재검색 — §22.12 별건.
+- 3 건 (3, 4, 5) 은 소유자 판정 대기 (Bash 빈 출력 · Read 재조회 with 창문 편집 없음). **이번 라운드 정의로는 waste, 소유자가 별도 축으로 재판정할 수 있음.**
+
+**중단 조건 발동 여부**:
+- 회귀 (조건 1): **없음** (198 전부 통과 + 신규 6 통과 = 204).
+- OTel/OpenInference 결과 변화 (조건 2): **없음** (`test_compact_gate_no_op_when_metadata_missing` 로 non-CC Trace no-op 검증).
+- φ/N/model/sha256 로직 변경 (조건 3): **없음** — 상수 그대로, sha256 로직 그대로.
+- Span 자료구조 확장 (조건 4): **없음** — `Trace.metadata` 만 확장 (기존 dict[str, Any] 슬롯 재사용).
+
+**정직 경계**:
+- 20세션 전수 실측. 다음 라운드에서 새 세션 추가 시 compact 감지 재검. `compact_boundaries` 는 두 마커 필드에 대해서만 반응하므로 벤더 포맷 변경 시 재확인 필요.
+- 5 건 waste 는 이번 게이트 통과분이지 "진짜 낭비 5 건 확증" 이 아니다. 판정은 소유자 별건.
+- §22.10.3 정직 경계 유지 (F1 0.857 합성 데이터, 실데이터 tool output φ 판별력 부재).
