@@ -1,6 +1,10 @@
-"""캐스케이드 결합 + 낭비 비용 (SPEC §8 2.3).
+"""캐스케이드 결합 + 낭비 비용 (SPEC §8 2.3, §22.10.2).
 
-낭비 판정 = 구조 후보 AND 의미 중복(cos ≥ φ).
+낭비 판정:
+- span_kind == "tool"   → 구조 후보 AND sha256(origin.output) == sha256(cand.output).
+                           φ 를 호출하지 않는다. 도구 출력은 패러프레이즈 없음.
+- span_kind != "tool"   → 구조 후보 AND cos(origin, cand) ≥ φ (기존 경로).
+
 낭비 스팬 = candidate 측 (origin은 첫 등장이므로 정상으로 본다).
 비용 = sum(token_count × cost_rate) over candidate 스팬.
 
@@ -9,6 +13,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 
 from clew.detect.semantic import Embedder, cosine
@@ -25,6 +30,10 @@ class CascadeResult:
     waste_cost: float = 0.0
 
 
+def _sha256_bytes(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def cascade(trace: Trace, embedder: Embedder, n: int, phi: float) -> CascadeResult:
     spans_by_id = {s.span_id: s for s in trace.spans}
     waste_span_ids: list[str] = []
@@ -32,6 +41,11 @@ def cascade(trace: Trace, embedder: Embedder, n: int, phi: float) -> CascadeResu
 
     for origin, candidate in find_candidates(trace, n):
         if candidate.span_id in seen_candidates:
+            continue
+        if candidate.span_kind == "tool":
+            if _sha256_bytes(origin.output_text) == _sha256_bytes(candidate.output_text):
+                waste_span_ids.append(candidate.span_id)
+                seen_candidates.add(candidate.span_id)
             continue
         if cosine(embedder.embed(origin.output_text), embedder.embed(candidate.output_text)) >= phi:
             waste_span_ids.append(candidate.span_id)

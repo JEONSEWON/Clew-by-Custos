@@ -658,11 +658,255 @@ semantic:  φ                                                        ← llm 스
 
 | 커밋 | 목적 | 결과 산출 이전/이후 |
 |---|---|---|
-| (이 커밋) | §22.10 사전등록 (본문 · 예측 · 중단조건) | 이전 |
+| `0a4ad7b` | §22.10 사전등록 (본문 · 예측 · 중단조건) | 이전 |
+| `e306150` | §22.10.1 근거 스크립트 커밋 (0a4ad7b 누락분, 후속 보완) | 이전 |
 | (다음) | `cascade.py` 수정 (§22.10.2 3단 게이트, tool kind 만) | 이전 |
 | (그 다음) | 재실행 결과 + 관찰 → §22.10.7 신설 | 이후 |
 
-- 이 커밋은 코드 수정 전에 push 되어 PR 오픈 시각으로 외부 타임스탬프 확정.
-- §22.10 본문은 이 커밋 이후 무수정. 관찰은 §22.10.7 로 별도.
+- 사전등록 커밋 `0a4ad7b` 은 코드 수정 전에 push 되어 PR 오픈 시각으로 외부 타임스탬프 확정.
+- §22.10 본문은 `0a4ad7b` 이후 무수정. 관찰은 §22.10.7 로 별도.
 - 병합은 반드시 merge commit (§19 규칙 8 부칙).
 
+**편차 (2026-07-18, 규칙 7 부칙 적용 누락)**:
+사전등록 커밋 `0a4ad7b` 에 §22.10.1 근거 스크립트 (`diag_phi_truncation.py`,
+`diag_waste_context.py`) 2건이 누락되어 재현 경로 없이 push 되었다. 후속 커밋
+`e306150` 으로 보완. §22.8 사전등록에서 `verify_v4_filter_contradiction.py`
+누락과 동일 계열 2번째 — 규칙 7 부칙 (근거 스크립트 커밋) 적용 누락, 사람 측
+지시 오류. **사전등록 무결성 영향 없음**: §22.10.1 의 관측 사실은 `0a4ad7b`
+시점에 이미 확정되어 외부 타임스탬프를 획득했고, 스크립트는 그 사실의 재현
+경로일 뿐 사실을 변경하지 않는다. `e306150` 은 결과 산출 (§22.10.7) 이전에
+위치한다.
+
+### §22.10.7 — 재실행 결과 (2026-07-18)
+
+**커밋**: `883a27d` (`src/clew/detect/cascade.py` 3단 게이트, tool kind 만).
+**테스트**: `python -m pytest -q` → **198 passed, 1 warning in 24.33s** (기존 회귀 0, OTel/OpenInference 결과 무변).
+**세션**: `f96aee88-df87-41a6-8f6e-be05d3928018.jsonl` (§22.6/§22.8.8 동일).
+**실행 명령**: `python -m clew analyze <세션> --no-snippets`.
+
+**결과 (raw)**:
+
+```
+# Clew Waste Report
+- trace_id: f96aee88-df87-41a6-8f6e-be05d3928018
+- analyzed: 2026-07-18T06:36:31Z
+- detector params: φ=0.514345, N=2, model=paraphrase-multilingual-MiniLM-L12-v2
+
+## Result: no waste detected
+No wasteful patterns found (wasteful=False).
+```
+
+**§22.10.5 예측 vs 실측**:
+
+| 지표 | §22.8.8 실측 | 예측 (§22.10.5) | 실측 (§22.10.7) | 판정 |
+|---|---|---|---|---|
+| repeat 후보 | 6 | 6 | **6** | 적중 |
+| 최종 waste | 4 | 0 | **0** | 적중 |
+| 오탐 | 4/4 | 0/0 | **0/0** | 적중 |
+
+**후보별 sha256 게이트 raw** (Q5 재실행, `diag_phi_truncation.py --q 5`):
+
+```
+  #1: name=Read   target='v4_reclassify.py'                sha256_equal=False  o_len=3444  c_len=3917   edits_in_window=3
+  #2: name=Read   target='run_swechat_waste_scan.py'       sha256_equal=False  o_len=10511 c_len=12516  edits_in_window=5
+  #3: name=Read   target='run_swechat_waste_scan.py'       sha256_equal=False  o_len=10511 c_len=12516  edits_in_window=5
+  #4: name=Edit   target='.gitignore'                       sha256_equal=False  o_len=96    c_len=94     edits_in_window=0
+  #5: name=Read   target='SWECHAT_SPEC.md'                  sha256_equal=False  o_len=16016 c_len=20357  edits_in_window=9
+  #6: name=Bash   target=None                               sha256_equal=False  o_len=74    c_len=17
+sha256_equal True 건수: 0/6
+```
+
+**해석 (§22.10.5 음성 결과 정의 준수)**:
+- 6 후보 전부 sha256 불일치. 게이트가 §22.8.8 waste 4건을 전부 차단했다.
+- **waste 0 은 실패가 아니다** — 이 세션에 진짜 낭비가 없다는 뜻이다. `edits_in_window` (3, 5, 5, 0, 9) 가 창문 안 파일 편집 존재를 확증. 상태가 바뀐 뒤의 재조회는 낭비가 아니다.
+- **`edits_in_window=0` 인 후보 #4** (Edit .gitignore, o_len=96/c_len=94): output 길이 상이 → sha256 불일치 정상. §22.10.4 백로그 (다음 라운드).
+- **게이트 완화 없음**. φ=0.514345 · N=2 · model 무변. 3상수 frozen.
+
+**중단 조건 발동 여부**:
+- 회귀 (조건 1): **없음** (198 전부 통과).
+- OTel/OpenInference 결과 변화 (조건 2): **없음** (span_kind != "tool" 분기는 기존 φ 경로 무변).
+- φ/N/model 상수 변경 (조건 3): **없음**.
+
+**정직 경계** (§22.10.3 재확인):
+- 이 결과는 **단일 세션** (§22.6 이후 재사용) 관측이다. 20세션 전수는 다음 라운드.
+- **F1 0.857 (합성) 은 계속 인용 금지** 조건 유지. 실데이터 tool output 에 대한 φ 판별력 부재는 §22.10.1 로 근거화됨.
+
+---
+
+## §22.11 — compact 창문 제외 게이트 사전등록 (2026-07-18, 규칙 8)
+
+**범위**: tool 스팬 waste 판정에서 origin↔candidate 창문 안에 compact 경계가 있으면 waste 에서 제외한다 (CC 어댑터 한정).
+**제외**: φ / N / model / sha256 로직 변경, ExitPlanMode 재검색 판단 (§22.12 별건), 다른 로더 (OTel/OpenInference) 동작 변경.
+
+**사전등록 원칙**: 이 문서를 push 후 PR 오픈 (외부 타임스탬프 확정) 이후에만 코드 수정. 결과 보고 예측·중단조건·정의를 바꾸지 않는다.
+
+### §22.11.1 — 사실 (전수, 20세션)
+
+근거: `field_test/diagnostics/classify_21_positives.py`, `field_test/diagnostics/scan_all_cc_sessions.py`, `field_test/diagnostics/diag_positive_context.py` (2026-07-18 실행).
+
+§22.10.2 게이트 (sha256 tool kind) 통과 waste 총 **21건**. `~/.claude/projects/**/*.jsonl` 전 세션 스캔 (20 세션). classify_21_positives.py 는 각 waste 의 origin↔cand 창문 안에서 4 축을 기계적으로 측정: compact_in_win, edits_in_window, user_in_window, prev_user[:40].
+
+- **compact_in_win == True: 16 / 21** — 창문 안에 `isCompactSummary == True` 또는 `compactMetadata` 필드를 가진 JSONL 라인이 존재.
+- **agent == "ToolSearch" AND input 에 "ExitPlanMode": 3 / 21** — Plan 모드 재검색. 그중 1건은 compact 와 겹침 (c848299d #2).
+- **compact == False AND user_in_win == 0 AND agent != "ToolSearch": 0 / 21** — 이 라운드에서 관측되지 않음.
+- **세 범주 미해당 (나머지): 3 / 21** — 전부 user_in_win ≥ 2, gap 25~64 분. 소유자 판정 별건 (compact 게이트 범위 밖).
+
+**핵심**: sha256_equal == True 이면서도 16 건이 compact 직후 재조회다. compact 는 컨텍스트를 소거하므로 재조회가 정당하고 (도구가 파일을 안 바꿨으니) 출력이 동일한 것이 당연하다. **sha256 게이트는 "출력 동일" 은 잡으나 "컨텍스트 소거 후 정당 재조회" 를 구분하지 못한다.**
+
+**classify_21_positives.py 가 실제로 본 필드** (필드명 추측 아님):
+
+```python
+# field_test/diagnostics/classify_21_positives.py:104-113
+def _window_compact_flag(entries, o_ln: int, c_ln: int) -> bool:
+    for ln, d in entries:
+        if not (o_ln < ln < c_ln):
+            continue
+        if d.get("compactMetadata") is not None:
+            return True
+        if d.get("isCompactSummary") is True:
+            return True
+    return False
+```
+
+**실 JSONL 확인** (session `72015129`, L352/L353):
+
+```
+L352 type='system' timestamp='2026-06-20T11:27:38.369Z'
+  compactMetadata: {'trigger':'auto','preTokens':167184,'postTokens':16819,'durationMs':151404,...}
+L353 type='user'   timestamp='2026-06-20T11:27:38.370Z'
+  isCompactSummary: True
+```
+
+두 마커 라인 모두 `timestamp` 필드를 갖는다 (adapter 가 시각 기준으로 경계를 잡을 수 있음, §22.11.3 참조).
+
+### §22.11.2 — 개정
+
+**CC 어댑터에서 파싱된 Trace 의 tool 스팬에 대해서만**, origin↔cand 창문 안에 compact 경계가 있으면 waste 에서 제외한다 (`sha256_equal` 판정 이전에 조기 continue).
+
+- **compact 감지 필드** (§22.11.1 확인분 두 개 전부 사용):
+  - `entry.get("compactMetadata") is not None`  → 경계로 취급
+  - `entry.get("isCompactSummary") is True`     → 경계로 취급
+- **경계 자료**: 각 감지 라인의 `entry["timestamp"]` (`_parse_ts` 로 tz-aware datetime).
+- **cascade 판정**: origin.start_time < 어떤 경계 timestamp < candidate.start_time 이면 스킵.
+- **다른 로더는 no-op**: OTel/OpenInference 어댑터는 이 경계를 만들지 않으므로 (§22.11.3 참조) 기존 판정 그대로.
+
+**이것은 게이트 추가다. φ / N / model / sha256 로직 무변.** cascade 3단 구조 (§22.10.2) 는 유지:
+
+```
+구조:      (agent_or_node_id, normalize(input_text)) 하위그룹 (§22.8.1)
+compact:   창문 안 compact 경계 있으면 continue    ← 신규 (tool kind, CC 만)
+동일성:    sha256(origin.output) == sha256(cand.output)   (§22.10.2)
+semantic:  φ                                       (llm kind)
+```
+
+### §22.11.3 — 설계 확인 (코드 인용, 사전등록 단계에서)
+
+**Q1. Span 자료구조에 turn index / line number 가 있나?**
+
+없다.
+
+```python
+# src/clew/model.py:22-36
+class Span(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    trace_id: str
+    span_id: str
+    parent_span_id: str | None
+    agent_or_node_id: str
+    span_kind: SpanKind
+    start_time: datetime
+    end_time: datetime
+    input_text: str
+    output_text: str
+    token_count: int | None = None
+    model: str | None = None
+    cost_rate: float | None = None
+```
+
+`extra="forbid"` 로 필드 추가 불가. Span 자체를 확장하는 경로는 SPEC §8 1.1 을 흔든다 — **금지.**
+
+**Q2. Trace 는 확장 가능한가?**
+
+가능. `metadata: dict[str, Any] = Field(default_factory=dict)` (`src/clew/model.py:88`). 어댑터가 이미 `{"source": "claude_code_jsonl", "path": ...}` 를 넣고 있음 (`src/clew/ingest/claude_code.py:232-235`). **이 dict 에 compact 경계 timestamp 리스트를 추가하는 것이 자연스럽고 최소침습이다.**
+
+**Q3. 어디서 감지하나?**
+
+`src/clew/ingest/claude_code.py`. 이미 `_load_jsonl` 이 JSONL 을 라인 단위로 읽고 (§22.11.3 Q3.1), main `for entry in entries` 루프 (line 113) 가 모든 entry 를 순회한다. **이 루프의 앞단 (span 조인 이전) 에 compact 마커 감지 블록을 하나 추가하는 것이 자연스럽다.**
+
+**Q4. 다른 로더는?**
+
+`src/clew/ingest/otel_json.py` — OTel/OpenInference JSON 입력. compact 개념 없음. `Trace.metadata` 에 compact_boundaries 키를 넣지 않는다. `cascade.py` 는 `metadata.get("compact_boundaries", [])` 로 안전 조회 → 빈 리스트 → 게이트가 no-op. **CC 어댑터 산출물이 아닌 Trace 에 대해서는 판정이 §22.10.7 상태 그대로 유지된다.**
+
+**Q5. 판정 경로 (cascade.py)**
+
+```python
+# 예상 diff, 사전등록 단계이므로 아직 미적용
+if candidate.span_kind == "tool":
+    # 신규: compact 창문이면 스킵 (metadata 없는 로더는 no-op)
+    boundaries = trace.metadata.get("compact_boundaries", [])
+    if any(origin.start_time < b < candidate.start_time for b in boundaries):
+        continue
+    # 기존: sha256 동일성
+    if _sha256_bytes(origin.output_text) == _sha256_bytes(candidate.output_text):
+        waste_span_ids.append(candidate.span_id)
+        seen_candidates.add(candidate.span_id)
+    continue
+```
+
+llm 경로 무변. tool 경로에서 sha256 판정 앞에 compact 게이트 삽입.
+
+### §22.11.4 — ExitPlanMode 는 이번에 안 건드린다 (기록)
+
+ExitPlanMode 재검색 (agent=="ToolSearch" AND input 에 "ExitPlanMode") 3 건 (§22.11.1):
+
+| session8 | # | gap(s) | cmp | usr | prev_user[:40] |
+|---|---:|---:|---|---:|---|
+| 2502fe9a | 1 | 1140.0 | N | 1 | 프로젝트 루트에 진단표.md 파일을 새로 만드는 작업이야. |
+| 8228879e | 1 | 2985.4 | N | 14 | Plan 모드. 계획 먼저, 승인 후 실행. SPEC.md §15가 사전 |
+| c848299d | 2 | 6172.1 | Y | 12 | Plan 모드. 계획 먼저, 승인 후 실행. SPEC.md §18이 사전 |
+
+- **c848299d #2 는 compact 게이트만으로 자동 제거된다** (cmp=Y).
+- 나머지 2 건 (compact 없음) 은 §22.12 별건. **"메타 도구 재검색이 낭비인가" 는 이번 라운드에서 판정하지 않는다.**
+
+### §22.11.5 — 재실행 전 예측 (결과 보기 전)
+
+**대상**: `~/.claude/projects/**/*.jsonl` 20 세션 전수 (scan_all_cc_sessions.py 와 동일 집합).
+
+| 지표 | §22.10 게이트 실측 | 예측 (§22.11.5) |
+|---|---|---|
+| 총 waste (21건) | 21 | **5** (16 compact 제거) |
+| compact 세션 waste | 16 | **0** |
+| ExitPlanMode ToolSearch (3건) | 3 | **2** (c848299d #2 는 compact 게이트에서 제거) |
+| 나머지 (3건, compact 없음) | 3 | **3** (게이트 범위 밖 유지) |
+
+**계산**: 21 − 16 (compact) = 5. 5 = 2 (ExitPlanMode w/o compact) + 3 (나머지, cmp=N usr≥2).
+
+**틀리면 틀렸다고 기록한다.**
+
+#### 음성 결과 정의
+
+- **waste 가 5 아래로 더 떨어지면**: 예상 밖 감소. 원인 규명 (compact 감지 로직이 §22.11.1 근거의 16 건보다 더 많이 매칭). 게이트 정의 안 바꾼다.
+- **waste 가 5 위로 남으면**: compact 감지 누락. 어느 waste 가 왜 잡히지 않았는지 raw 로 기록 (session, timestamp, 마커 라인 유무). 정의 안 바꾼다.
+- **compact 세션 waste 가 0 이 안 나오면**: 감지 로직 결함. 사전등록 정의를 위반한 것이 아니라 구현이 정의를 못 따라간 것 — 구현 수정, 정의 유지.
+
+#### 중단 조건
+
+1. **기존 198 테스트 회귀** → 즉시 멈춤. **테스트를 고쳐서 통과시키지 마라.** 무엇을 의도한 테스트인지 확인 후 보고.
+2. **OTel/OpenInference (llm 스팬 · non-CC Trace) 결과 변화** → 즉시 멈춤. 이 개정은 CC 어댑터 산출물의 tool 스팬만 대상. 다른 로더에서 Trace.metadata 에 compact_boundaries 키가 안 들어가는지 확인.
+3. **φ / N / model / sha256 로직 변경 필요** → 즉시 멈춤. **frozen.**
+4. **Span 자료구조 확장 필요** → 즉시 멈춤. `extra="forbid"` (§22.11.3 Q1). Trace.metadata 로 처리 안 되면 설계 재검.
+
+### §22.11.6 — 규칙 8 커밋 체인 (사전등록 시각 증명)
+
+| 커밋 | 목적 | 결과 산출 이전/이후 |
+|---|---|---|
+| (예정 A) | §22.11.1 근거 스크립트 3건 커밋 (규칙 7 부칙, 사전등록과 함께) | 이전 |
+| (예정 B) | §22.11 사전등록 (본문 · 예측 · 중단조건) | 이전 |
+| (그 다음) | `claude_code.py` / `cascade.py` 수정 (§22.11.2 게이트) | 이전 |
+| (그 다음) | 재실행 결과 + 관찰 → §22.11.7 신설 | 이후 |
+
+- 사전등록 커밋은 코드 수정 전에 push 되어 PR 오픈 시각으로 외부 타임스탬프 확정.
+- §22.11 본문은 사전등록 커밋 이후 무수정. 관찰은 §22.11.7 로 별도.
+- 병합은 반드시 merge commit (§19 규칙 8 부칙).
+- **규칙 7 부칙 (근거 스크립트 커밋) 이번엔 사전에 적용**: §22.8/§22.10 사전등록에서 각각 1건씩 누락되었던 계열 오류를 이번 라운드에서 예방.
