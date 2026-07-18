@@ -677,3 +677,57 @@ semantic:  φ                                                        ← llm 스
 경로일 뿐 사실을 변경하지 않는다. `e306150` 은 결과 산출 (§22.10.7) 이전에
 위치한다.
 
+### §22.10.7 — 재실행 결과 (2026-07-18)
+
+**커밋**: `883a27d` (`src/clew/detect/cascade.py` 3단 게이트, tool kind 만).
+**테스트**: `python -m pytest -q` → **198 passed, 1 warning in 24.33s** (기존 회귀 0, OTel/OpenInference 결과 무변).
+**세션**: `f96aee88-df87-41a6-8f6e-be05d3928018.jsonl` (§22.6/§22.8.8 동일).
+**실행 명령**: `python -m clew analyze <세션> --no-snippets`.
+
+**결과 (raw)**:
+
+```
+# Clew Waste Report
+- trace_id: f96aee88-df87-41a6-8f6e-be05d3928018
+- analyzed: 2026-07-18T06:36:31Z
+- detector params: φ=0.514345, N=2, model=paraphrase-multilingual-MiniLM-L12-v2
+
+## Result: no waste detected
+No wasteful patterns found (wasteful=False).
+```
+
+**§22.10.5 예측 vs 실측**:
+
+| 지표 | §22.8.8 실측 | 예측 (§22.10.5) | 실측 (§22.10.7) | 판정 |
+|---|---|---|---|---|
+| repeat 후보 | 6 | 6 | **6** | 적중 |
+| 최종 waste | 4 | 0 | **0** | 적중 |
+| 오탐 | 4/4 | 0/0 | **0/0** | 적중 |
+
+**후보별 sha256 게이트 raw** (Q5 재실행, `diag_phi_truncation.py --q 5`):
+
+```
+  #1: name=Read   target='v4_reclassify.py'                sha256_equal=False  o_len=3444  c_len=3917   edits_in_window=3
+  #2: name=Read   target='run_swechat_waste_scan.py'       sha256_equal=False  o_len=10511 c_len=12516  edits_in_window=5
+  #3: name=Read   target='run_swechat_waste_scan.py'       sha256_equal=False  o_len=10511 c_len=12516  edits_in_window=5
+  #4: name=Edit   target='.gitignore'                       sha256_equal=False  o_len=96    c_len=94     edits_in_window=0
+  #5: name=Read   target='SWECHAT_SPEC.md'                  sha256_equal=False  o_len=16016 c_len=20357  edits_in_window=9
+  #6: name=Bash   target=None                               sha256_equal=False  o_len=74    c_len=17
+sha256_equal True 건수: 0/6
+```
+
+**해석 (§22.10.5 음성 결과 정의 준수)**:
+- 6 후보 전부 sha256 불일치. 게이트가 §22.8.8 waste 4건을 전부 차단했다.
+- **waste 0 은 실패가 아니다** — 이 세션에 진짜 낭비가 없다는 뜻이다. `edits_in_window` (3, 5, 5, 0, 9) 가 창문 안 파일 편집 존재를 확증. 상태가 바뀐 뒤의 재조회는 낭비가 아니다.
+- **`edits_in_window=0` 인 후보 #4** (Edit .gitignore, o_len=96/c_len=94): output 길이 상이 → sha256 불일치 정상. §22.10.4 백로그 (다음 라운드).
+- **게이트 완화 없음**. φ=0.514345 · N=2 · model 무변. 3상수 frozen.
+
+**중단 조건 발동 여부**:
+- 회귀 (조건 1): **없음** (198 전부 통과).
+- OTel/OpenInference 결과 변화 (조건 2): **없음** (span_kind != "tool" 분기는 기존 φ 경로 무변).
+- φ/N/model 상수 변경 (조건 3): **없음**.
+
+**정직 경계** (§22.10.3 재확인):
+- 이 결과는 **단일 세션** (§22.6 이후 재사용) 관측이다. 20세션 전수는 다음 라운드.
+- **F1 0.857 (합성) 은 계속 인용 금지** 조건 유지. 실데이터 tool output 에 대한 φ 판별력 부재는 §22.10.1 로 근거화됨.
+
