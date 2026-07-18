@@ -962,3 +962,27 @@ ExitPlanMode 재검색 (agent=="ToolSearch" AND input 에 "ExitPlanMode") 3 건 
 - 20세션 전수 실측. 다음 라운드에서 새 세션 추가 시 compact 감지 재검. `compact_boundaries` 는 두 마커 필드에 대해서만 반응하므로 벤더 포맷 변경 시 재확인 필요.
 - 5 건 waste 는 이번 게이트 통과분이지 "진짜 낭비 5 건 확증" 이 아니다. 판정은 소유자 별건.
 - §22.10.3 정직 경계 유지 (F1 0.857 합성 데이터, 실데이터 tool output φ 판별력 부재).
+
+### §22.11.8 — 잔여 5건 소유자 판정 (2026-07-18)
+
+재료: `field_test/diagnostics/diag_remaining5.py` (raw 재료 5건 추출, 진단; 결론 없음). 판정 주체: 세션 소유자 (전세원).
+
+| # | session | 대상 | 판정 | 근거 |
+|---|---|---|---|---|
+| 1 | 2502fe9a | ToolSearch `select:ExitPlanMode` | **정당** | gap 창문 안 `ExitPlanMode` tool_use 1회 (line=44) 후 Plan 모드 재진입 직전 도구 조회. Plan 모드 워크플로 |
+| 2 | 8228879e | ToolSearch `select:ExitPlanMode` | **정당** | gap 창문 안 `ExitPlanMode` 2회 (line=343, 397), Plan 모드 워크플로. cand 직전 user 발화 "Plan 모드. 계획 먼저, 승인 후 실행" |
+| 3 | 8228879e | Bash `git diff --name-only src/clew/detect/` | **정당** | description="detect diff check". 사전등록 read-only 규율 검증 명령. 출력 없음 = detect/ 불변 확인 (조용한 정상 실행) |
+| 4 | c848299d | Read `run_e3_diagnosis.py` | **정당** | gap 64분, 창문 안 `ExitPlanMode` 4회 (stage16 + stage17 계획 승인), 파일 자체는 창문 안 Edit/Write 없음. cand 직전 user "Plan 모드… detect/·eval·φ 전부 read-only". compact 없으나 장시간 워크플로 재확인 |
+| 5 | c848299d | Bash `git diff src/clew/detect/` | **정당** | description="Verify detect/ unchanged". case 3 과 동일한 사전등록 규율 검증. 출력 없음 = detect/ 불변 확인 |
+
+**결론**:
+- **20세션 확정 낭비 0건.** 21 후보 = compact 16 + ExitPlanMode 3 (case1·2·중복) + read-only 검증 2 (case3·5) + 장시간 재확인 1 (case4). 중복 감안.
+- **주목**: case 3/5 는 **우리 사전등록 규율(detect/ read-only)이 만든 검증 행동**을 게이트가 후보로 잡은 것. 낭비의 반대 — 규율 준수 확인이다.
+- **함의**: 이 코퍼스(우리 개발 세션 20개)는 낭비가 나올 구조가 아니다. compact 빈발 + Plan 모드 + 사전등록 재검증. SWE-chat Read 밀도 1.573% 와 일관.
+- **게이트 검증**: 21 후보 전부 정당으로 판정됨. 3단 게이트 (구조 → sha256 → compact) + 소유자 판정이 오탐 21건을 전량 식별. **단, 참양성 검출력은 이 코퍼스로 증명 불가** (낭비 자체가 없으므로). 낭비 있는 코퍼스 별도 필요.
+
+**정직 경계**:
+- **"clew 가 낭비 N건 검출" 여전히 인용 금지.** 이 코퍼스 확정 낭비 0.
+- **"오탐 0"** 은 말할 수 있다: 21 후보 전량 정당 판정, 게이트가 전부 걸러냄 (compact 16 → 자동, ExitPlanMode 3·검증 2·재확인 1 → 소유자 판정).
+- 참양성 검출력은 미증명. 낭비 있는 트레이스에서 별도 검증 필요.
+- 판정은 소유자 1인 (전세원) 단독. 다중 라벨러 교차 검증 없음.
