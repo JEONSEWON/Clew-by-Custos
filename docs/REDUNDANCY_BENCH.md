@@ -244,6 +244,109 @@ precision = tp/(tp+fp);  recall = tp/(tp+fn);  f1 = 2PR/(P+R)
 
 ---
 
-## §24.7 — 재실행 결과 (실행 후 채움)
+## §24.7 — 재실행 결과 (2026-07-18)
 
-_사전등록 시점: 미작성. 어댑터 구현 후 이 섹션에 실측 채운다. 예측과 대조._
+**실행**: `python field_test/eval_redundancy_bench.py`
+**게이트**: φ=0.514345, N=2, model=paraphrase-multilingual-MiniLM-L12-v2@e8f8c21, sha256 tool-kind ON.
+**어댑터 정정** (사전등록 대비): RB 는 같은 sim 안에서 `tool_call.id` 를 재사용 (airline 20/40, retail 22/48, telecom 45/112 sim). span_id=`f"{tid}#{call_idx}"` 로 unique 화, FIFO 로 call↔result 매칭. `docs/REDUNDANCY_BENCH.md §24.2` 매핑표 및 어댑터 테스트에 반영. 이 정정은 사전등록 규약 A 를 훼손하지 않음 — turn_pair 매핑은 그대로 보존.
+
+**평가**: `data/redundancy_bench/LLM_judge/evaluate.py` 원본을 그대로 `import` → `evaluate_standard` (airline/retail), `evaluate_telecom_one_one` (telecom) 호출. 재구현 없음.
+
+### 예측 vs 실측 (규약 A)
+
+| 지표 | 예측 (§24.5) | 실측 | 판정 |
+|---|---:|---:|---|
+| assistant tool spans (총) | 1620–1640 | **1628** | ✓ 범위 안 |
+| waste spans (span 수) | 40–120 | **132** | ✗ +12 초과 |
+| step-level precision | 0.35–0.75 | **0.8258** | ✗ 상단 초과 |
+| step-level recall | 0.03–0.12 | **0.1573** | ✗ 상단 초과 |
+| **step-level F1** | 0.05–0.20 | **0.2642** | ✗ **상단 초과** |
+| trajectory-level accuracy | 0.15–0.35 | **0.5000** | ✗ 상단 초과 |
+
+**변명 없이**: 5개 지표 중 5개가 예측 상단을 넘어섰다. 사전등록 예측이 지나치게 보수적이었다는 뜻이지, 게이트가 이상하게 동작했다는 뜻이 아니다. F1 은 논문 Window-to-One (전체 대상, LLM judge) 20% 를 초과하는 26.4% 로 도출. Precision 0.826 은 정밀도 우선 설계가 예상보다 정확했다는 뜻.
+
+### 도메인별 세부
+
+| 도메인 | spans | waste | tp | fp | fn | P | R | F1 | traj_acc |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| airline | 372 | 37 | 64 | 10 | 236 | 0.865 | 0.213 | **0.342** | 0.600 |
+| retail | 409 | 33 | 42 | 24 | 152 | 0.636 | 0.217 | **0.323** | 0.591 |
+| telecom | 847 | 62 | 112 | 12 | 780 | 0.903 | 0.126 | **0.221** | 0.429 |
+| **합산** | **1628** | **132** | **218** | **46** | **1168** | **0.826** | **0.157** | **0.264** | **0.500** |
+
+telecom recall 이 낮은 이유는 `role=user` 발행 tool 이 GT_set 에 남아있고 우리는 못 예측하기 때문 (§24.3 명시 정책). retail precision 이 상대적으로 낮은 이유는 오탐 5건 대부분이 "정당한 재조회" (get_order_details 같은 참조성 툴) 인데 sha256 이 매칭.
+
+### §24.4 카테고리별 recall (우리 게이트 대상 정직성)
+
+| 카테고리 | GT 수 | 우리 hit | recall | 스코프 |
+|---|---:|---:|---:|---|
+| **duplicated step** | 130 | **79** | **0.6077** | ← **주 타겟** |
+| abnormal step | 100 | 0 | 0.0000 | 스코프 밖 (에러 output 다양성) |
+| exploratory step | 615 | 14 | 0.0228 | 스코프 밖 (LLM judge 영역) |
+| incorrect step | 38 | 12 | 0.3158 | 부분 hit (다른 카테고리와 라벨 겹침 추정) |
+
+**논문 대비 부당 비교 방지 (§24.4 원칙)**:
+- 논문 Window-to-One 20% F1 은 **전체 4 카테고리 대상**.
+- 우리 게이트는 duplicated 특화. 전체 F1 26.4% 는 우연에 가까운 "duplicated 정확 검출" + "다른 카테고리 오탐 자연 억제" 조합.
+- **duplicated 전용 recall 60.77%** 이 우리의 진짜 성능 지표. abnormal/exploratory recall 0/2% 는 설계상 예상.
+
+### 오탐 상위 (Pred ∈ GT^c) — 도메인별 5건 각
+
+**airline** (10건 fp 중 5)
+1. `task=12 get_user_details` — 같은 user 재조회. RB 는 정보 재조회를 필수 절차로 판단 (redundant 아님).
+2. `task=31 get_user_details` — 같은 패턴.
+3. `task=32 get_reservation_details` — 예약 재조회.
+4. `task=34 search_direct_flight` — 같은 항공편 재검색.
+5. `task=41 get_user_details` — 같은 패턴.
+
+공통 원인: `get_*` 참조 툴을 두 번 부르면 sha256 매칭. RB 어노테이터는 두 번째 조회에 명확한 목적이 있으면 redundant 라벨 안 붙임. 우리 게이트는 목적을 모름.
+
+**retail** (24건 fp 중 5)
+1. `task=9 exchange_delivered_order_items` — 성공한 write 재호출 (같은 결과 반환). GT 는 예외적으로 redundant 아님 (교환 재확인 목적).
+2. `task=11 get_order_details` — 같은 order 재조회.
+3. `task=22 modify_pending_order_address` — write op 후 확인 재조회.
+4. `task=50/53 get_order_details` — 같은 order 재조회.
+
+**telecom** (12건 fp 중 5)
+1. `refuel_data` 3건 — 같은 인자로 두 번 refuel 하는데 GT 는 redundant 라벨 안 붙임 (2 GB 씩 두 번 = 4 GB 라 논리적으로 다른 행위). 우리는 sha256 만 봐서 output 동일하면 매칭.
+2. `get_bills_for_customer` — 청구 재조회.
+3. `get_details_by_id` — line id 재조회.
+
+**오탐의 진짜 원인**: 우리 게이트는 "output 이 완전히 같으면 waste" 로 판정. RB 는 "의도가 다르면 redundant 아님". 정보 재조회는 상태 확인 목적으로 정당한 반복. 이 gap 은 sha256 게이트 원리적 한계. **precision 을 더 높이려면 semantic gap (구조 자체는 같은데 의도 차이) 을 잡는 판정기 필요** — 우리 φ 게이트 밖 영역.
+
+### 미탐 duplicated 상위 (GT duplicated ∈ Pred^c) — 5건
+
+**retail task=11 turn=14,15**: `reason='Repeat for step 7, 8'` — 우리 detector 가 turn 7,8 과 14,15 사이 다른 툴콜을 여러 건 감지해서 N=2 구조 게이트 인접성 불충족 (compact 창문 밖). 개선 여지: N=3+ 로 확장하거나 compact window 확장. **단, φ/N 은 frozen** (중단조건 3).
+
+**retail task=58, task=79**: 유사 원인.
+
+**telecom task=[mobile_data_issue]…turn=29,30**: `reason='Permintaan timeout'` — 여기는 GT reason 자체가 "timeout 후 재시도" 라 duplicated 라벨. output 이 두 번째엔 다를 가능성 (다른 tool result). sha256 매칭 실패로 미탐. 정당한 미탐.
+
+**telecom [mobile_data_issue]…turn=10,11**: `reason='This step is not necessary to obtain the business route corresponding to the user's mobile phone number'` — 라벨 사유가 "이 스텝 자체가 불필요" 로 되어있는데, 우리는 다른 인자의 반복이라 sha256 매칭 실패. 이 유형은 우리 정의 밖 (재호출 아님, 그냥 불필요한 단발성 호출) — RB 어노테이터가 duplicated 로 라벨한 이유 자체가 미묘.
+
+### 스코프 밖 카테고리 (참고)
+
+- **abnormal step 0/100 hit**: 에러 output 매번 다름 (timestamp, session id 포함) → sha256 매칭 안 됨. 필요 시 별도 error-normalization 게이트 (§25 이후 후속 과제).
+- **exploratory step 14/615 hit**: exploratory 는 정의상 서로 다른 args 로 탐색. sha256 게이트가 잡을 수 있는 건 이 중 args 우연 반복 케이스뿐. 스코프 밖.
+
+### evaluate.py 검증 (사전등록 중단조건 4)
+
+논문 baseline 예측 파일 (Window-to-One @ 24.88%) 은 리포에 없고 (judge.py 는 LLM API 호출 필요), 우리 로컬에서 재현 불가. 대신:
+- `evaluate.py` 원본을 그대로 `sys.path.insert` 후 `import` → `evaluate_standard`, `evaluate_telecom_one_one` 호출. 재구현 없음.
+- 함수 인자·반환 스펙 준수: airline/retail 은 `{task_id: set}` 두 dict, telecom 은 `{idx: {'task_id', 'redundant_step_idx'}}` GT + `{idx: set}` pred.
+
+**즉 계산 로직에 대한 의심 없음** (그들 코드 그대로). 다만 논문 24.88% 수치와의 직접 비교는 위 §24.4 정직성 원칙 참고.
+
+### 중단 조건 재확인
+
+1. **231 테스트 통과** (216 → 231, 신규 15). 회귀 0. ✓
+2. **CC/Toolathlon/OTel 결과 변화 없음** (`_load_trace_auto` 확장만). ✓
+3. **φ / N / model / sha256 로직 변경 없음**. ✓
+4. **Span 자료구조 확장 없음**. `Trace.metadata` 에만 `rb_span_to_turn_pair, rb_user_tool_idx, source, domain, task_id, sim_id, reward_info` 추가. ✓
+5. **GT 필터/변형 없음**. `annotation.json` 그대로 `evaluate.py` 에 전달. ✓
+
+### 병합 방침
+
+- 이 커밋은 `feat/cc-adapter` 브랜치의 §24 결과 커밋 (사전등록 a73ced6 → 어댑터 f193ff5 → 결과 이 커밋).
+- push 만. PR 은 §23 (Toolathlon) + §24 (RedundancyBench) 배치 예정.
+
