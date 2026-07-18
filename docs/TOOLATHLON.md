@@ -333,3 +333,69 @@ execute  :   330  ( 4.1%)
 
 - 이 커밋은 `feat/N-recon` 브랜치 (로드맵 ② N 리콘 + ③ Toolathlon 확장 배치).
 - push 만. PR 은 로드맵 ② ③ 끝 일괄.
+
+---
+
+## §27 — 비용 산정 리콘 (2026-07-18, 백로그, Phase 2)
+
+**목적**: report.md 의 "낭비 = 토큰 X = $Y" 인용 가능성 확인. 코드 무수정 리콘.
+스크립트: `field_test/diagnostics/recon_cost_calc.py` (규칙 7 부칙).
+
+### §27.1 — report 파이프는 준비됨
+
+- `src/clew/report/markdown.py:60-67, 79-89`: `estimated wasted tokens/cost` 슬롯 이미 존재. 값 없으면 `"unknown"`.
+- `src/clew/report/_model.py::WasteDetail`: `waste_tokens = candidate.token_count`, `waste_cost = token_count × cost_rate`.
+- `src/clew/detect/cascade.py:70-77`: waste 합산 로직 존재 (`tc = s.token_count or 0`).
+- **즉 어댑터가 `Span.token_count` / `Span.cost_rate` 를 채우기만 하면 report 에 자동 표시.**
+
+### §27.2 — 어댑터별 채움 상태 (현재 report cost 는 전부 "unknown")
+
+| 어댑터 | token_count | cost_rate | model |
+|---|---|---|---|
+| `claude_code.py:223-225` | None | None | None |
+| `redundancy_bench.py:226-228` | None | None | None |
+| `toolathlon.py:210-212` | None | None | `modelname_run` (파일명) |
+| `langgraph.py:127-129` | `_token_count_of(attrs)` | `cost_table[model]` | `model` |
+| `otel_json.py` | (langgraph 와 동일 유틸) | — | — |
+
+- **낭비 span 토큰을 직접 셀 수 있는 어댑터** = LangGraph / OTel JSON 뿐. 우리 실측 스캔한 CC/RB/Toolathlon 은 전부 미채움.
+
+### §27.3 — CC 데이터 있으나 매핑 안 됨
+
+CC JSONL 원본 `type: "assistant"` 메시지 usage:
+```
+{'input_tokens': 3, 'cache_creation_input_tokens': 10705,
+ 'cache_read_input_tokens': 13305, 'output_tokens': 195, ...}
+```
+- usage 는 **assistant (LLM) 메시지에 부착**.
+- Clew CC 어댑터는 **tool 스팬만 생성** (LLM 스팬 미생성). → 원본에 있으나 어댑터가 안 잡음.
+- 토큰 넣으려면: (a) LLM 스팬 신설, 또는 (b) 인접 assistant usage 를 tool 스팬에 귀속. **구조 결정 필요 (Phase 2).**
+
+### §27.4 — char 기반 근사
+
+- `tiktoken` 미설치. 대안: `chars/4` 중앙값, 범위 `chars/5..3`.
+- JSON/코드는 `chars/3` 근처, 자연어는 `chars/4`. 단일값 "정확 토큰" 서술 금지.
+- 낭비 = origin·cand output_text 동일 sha256 → cand output_text 문자 수 ≈ 재소비 컨텍스트 크기.
+
+### §27.5 — 핵심 통찰: multi-turn amplification
+
+- **단순 재소비 $ 는 소액**: Toolathlon 8,042 waste × chars/4 × input $3/M = **~$9.76** (전 22 모델 × 3 런, 트레이스당 $0.00137).
+- **진짜 낭비 = tool_result 가 이후 매 턴 LLM input 으로 재소비 × 남은 턴 수.**
+  - i.e. amplification factor ≈ (waste span 등장 이후 남은 assistant 턴 수).
+  - arXiv:2509.23586 (tool 메시지 30.4K 토큰 반복 낭비) 논지와 일치.
+- 정확한 amplification 모델링 (턴 카운트, cache_read vs input 구분) 은 별도 작업. **Phase 2 백로그.**
+
+### §27.6 — 단가 취급
+
+- 단가는 시변 → **하드코딩 금지**. 사용자 입력 / env / 외부 표 권장.
+- 2026-07 대략 (인용 금지, 리콘 참고값):
+  - Anthropic Claude 4.5 Sonnet: input $3/M, output $15/M
+  - OpenAI GPT-5: input $2.50/M, output $10/M
+- `Span.cost_rate` 는 **단일 $/token** (input/output 미분리). 정밀 원가는 Span 확장 필요.
+
+### §27.7 — 백로그 상태
+
+- **Phase 2 착수 조건**: (a) 어댑터 토큰 매핑 (CC LLM 스팬 신설 결정), (b) amplification 모델 사전등록, (c) 단가 주입 인터페이스.
+- **README / 대외 인용 이전 미착수** — report cost 는 계속 "unknown" 유지.
+- **말할 수 있음** (지금): "낭비 = 토큰 X = $ Y 는 파이프 준비 완료. 어댑터 확장 대기."
+- **말할 수 없음**: "$X 절감했다" — 어떤 어댑터도 report 에서 $ 를 계산 안 함, 근사만 리콘.
