@@ -125,6 +125,76 @@ recon 은 잠정 정의 (파이썬 dict 그룹핑) 였다. 어댑터는 clew 구
 - 어댑터 구현 코드는 **push 확인 후** 별도 커밋.
 - PR / 머지 는 §23 완주 후 feat/cc-adapter 브랜치 통째로 (별도 요청).
 
-## §23.7 — 재실행 결과
+## §23.7 — 재실행 결과 (2026-07-18)
 
-(결과 커밋 시 이 섹션 채운다. 지금은 비워둠.)
+**실행**: `python field_test/diagnostics/scan_toolathlon.py data/toolathlon/claude-4.5-sonnet-0929_1.jsonl`
+**게이트**: φ=0.514345, N=2, model=paraphrase-multilingual-MiniLM-L12-v2@e8f8c21, sha256 tool-kind ON.
+**소요**: wall 0.7s.
+
+### 예측 vs 실측
+
+| 지표 | 예측 (§23.5) | 실측 | 판정 |
+|---|---|---|---|
+| repeat 후보 (구조 게이트 N=2) | 150–177 | **173** | ✓ 범위 안 |
+| sha256 게이트 통과 (tool kind) | 25–35 | **28** | ✓ 범위 안 |
+| waste 최종 | 25–35 | **28** | ✓ 범위 안 |
+
+세 예측 모두 적중. recon 잠정치 (177 후보 / 32 sha 동일) 대비 -4 / -4 인데, 이는 구조 게이트가 N=2 인접성 조건으로 recon 의 dict-groupby 보다 좁게 자르기 때문이라 사전등록 예측과 일관.
+
+### 로드 요약
+
+- 파일 라인 수: 108
+- 성공적으로 cascade 실행: **107**
+- build 예외: **1** — `line#30 [build] ValueError: arguments JSON 파싱 실패 (원문 앞 80자: '{"path": "/workspace/dumps/workspace/format_data.py"')`
+  - **원인**: 실데이터의 `filesystem-write_file` arguments 값이 52 자에서 잘림 (task=`quantitative-financial-analysis`, request_id=`671bb135-6a28-4ffa-acac-24374c8aa93b`). Toolathlon 데이터셋 원본 결함.
+  - **처리**: 어댑터는 §21.4 대로 명시 raise. 스캔 스크립트가 라인별 catch 로 나머지 107 개 처리 계속.
+  - 스캔 스크립트만 관용, 어댑터 계약(1 line → 1 Trace or ValueError)은 변경 없음.
+
+### waste > 0 트레이스 분포 (14 트레이스)
+
+| task_name | eval | waste 수 |
+|---|---|---|
+| k8s-pr-preview-testing | False | 8 |
+| email-paper-homepage | False | 3 |
+| reimbursement-form-filler | True | 3 |
+| fillout-online-forms | True | 2 |
+| (나머지 10 트레이스: 각 1–2 건) | mix | 12 |
+
+**evaluation 별 낭비율**:
+- eval=`False` (실패 63): waste 21건, waste-트레이스 11 (17.5%)
+- eval=`True` (성공 44): waste 7건, waste-트레이스 3 (6.8%)
+
+실패 트레이스가 성공 트레이스 대비 낭비 트레이스 비율 **2.6배**. arXiv:2602.19008 "canonical path deviation → failure" 방향과 일관 (통계 아님, 관측).
+
+### waste 도구 분포
+
+**args 있음 (27건)** — 상위:
+- `filesystem-read_file` 5
+- `pdf-tools-read_pdf_pages` 4
+- `github-get_file_contents` 4
+- `playwright_with_chunk-browser_type` 2
+- `k8s-kubectl_get` 2
+- `playwright_with_chunk-browser_navigate` 2
+- `playwright_with_chunk-browser_wait_for` 2
+- (기타 6 tool × 1건)
+
+**args='' or '{}' (1건)**: `playwright_with_chunk-browser_close` args=`{}` × 1
+
+recon 예측: "playwright next_span args='' 반복이 다수 포함될 것" — **틀림**. sha256 게이트가 대부분의 args='' 반복을 걸러냈다 (다른 페이지 → 다른 스냅샷 → sha256 불일치). CC 의 ExitPlanMode 선례처럼 args 없어도 낭비가 되려면 output 동일해야 하는데, playwright next_span 은 매 호출마다 다른 페이지로 진행하는 게 정상 사용법이라 output 이 다름. 결과: playwright next_span 은 waste=0.
+
+### 어댑터 실장 노트 (사전등록 대비 미세 조정)
+
+- `_normalize_arguments`: raw=`""` (빈 문자열) 은 Toolathlon 관례상 "인자 없음" 이므로 `{}` 로 정규화. 사전등록 (§23.3) 은 "파싱 실패 시 raise" 만 명시했는데, 빈 문자열은 파싱 실패가 아니라 관례로 처리. 어댑터 테스트 `test_arguments_parse_failure_raises` 는 "not valid json!!" 같은 진짜 malformed 만 대상.
+- 여전히 malformed JSON (line 30 케이스) 은 하드 raise. §21.4 준수.
+
+### 중단 조건 재확인
+
+1. **204 회귀** — 216 통과 (신규 12 포함). 회귀 없음.
+2. **CC/OTel/OpenInference 결과 변화** — `_load_trace_auto` 분기 로직만 확장. CC 테스트 `test_auto_dispatch_cc_still_works` 통과. 다른 어댑터 파일 수정 없음.
+3. **φ / N / model / sha256 로직 변경** — 없음.
+4. **Span 자료구조 확장** — 없음. `Trace.metadata` 에만 `source, task_name, task_status, modelname_run` 추가.
+
+### 병합 방침
+
+- 이 커밋은 `feat/cc-adapter` 브랜치의 §23 결과 커밋 (사전등록 e8da282 → 구현 → 결과).
+- push 만. PR 은 별도 요청 (규칙 8 배치 PR 계획).

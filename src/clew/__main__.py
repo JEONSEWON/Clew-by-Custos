@@ -20,16 +20,55 @@ def _load_trace_auto(path: Path) -> "Trace":
     지원:
       - Clew Trace JSON (최상위 dict에 "trace_id" 키)     → load_trace()
       - OTel SDK JSON 배열 (최상위 list, "context" 키)     → ingest_from_otel_json()
-      - Claude Code JSONL (.jsonl 확장자)                  → ingest_claude_code_jsonl()
+      - Claude Code JSONL (.jsonl, 첫 줄 "sessionId")       → ingest_claude_code_jsonl()
+      - Toolathlon JSONL (.jsonl, 첫 줄 "modelname_run")    → ingest_toolathlon_jsonl()
 
     명확한 에러:
       - resource_spans/resourceSpans 키 → Format B 미지원, 변환 방법 안내
+      - .jsonl 이지만 어느 마커도 없음 → 최상위 키 로그 + 에러
     """
     from clew.model import Trace  # noqa: F401 (type-only import avoidance)
 
     if path.suffix == ".jsonl":
-        from clew.ingest.claude_code import ingest_claude_code_jsonl
-        return ingest_claude_code_jsonl(path)
+        # 첫 파싱 가능 라인만 peek → 마커로 어댑터 선택 (§23.4)
+        first_obj: dict | None = None
+        with path.open(encoding="utf-8") as f:
+            for raw in f:
+                s = raw.strip()
+                if not s:
+                    continue
+                try:
+                    parsed = _json.loads(s)
+                except _json.JSONDecodeError as exc:
+                    raise ValueError(f"{path}:1: JSONL 첫 라인 파싱 실패 ({exc})") from exc
+                if isinstance(parsed, dict):
+                    first_obj = parsed
+                break
+        if first_obj is None:
+            raise ValueError(f"{path}: 빈 JSONL 또는 첫 라인이 dict 아님")
+
+        # 마커 검사 — 두 셋은 겹치지 않음 확인됨 (§23.4)
+        cc_marker = "sessionId" in first_obj
+        toolathlon_marker = (
+            "modelname_run" in first_obj
+            and "task_status" in first_obj
+            and "messages" in first_obj
+        )
+        if cc_marker and toolathlon_marker:
+            raise ValueError(
+                f"{path}: JSONL 첫 라인에 CC(sessionId)와 Toolathlon(modelname_run+task_status+messages) "
+                f"마커가 동시에 있음 — 형식 판별 불가"
+            )
+        if cc_marker:
+            from clew.ingest.claude_code import ingest_claude_code_jsonl
+            return ingest_claude_code_jsonl(path)
+        if toolathlon_marker:
+            from clew.ingest.toolathlon import ingest_toolathlon_jsonl
+            return ingest_toolathlon_jsonl(path)
+        raise ValueError(
+            f"{path}: JSONL 형식 판별 실패 — 최상위 키 {list(first_obj.keys())[:8]}. "
+            f"'sessionId' (CC) 또는 'modelname_run'+'task_status'+'messages' (Toolathlon) 필요."
+        )
 
     text = path.read_text(encoding="utf-8").strip()
     try:
