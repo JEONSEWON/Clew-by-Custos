@@ -121,12 +121,21 @@ def _build_trace_from_sim(sim: dict, domain: str | None) -> Trace:
 
     task_id = sim.get("task_id")
 
-    # 1차: assistant 발행 tool_calls 수집 (turn_idx = 리스트 인덱스; recon Q3 확인)
-    tool_uses: dict[str, tuple[dict, int]] = {}  # tid → (tc, call_turn_idx)
-    seen_call_order: list[str] = []
-    # 2차: tool 결과 수집 — requestor='assistant' (또는 미상) 만 span 대상
-    tool_results: dict[str, tuple[str, int]] = {}  # tid → (content, result_turn_idx)
-    user_tool_idx: list[int] = []  # requestor='user' tool 결과의 turn_idx (§24.3 참고)
+    # RB 는 같은 sim 내 tool_call.id 를 재사용 (같은 툴 재호출 시). recon 확정:
+    #   airline 20/40, retail 22/48, telecom 45/112 sim 에서 재사용 발생.
+    # → tid 단위 FIFO 로 call↔result 매칭. span_id = f"{tid}#{call_idx}" 로 unique.
+    #
+    # 데이터 구조:
+    #   pending_calls_by_tid[tid] = deque([(tc_dict, call_turn_idx, occurrence_idx), ...])
+    #     — 아직 매치 안된 assistant call (FIFO)
+    #   matched_pairs = [(tc_dict, call_idx, result_idx, content, tid, occ), ...]
+    #     — 조인 완료한 pair (스팬 생성 재료), 순서 = call_idx 순
+    from collections import deque
+    pending_calls_by_tid: dict[str, deque] = {}
+    tid_occurrence_counter: dict[str, int] = {}
+    matched_pairs: list[tuple[dict, int, int, str, str, int]] = []
+    user_tool_idx: list[int] = []
+    unmatched_results: list[tuple[str, int]] = []  # (tid, turn_idx)
 
     for turn_idx, msg in enumerate(messages):
         if not isinstance(msg, dict):
@@ -146,12 +155,9 @@ def _build_trace_from_sim(sim: dict, domain: str | None) -> Trace:
                     raise ValueError(
                         f"RedundancyBench sim={sim_id} msg[{turn_idx}].tool_calls: id 없음"
                     )
-                if tid in tool_uses:
-                    raise ValueError(
-                        f"RedundancyBench sim={sim_id}: 중복 tool_call id {tid!r}"
-                    )
-                tool_uses[tid] = (tc, turn_idx)
-                seen_call_order.append(tid)
+                occ = tid_occurrence_counter.get(tid, 0)
+                tid_occurrence_counter[tid] = occ + 1
+                pending_calls_by_tid.setdefault(tid, deque()).append((tc, turn_idx, occ))
         elif role == "tool":
             requestor = msg.get("requestor")
             tid = msg.get("id")
@@ -160,43 +166,47 @@ def _build_trace_from_sim(sim: dict, domain: str | None) -> Trace:
                     f"RedundancyBench sim={sim_id} msg[{turn_idx}]: role='tool' 인데 id 없음"
                 )
             if requestor == "user":
-                # §24.2 정책: user-발행 tool 은 span 제외. turn_idx 만 기록.
+                # §24.2 정책: user-발행 tool 은 span 제외.
                 user_tool_idx.append(turn_idx)
                 continue
-            # assistant 발행 (또는 requestor 필드 부재) 만 결과로 수집
-            if tid in tool_results:
-                raise ValueError(
-                    f"RedundancyBench sim={sim_id}: 중복 tool_result for {tid!r}"
-                )
-            tool_results[tid] = (_render_content(msg.get("content")), turn_idx)
+            queue = pending_calls_by_tid.get(tid)
+            if not queue:
+                unmatched_results.append((tid, turn_idx))
+                continue
+            tc, call_idx, occ = queue.popleft()
+            content = _render_content(msg.get("content"))
+            matched_pairs.append((tc, call_idx, turn_idx, content, tid, occ))
 
-    if not tool_uses:
+    if not matched_pairs:
         raise ValueError(
             f"RedundancyBench sim={sim_id}: assistant 발행 tool_calls 하나도 없음"
         )
 
-    # 조인 검사 (§21.4). assistant-only 필터 후 계산.
-    orphan_use = sorted(set(tool_uses) - set(tool_results))
-    orphan_result = sorted(set(tool_results) - set(tool_uses))
-    if orphan_use or orphan_result:
+    # 조인 검사 (§21.4). 아직 매치 안된 call / result 확인.
+    orphan_calls = [
+        (tid, ci, occ)
+        for tid, q in pending_calls_by_tid.items()
+        for (_tc, ci, occ) in q
+    ]
+    if orphan_calls or unmatched_results:
         raise ValueError(
-            f"RedundancyBench sim={sim_id}: 조인 실패 — orphan tool_call {len(orphan_use)}건 "
-            f"(첫 5개: {orphan_use[:5]}), orphan tool_result {len(orphan_result)}건 "
-            f"(첫 5개: {orphan_result[:5]})"
+            f"RedundancyBench sim={sim_id}: 조인 실패 — orphan tool_call {len(orphan_calls)}건 "
+            f"(첫 5개: {orphan_calls[:5]}), orphan tool_result {len(unmatched_results)}건 "
+            f"(첫 5개: {unmatched_results[:5]})"
         )
 
-    # Span 생성. start_time 우선 순위: 원본 timestamp → fallback synthetic(call_turn_idx).
+    # Span 생성. call_idx 순 (temporal). span_id = f"{tid}#{call_idx}" (unique).
     root_span_id = f"root-{sim_id}"
     tool_spans: list[Span] = []
     span_to_turn_pair: dict[str, list[int]] = {}
 
-    for tid in seen_call_order:
-        tc, call_idx = tool_uses[tid]
-        content, result_idx = tool_results[tid]
+    matched_pairs.sort(key=lambda x: x[1])  # by call_idx
+
+    for tc, call_idx, result_idx, content, tid, occ in matched_pairs:
         name = tc.get("name") or "anonymous"
         args_normalized = _normalize_arguments(tc.get("arguments"))
+        span_id = f"{tid}#{call_idx}"
 
-        # timestamp: assistant msg 의 것 우선, 없으면 fallback
         asst_msg = messages[call_idx]
         ts = _parse_timestamp(asst_msg.get("timestamp")) if isinstance(asst_msg, dict) else None
         if ts is None:
@@ -205,7 +215,7 @@ def _build_trace_from_sim(sim: dict, domain: str | None) -> Trace:
         tool_spans.append(
             Span(
                 trace_id=sim_id,
-                span_id=tid,
+                span_id=span_id,
                 parent_span_id=root_span_id,
                 agent_or_node_id=name,
                 span_kind="tool",
@@ -218,7 +228,7 @@ def _build_trace_from_sim(sim: dict, domain: str | None) -> Trace:
                 cost_rate=None,
             )
         )
-        span_to_turn_pair[tid] = [call_idx, result_idx]
+        span_to_turn_pair[span_id] = [call_idx, result_idx]
 
     root_start = min(s.start_time for s in tool_spans)
     root_end = max(s.end_time for s in tool_spans)

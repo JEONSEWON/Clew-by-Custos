@@ -68,7 +68,7 @@ def _write_rb(tmp_path: Path, sims: list[dict], name: str = "final_traces.json")
 # ─── §24.2 매핑 ───────────────────────────────────────────────────────────
 
 def test_basic_serial_pair(tmp_path: Path) -> None:
-    """assistant → tool : span 1개, turn_pair 보존."""
+    """assistant → tool : span 1개, turn_pair 보존. span_id = tid#call_idx."""
     sim = _sim("s1", "t1", messages=[
         _user_msg("hi"),
         _asst_msg([_tool_call("c1", "get_user", {"id": 100})]),
@@ -80,13 +80,36 @@ def test_basic_serial_pair(tmp_path: Path) -> None:
     assert trace.trace_id == "s1"
     assert len(trace.spans) == 2  # root + 1 tool
     tool = next(s for s in trace.spans if s.span_kind == "tool")
-    assert tool.span_id == "c1"
+    # RB 는 tid 재사용 → span_id = f"{tid}#{call_idx}"
+    assert tool.span_id == "c1#1"
     assert tool.agent_or_node_id == "get_user"
     assert tool.output_text == '{"name": "John"}'
     # turn_pair: assistant at idx=1, tool at idx=2
-    assert trace.metadata["rb_span_to_turn_pair"] == {"c1": [1, 2]}
+    assert trace.metadata["rb_span_to_turn_pair"] == {"c1#1": [1, 2]}
     assert trace.metadata["source"] == "redundancy_bench_json"
     assert trace.metadata["rb_user_tool_idx"] == []
+
+
+def test_duplicate_tool_call_id_split_by_occurrence(tmp_path: Path) -> None:
+    """§24.2: RB 는 같은 sim 안에서 tool_call.id 재사용. FIFO 로 짝지어 span 분리."""
+    sim = _sim("s-dup", messages=[
+        _asst_msg([_tool_call("call_x", "get_res", {"id": "A"})]),  # turn 0
+        _tool_msg("call_x", "result-1"),                              # turn 1
+        _asst_msg([_tool_call("call_x", "get_res", {"id": "A"})]),  # turn 2 (같은 tid 재사용)
+        _tool_msg("call_x", "result-2"),                              # turn 3
+    ])
+    path = _write_rb(tmp_path, [sim])
+    trace = ingest_redundancy_bench_json(path)
+
+    tool_spans = sorted(
+        (s for s in trace.spans if s.span_kind == "tool"), key=lambda s: s.start_time
+    )
+    assert [s.span_id for s in tool_spans] == ["call_x#0", "call_x#2"]
+    assert [s.output_text for s in tool_spans] == ["result-1", "result-2"]
+    assert trace.metadata["rb_span_to_turn_pair"] == {
+        "call_x#0": [0, 1],
+        "call_x#2": [2, 3],
+    }
 
 
 def test_arguments_normalized_sort_keys(tmp_path: Path) -> None:
@@ -139,11 +162,11 @@ def test_user_requestor_tool_excluded(tmp_path: Path) -> None:
     trace = ingest_redundancy_bench_json(path)
 
     tool_spans = [s for s in trace.spans if s.span_kind == "tool"]
-    assert [s.span_id for s in tool_spans] == ["c_asst"]  # c_user 제외
+    assert [s.span_id for s in tool_spans] == ["c_asst#1"]  # c_user 제외, tid#call_idx
     # rb_user_tool_idx: turn_idx 4 (tool msg with requestor='user')
     assert trace.metadata["rb_user_tool_idx"] == [4]
     # turn_pair 는 c_asst 만
-    assert trace.metadata["rb_span_to_turn_pair"] == {"c_asst": [1, 2]}
+    assert trace.metadata["rb_span_to_turn_pair"] == {"c_asst#1": [1, 2]}
 
 
 # ─── §24.2 timestamp ─────────────────────────────────────────────────────
