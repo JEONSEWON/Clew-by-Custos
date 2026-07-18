@@ -198,3 +198,138 @@ recon 예측: "playwright next_span args='' 반복이 다수 포함될 것" — 
 
 - 이 커밋은 `feat/cc-adapter` 브랜치의 §23 결과 커밋 (사전등록 e8da282 → 구현 → 결과).
 - push 만. PR 은 별도 요청 (규칙 8 배치 PR 계획).
+
+---
+
+## §26 — 22모델 확장 스캔 (2026-07-18, post-hoc, 로드맵 ③)
+
+§23 어댑터 (main 병합분 `52a38ea`) **무수정 재사용**. `hkust-nlp/Toolathlon-Trajectories` 전량 `snapshot_download` → 66 파일 (22 모델 × 3 런). 스크립트: `field_test/diagnostics/scan_toolathlon_17models.py` (규칙 7 부칙).
+
+### §26.1 — 규모
+
+- **파일 66, 트레이스 7,116** (일부 파일 106, 나머지 108).
+- **spans 183,050, tool spans 176,270.**
+- **repeat 후보 17,101** (구조 게이트 N=2 통과).
+- **waste 8,042** (sha256 게이트 추가 통과), **waste_traces 1,280.**
+- **eval 분포**: `pass=1,613  fail=5,046  other=121` (나머지 336 = 파싱 실패 라인).
+- **wall time**: 32.1 s (임베딩 캐시 워밍 후, 라벨 미참조).
+
+### §26.2 — 모델별 waste 밀도 (3런 aggregate)
+
+```
+model                    trc   cnd   wst   wT  w/trc  w/1kt   sha%  wf/tf  wp/tp
+claude-4-sonnet-0514     324   360    59   33  0.182   6.84  16.4%  0.232  0.085
+claude-4.5-haiku-1001    324   536   104   52  0.321   9.68  19.4%  0.363  0.202
+claude-4.5-opus          324   756   195   46  0.602  18.31  25.8%  0.485  0.128
+claude-4.5-sonnet-0929   324   465    89   38  0.275   8.97  19.1%  0.271  0.285
+deepseek-3.2-thinking    324   801   259   78  0.799  20.77  32.3%  0.500  0.477
+deepseek-v3.2-exp        324   478   220   57  0.679  27.81  46.0%  0.450  0.156
+gemini-2.5-flash         324   741   330   69  1.019  94.53  44.5%  0.869  0.583
+gemini-2.5-pro           324  4246  2742  110  8.463 286.43  64.6%  2.378  0.500
+gemini-3-pro-preview     324   483   172   41  0.531  22.92  35.6%  0.401  0.169
+glm-4.6                  324   856   137   45  0.423  15.34  16.0%  0.427  0.067
+gpt-5                    324   226   113   48  0.349  15.49  50.0%  0.447  0.235
+gpt-5-high               324   159    51   35  0.157   8.24  32.1%  0.199  0.144
+gpt-5-mini               324   687   378   87  1.167  50.43  55.0%  1.490  0.217
+gpt-5.1                  324   357   100   43  0.309  12.33  28.0%  0.206  0.552
+grok-4                   320  1196   471   91  1.472  55.02  39.4%  1.354  1.854
+grok-4-fast              320  1477  1081   44  3.378 130.12  73.2%  4.127  0.133
+grok-code-fast-1         320  1189   668   39  2.087  87.70  56.2%  2.541  0.250
+kimi-k2-0905             324   458   136   54  0.420  18.44  29.7%  0.536  0.171
+minimax-m2               324   228    64   35  0.198  11.42  28.1%  0.213  0.091
+o3                       324   384   190   58  0.586  32.51  49.5%  0.724  0.218
+o4-mini                  324   305   305   91  0.941  57.79  70.3%  0.925  0.500
+qwen-3-coder             324   584   178   86  0.549  20.28  30.5%  0.631  0.340
+```
+
+범례: `w/trc` = waste/trace, `w/1kt` = waste/1,000 tool spans, `sha%` = waste/cands (sha256 게이트 통과율), `wf/tf` = waste / 실패트레이스, `wp/tp` = waste / 성공트레이스.
+
+- **w/trc 최고 = gemini-2.5-pro 8.463** (2,742 waste / 324 traces).
+- **w/trc 최저 = gpt-5-high 0.157** (51 waste). **54배 편차.**
+
+### §26.3 — sha256 게이트 범용성 + 빈-인자 분포
+
+- 전체 `sha%` = 8,042 / 17,101 = **47.0%**.
+- 모델별 `sha%` 범위: **16.0% (glm-4.6) — 73.2% (grok-4-fast).**
+- claude-4.5-sonnet-0929 sha% 19.1% (§23.7 baseline 16.2% 근방).
+- **빈-인자 waste** (`input` ∈ {"", "{}"}):
+  ```
+  gemini-2.5-pro       645 / 2742
+  grok-code-fast-1     185 /  668
+  claude-4.5-opus      125 /  195   (64%)
+  grok-4               123 /  471
+  gpt-5                  0 /  113
+  gpt-5-high             0 /   51
+  ```
+  gpt-5 계열 빈-인자 0. gemini/grok/claude-opus 는 빈-인자 waste 상당수.
+
+### §26.4 — 정직 정정: "실패 2.6배" 철회 (중요)
+
+**§23.7 서술 철회**: "실패 트레이스 낭비 2.6배 (claude-4.5-sonnet 단일)" 는 **소수 표본 (108 트레이스) 인상값**이었다. 22 모델 재실행에서 claude-4.5-sonnet-0929 는 `wf/tf 0.271 / wp/tp 0.285 = 0.95배` — 배율 관계 역전. **철회한다.**
+
+**큰 표본 사실** (n=7,116, 22 모델):
+- 22 모델 중 **18** 에서 `wf/tf > wp/tp` (실패 트레이스가 성공 대비 waste 밀도 더 높음).
+- 4 모델은 역전 (성공 > 실패): `claude-4.5-sonnet-0929 (0.271 vs 0.285)`, `gpt-5.1 (0.206 vs 0.552)`, `grok-4 (1.354 vs 1.854)`, `qwen-3-coder (0.631 vs 0.340)`.
+- 배율은 모델마다 다름 (예: `grok-4-fast 4.127 / 0.133 = 31배`; `gpt-5-mini 1.490 / 0.217 = 6.9배`; 반대편 `gpt-5.1 0.206 / 0.552 = 0.37배`). **단일 "N배" 서술 불가.**
+
+**말할 수 있음**: "대다수 모델 (18/22) 에서 실패 트레이스 낭비율이 성공보다 높다."
+**말할 수 없음**: "실패 트레이스는 성공보다 낭비가 N배 많다" — 큰 표본에서 배율 자체가 모델 함수, 단일 상수 아님.
+
+**편차 등록 (규칙 5 — 일반화 전 계수)**: 108 트레이스 인상값을 배율로 서술한 것이 22 모델에서 반증. **소수 표본 배율은 "관측" 으로만 서술, "배율" 단정 금지.**
+
+### §26.5 — tool 카테고리 분포 (전 waste 8,042)
+
+```
+read     : 3,536  (44.0%)
+other    : 2,583  (32.1%)
+write    : 1,069  (13.3%)
+browser  :   524  ( 6.5%)
+execute  :   330  ( 4.1%)
+```
+
+**tool 이름 top-10**:
+```
+1478  [read   ]  github-get_file_contents
+1042  [other  ]  local-claim_done
+ 826  [read   ]  filesystem-read_file
+ 460  [write  ]  emails-send_email
+ 403  [read   ]  pdf-tools-read_pdf_pages
+ 271  [read   ]  filesystem-list_directory
+ 262  [write  ]  filesystem-create_directory
+ 241  [browser]  playwright_with_chunk-browser_type
+ 194  [execute]  local-python-execute
+ 136  [execute]  terminal-run_command
+```
+
+**모델 특징 (raw)**:
+- `grok-4-fast`: 1,022 read / 1,081 waste = **94.5% read** 편중.
+- `grok-code-fast-1`: **write 318** (모델 중 최다 write 절대량).
+- `claude-4.5-opus`: **execute 115** (모델 중 최다 execute).
+- `gemini-2.5-flash`: **browser 165** (모델 중 최다 browser).
+- `github-get_file_contents 1,478` 최다 — requery_known (안 변하는 정보 재조회) 실증.
+
+### §26.6 — 파싱 실패 336 건 (§21.4 준수 재확인)
+
+- 전 실패 모두 `_build_trace_from_entry` 단계 `ValueError` (조용히 skip 아님, 라인별 raw 로그).
+- 최다 유형:
+  - `deepseek-3.2-thinking_*`: `Unterminated string starting at line 1 col ~10` (code arg 내 raw 이스케이프 실패).
+  - `claude-*_*`: `Expecting ',' delimiter` (`{"path": "…"` 뒤 백슬래시 이스케이프 오류).
+  - `deepseek-v3.2-exp_3`: `Expecting value` (`{"resourceType": …, "name": ,` — 빈 값).
+- **어댑터 계약 무수정** — malformed JSON 은 라인 단위 raise, 파일 단위 skip 아님.
+
+### §26.7 — 정직 경계 (Toolathlon 스코프)
+
+- Toolathlon 은 **성공/실패 라벨만** 제공. **waste 8,042 는 후보** 이지 확정 낭비 아님 (RB 처럼 step-level GT 없음).
+- 아래 규정으로 인용:
+  - "탐지된 낭비 후보 8,042 / 트레이스당 평균 1.13" (√)
+  - "F1 / precision / recall" 은 **인용 금지** — 라벨 없음.
+- **축 분담**:
+  - **규모·모델비교 축** = Toolathlon (22 모델 × 3 런, 정밀도 미측정).
+  - **정밀도 축** = RedundancyBench (F1 0.2642, 인간 라벨, 단일 도메인 셋).
+- **사용 가능** (raw 인용): "22 모델 규모에서 트레이스당 waste 후보 밀도 편차 54 배 (0.157–8.463)."
+- **사용 불가**: "gemini-2.5-pro 는 낭비가 gpt-5-high 대비 54 배 많다" — 라벨 없음, 후보 밀도이지 확정 낭비 아님. 태스크 구성·성공률 confound 미통제.
+
+### §26.8 — 병합 방침
+
+- 이 커밋은 `feat/N-recon` 브랜치 (로드맵 ② N 리콘 + ③ Toolathlon 확장 배치).
+- push 만. PR 은 로드맵 ② ③ 끝 일괄.
