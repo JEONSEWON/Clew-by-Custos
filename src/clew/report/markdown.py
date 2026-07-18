@@ -42,9 +42,11 @@ def render_markdown(
 
     _FOOTER = (
         "---\n"
-        "_Note: detection thresholds were calibrated on synthetic traces; "
-        "real-trace calibration is in progress. Borderline matches "
-        "(cosine near 0.51) deserve human review._"
+        "_Note: detection thresholds are frozen at synthetic values "
+        "(phi=0.514345, N=2); real-trace evaluation is ongoing, but "
+        "parameters have not been recalibrated. Borderline matches "
+        "(cosine near phi) deserve human review — this applies to "
+        "non-tool spans; tool spans use exact sha256 identity._"
     )
 
     if not cr.wasteful:
