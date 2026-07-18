@@ -350,3 +350,118 @@ telecom recall 이 낮은 이유는 `role=user` 발행 tool 이 GT_set 에 남�
 - 이 커밋은 `feat/cc-adapter` 브랜치의 §24 결과 커밋 (사전등록 a73ced6 → 어댑터 f193ff5 → 결과 이 커밋).
 - push 만. PR 은 §23 (Toolathlon) + §24 (RedundancyBench) 배치 예정.
 
+---
+
+## §24.8 — 결과 검증 (2026-07-18, post-hoc)
+
+§24.7 push 직후 결과가 사전등록 예측을 5개 축 전부 상단 초과했다는 이유로 검증 3단 (Q1 스코프, Q2 지표 동일성, Q3 예측 초과 원인). 진단 스크립트 `field_test/diagnostics/verify_rb_eval.py` (규칙 7 부칙, raw only).
+
+### Q1 — F1=0.2642 의 스코프 확정
+
+`evaluate.py` line 32 인용:
+```python
+gt[tid] = set(item.get('redundant_step_idx', []))
+```
+`redundant_step_idx` 는 4카테고리 (exploratory/duplicated/abnormal/incorrect) 통합. type 필터링 없음.
+
+**결론**: 0.2642 = **전체 스코프 (4카테고리 통합)**. 논문 baseline 24.88% 와 동일 스코프. duplicated recall 60.77% 는 별개 스코프 (§24.7.2).
+
+| scope | tp | fp | fn | P | R | F1 |
+|---|---:|---:|---:|---:|---:|---:|
+| **전체 (논문 정의, 4카테고리)** | 218 | 46 | 1168 | **0.8258** | **0.1573** | **0.2642** |
+| duplicated-only strict (fp = pred − dup_gt) | 79 | 185 | 51 | 0.2992 | 0.6077 | 0.4010 |
+| duplicated-only inclusive (fp = pred − full_gt) | 79 | 46 | 51 | 0.6320 | 0.6077 | 0.6196 |
+
+### Q2 — evaluate.py 동일성 (사전등록 중단조건 4 재확인)
+
+`field_test/eval_redundancy_bench.py` line 33-37:
+```python
+sys.path.insert(0, str(LLM_JUDGE_DIR.resolve()))
+import evaluate as ev
+```
+→ RB 원본 `evaluate.py` 직접 import. 재구현 없음. 함수 동일성 자체는 보장.
+
+**단서 1 (필수 병기)**: `data/redundancy_bench/LLM_judge/` = `['evaluate.py', 'judge.py', 'requirements.txt']` — **baseline 예측 JSON 파일 없음**. 24.88% 는 논문 인용값. 우리 환경에서 재현·검증 안 됨. `evaluate.py` 함수 코드만 동일 보장.
+
+### Q3 — 예측 초과 원인 (편차 등록)
+
+| metric | §24.5 예측 | 실측 (규약 A) | 초과 방향 |
+|---|---|---:|:---:|
+| waste span 수 | 40 – 120 | 132 | ✗ (+10%) |
+| 전체 F1 | 0.05 – 0.20 | 0.2642 | ✗ (+32%) |
+| 전체 P | 0.35 – 0.75 | 0.8258 | ✗ (+10%) |
+| 전체 R | 0.03 – 0.12 | 0.1573 | ✗ (+31%) |
+| trajectory acc | 0.10 – 0.35 | 0.5000 | ✗ (+43%) |
+
+**단서 2 (편차 원인)**: 규약 A(사전등록된 페어 확장, `waste_span → {call_idx, result_idx}`) 를 예측 캘리브레이션에 반영 못 함. 확장 없이(call-only) 재계산:
+
+| pred | tp | fp | fn | P | R | F1 |
+|---|---:|---:|---:|---:|---:|---:|
+| call-only (확장 X) | 110 | 22 | 1276 | 0.8333 | 0.0794 | **0.1449** |
+| pair-expansion (규약 A, 정본) | 218 | 46 | 1168 | 0.8258 | 0.1573 | **0.2642** |
+
+**확장이 F1 +0.1193.** call-only F1 0.1449 는 예측 범위(0.05–0.20) **내**. → 예측 시 confound: `waste span 40–120` 만 곱하고 결과 idx 를 추가 카운트할 것을 잊었다. 성능/버그 아님, 예측 캘리브레이션 오류.
+
+Recall 예측(0.03–0.12) 이 duplicated recall(0.6077) 과 혼동됐는지 재확인: 아니다, 전체 recall(0.1573) 이미 예측 상단 초과. 스코프 혼동 아님, 크기 저평가.
+
+### Q5 — tid FIFO fix 영향
+
+`e06ae12` (tool_call.id 재사용 대응): 87/200 sim (43.5%) 에 tid 재사용. fix 전(에러 raise) 상태였다면 이 sim 전부 pred=∅ → duplicated GT 대량 fn.
+정확한 fix-off F1 재현은 어댑터 이전 checkout 필요 (미실행, 조인 통계만).
+
+### 미탐 39% 원인 (Q4 raw)
+
+전 duplicated 미탐 51건이 `in_pair_but_not_wasted` 태그 — 어댑터 페어링 성공, cascade(φ + sha256 게이트)가 waste 판정 안 함:
+
+- **retail task=11 turn 14/15**: reason `Repeat for step 7, 8` — turn 7→14 (7턴 차이) **N=2 창 밖**. 게이트 정의상 정당.
+- **telecom [mobile_data_issue]…turn 29/30**: reason `Permintaan timeout` — 타임아웃 재시도. output 상이(다른 tool result) → sha256 미매칭. 정당.
+- **telecom …turn 10/11**: reason `This step is not necessary to obtain the business route…` — 재호출 아니라 "불필요한 단발성 호출" 을 duplicated 라벨. 우리 정의 밖.
+
+**요약**: 미탐 39% 는 φ/N 정의 경계 밖 케이스 (창 폭, 카테고리 정의 차). 게이트 버그 아님.
+
+### 정직 경계 (§24.8 사용 가능/불가 문구)
+
+**사용 가능**: "RedundancyBench 전체 F1 0.2642, 논문 Window-to-One baseline 0.2488 대비 우위. 동일 `evaluate.py`, 결정론적 (LLM 없음), precision 0.8258 / recall 0.1573. **단서 1·2 병기 필수.**"
+
+**사용 불가**:
+- "24.88% 를 우리가 재현·검증했다" — baseline 예측 파일 없음 (§24.8 Q2 단서 1).
+- "명백히 이겼다 / 압도했다" — 단일 벤치, recall 저, duplicated 특화 게이트가 스코프 특성상 유리했을 가능성 (다른 3카테고리 recall ≤3%).
+- duplicated recall 60.77% 를 전체 F1 자리에 대입 (별도 스코프).
+
+---
+
+## §24.9 — 오탐 심층 (fp 46, span-level 22)
+
+`field_test/diagnostics/analyze_rb_fp_46.py` (규칙 7 부칙). fp idx 46 은 pair 확장 후 idx 카운트; 원본 waste span 수는 22 (spans 대부분 call+result 2 idx 모두 GT 밖).
+
+### fp 22 spans 분류
+
+| 분류 | 카운트 | 비율 |
+|---|---:|---:|
+| earlier match 있음 (동일 tool_name + input 이전 존재) | 21/22 | 95.5% |
+|   그중 동일 input + **동일 output** (완전 재현) | **21/22** | **95.5%** |
+|   동일 input, output 상이 | 0/22 | 0% |
+| earlier match 없음 | 1/22 | 4.5% |
+| GT 다른 카테고리 (exploratory/abnormal/incorrect) 라벨 | **0/22** | **0%** |
+| **순수 미라벨** (어느 카테고리에도 없음) | **22/22** | **100%** |
+| **인간 놓침 후보** (동일 io + 미라벨 + 창 내 상태변화 tool 호출 0) | **6/22** | **27.3%** |
+
+### 인간 놓침 후보 상위 5건 raw
+
+1. `[airline] task=31 span=…#6 get_user_details` — call_idx=6, earlier @ call=3, output_equal=True, between=0.
+   `{"user_id": "daiki_lee_6144"}` → 동일 사용자 상세 재조회. GT 라벨 없음.
+2. `[airline] task=41 span=…#6 get_user_details` — 동일 패턴, `amelia_davis_8890` 재조회.
+3. `[retail] task=79 span=…#24 modify_pending_order_items` — call=24, earlier @ call=22. 동일 item swap 을 2턴 후 재실행. 중간 tool 호출 없음.
+4. `[retail] task=83 span=…#6 find_user_id_by_name_zip` — 동일 이름+zip 재검색.
+5. `[telecom] …#22 refuel_data` — 동일 `{customer_id:C1001, gb_amount:2, line_id:L1002}` 재실행.
+
+### 함의
+
+**precision 0.8258 은 하한 가능**. fp 22 spans 전부 GT 4카테고리 어디에도 없음, 21/22 완전 재현, 6 은 창 내 상태변화 0. 이들이 GT 미포함 = RB 어노테이터 미라벨 낭비. Clew 가 잡음.
+
+**단서 (필수 병기)**: RB 어노테이션은 인간 리뷰어 판단, 완전성 보장 없음. "미라벨=인간 놓침" 은 후보 판정, 소유자 확인 필요. 이 절에서는 **숫자만** (0/22 다른 카테고리 라벨, 6/22 상태변화 0 후보).
+
+**사용 가능 문구**: "fp 22 spans 중 21 이 동일 input+output 완전 재현, GT 다른 카테고리 라벨 0, 6 이 창 내 상태변화 0 인 인간 놓침 후보 → precision 0.826 은 하한 가능성."
+
+**사용 불가**: "22건 전부 낭비다" — 창 밖 상태변화·비-tool 컨텍스트 미검사, 소유자 확인 전.
+
