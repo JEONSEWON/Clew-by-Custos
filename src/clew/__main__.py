@@ -87,6 +87,10 @@ def _load_trace_auto(path: Path) -> "Trace":
                 "      json.dumps([json.loads(s.to_json()) for s in spans])\n"
                 "  )"
             )
+        # RedundancyBench 마커 (§24.2): 최상위 dict 에 tasks + simulations
+        if "tasks" in obj and "simulations" in obj:
+            from clew.ingest.redundancy_bench import ingest_redundancy_bench_json
+            return ingest_redundancy_bench_json(path)
         if "trace_id" in obj and "spans" in obj:
             spans_list = obj.get("spans", [])
             first_span = spans_list[0] if spans_list and isinstance(spans_list[0], dict) else {}
