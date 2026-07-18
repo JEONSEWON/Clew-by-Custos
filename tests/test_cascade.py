@@ -137,3 +137,118 @@ def test_c2_requery_known_positive_is_flagged(embedder: Embedder):
     assert res.waste_span_ids != []
     # positive 의 2회차 lookup span_id 가 낭비로 라벨됨
     assert set(res.waste_span_ids) == set(gen.waste_span_ids)
+
+
+# ─── §22.11.2 compact 창문 게이트 ────────────────────────────────────────────
+
+def _tool_span(sid: str, parent: str, agent: str, t: int, inp: str, out: str, tokens: int = 10) -> Span:
+    return Span(
+        trace_id="t",
+        span_id=sid,
+        parent_span_id=parent,
+        agent_or_node_id=agent,
+        span_kind="tool",
+        start_time=_ts(t),
+        end_time=_ts(t + 1),
+        input_text=inp,
+        output_text=out,
+        token_count=tokens,
+        model="fake",
+        cost_rate=1e-6,
+    )
+
+
+def test_tool_sha256_equal_is_wasteful_without_compact(embedder: Embedder):
+    """§22.11.2 대조군: compact 경계 없을 때 sha256 동일 재조회는 잡힌다."""
+    root = _span("root", None, "run", 0, "root")
+    spans = [
+        root,
+        _tool_span("s2", "root", "Read", 1, '{"file_path":"/tmp/a"}', "same output"),
+        _tool_span("s3", "root", "Read", 5, '{"file_path":"/tmp/a"}', "same output", tokens=25),
+    ]
+    trace = Trace(trace_id="t", spans=spans)  # metadata 없음 (다른 로더 상황)
+    res = cascade(trace, embedder, n=2, phi=0.99)
+    assert res.wasteful is True
+    assert res.waste_span_ids == ["s3"]
+    assert res.waste_tokens == 25
+
+
+def test_tool_sha256_equal_excluded_when_compact_between(embedder: Embedder):
+    """§22.11.2: origin↔cand 창문 안에 compact 경계 있으면 waste 에서 제외."""
+    root = _span("root", None, "run", 0, "root")
+    spans = [
+        root,
+        _tool_span("s2", "root", "Read", 1, '{"file_path":"/tmp/a"}', "same output"),
+        _tool_span("s3", "root", "Read", 5, '{"file_path":"/tmp/a"}', "same output", tokens=25),
+    ]
+    trace = Trace(
+        trace_id="t", spans=spans,
+        metadata={"source": "claude_code_jsonl", "compact_boundaries": [_ts(3)]},
+    )
+    res = cascade(trace, embedder, n=2, phi=0.99)
+    assert res.wasteful is False
+    assert res.waste_span_ids == []
+
+
+def test_compact_boundary_before_origin_does_not_exclude(embedder: Embedder):
+    """§22.11.2: 경계가 origin 이전에 있으면 창문 안 아님 → 제외 안 함."""
+    root = _span("root", None, "run", 0, "root")
+    spans = [
+        root,
+        _tool_span("s2", "root", "Read", 5, '{"file_path":"/tmp/a"}', "same"),
+        _tool_span("s3", "root", "Read", 10, '{"file_path":"/tmp/a"}', "same", tokens=20),
+    ]
+    trace = Trace(
+        trace_id="t", spans=spans,
+        metadata={"compact_boundaries": [_ts(2)]},  # origin(5) 이전
+    )
+    res = cascade(trace, embedder, n=2, phi=0.99)
+    assert res.wasteful is True
+    assert res.waste_span_ids == ["s3"]
+
+
+def test_compact_boundary_after_candidate_does_not_exclude(embedder: Embedder):
+    """§22.11.2: 경계가 cand 이후면 창문 안 아님 → 제외 안 함."""
+    root = _span("root", None, "run", 0, "root")
+    spans = [
+        root,
+        _tool_span("s2", "root", "Read", 1, '{"file_path":"/tmp/a"}', "same"),
+        _tool_span("s3", "root", "Read", 5, '{"file_path":"/tmp/a"}', "same", tokens=15),
+    ]
+    trace = Trace(
+        trace_id="t", spans=spans,
+        metadata={"compact_boundaries": [_ts(10)]},  # cand(5) 이후
+    )
+    res = cascade(trace, embedder, n=2, phi=0.99)
+    assert res.wasteful is True
+    assert res.waste_span_ids == ["s3"]
+
+
+def test_compact_gate_no_op_when_metadata_missing(embedder: Embedder):
+    """§22.11.2: Trace.metadata 에 키 없으면 no-op — 다른 로더에서 영향 없음."""
+    root = _span("root", None, "run", 0, "root")
+    spans = [
+        root,
+        _tool_span("s2", "root", "Read", 1, '{"file_path":"/tmp/a"}', "same"),
+        _tool_span("s3", "root", "Read", 5, '{"file_path":"/tmp/a"}', "same", tokens=12),
+    ]
+    trace = Trace(trace_id="t", spans=spans, metadata={"source": "otel_json"})
+    res = cascade(trace, embedder, n=2, phi=0.99)
+    assert res.wasteful is True
+    assert res.waste_span_ids == ["s3"]
+
+
+def test_compact_gate_does_not_affect_llm_kind(embedder: Embedder):
+    """§22.11.2: 게이트는 tool kind 만 대상. llm 경로는 compact 있어도 φ 판정 그대로."""
+    spans = [
+        _span("s1", None, "run", 0, "root"),
+        _span("s2", "s1", "analyze", 1, "same payload", tokens=20),
+        _span("s3", "s1", "analyze", 5, "same payload", tokens=30),
+    ]
+    trace = Trace(
+        trace_id="t", spans=spans,
+        metadata={"compact_boundaries": [_ts(3)]},  # llm 경로에는 무영향
+    )
+    res = cascade(trace, embedder, n=2, phi=0.99)
+    assert res.wasteful is True
+    assert res.waste_span_ids == ["s3"]
