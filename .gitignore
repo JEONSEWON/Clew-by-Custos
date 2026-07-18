@@ -24,6 +24,10 @@ eval/dev/
 # 임베딩 캐시
 .cache/embeddings/
 
+# 외부 데이터셋 (CC-BY-4.0 등 재배포 표기 필요, 로컬 분석만)
+data/
+./data/
+
 # 일회성 진단 스크립트 워크 디렉토리
 .tmp/
 
