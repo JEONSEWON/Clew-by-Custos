@@ -861,3 +861,22 @@ X 측정 결과는 우연이 아니다. 두 도구는 **다른 경로로 같은 
 
 - 이 섹션 = 외부 raw 확인 후 즉시 SPEC 반영. 코드/데이터 변경 없음.
 - §19.3-1 관찰은 §19.3 로 범위 한정. 전역 편차 번호(§19.1 편차 4 다음)를 사용하지 않아 PR #7 / PR #8 의 편차 5·6 과 번호 충돌하지 않음.
+
+---
+
+## 데이터셋 후보 판정 로그 (로드맵 ② / ③ 평가 pool)
+
+### TicToc — 스코프 미스매치로 제외 (2026-07-18)
+
+- TicToc (arXiv:2510.23853, ACL 2026 Findings, UMD). `github.com/chengez/TicToc`.
+- **제외 이유 1 — 스코프**: TicToc 라벨은 "결정 시점 counterfactual 인간 선호"
+  (지금 도구 호출 vs 직접 답변, 4-way `preference` ∈ {`direct`, `lean_direct`, `lean_tool`, `tool`, `any`}, `pref_score` 0.0–3.0 연속).
+  우리 게이트는 "실행된 trajectory 의 동일 재호출 + 출력 sha256 일치" 를 잡는다. 세 불일치:
+  (a) over-call (인간=direct, agent=tool 선호) 은 **첫 호출의 불필요성** 이지 재호출 아님,
+  (b) `call_tool_output` 은 실행 안 된 가상 다음 턴이라 **sha256 대상 tool_result 부재**,
+  (c) `pref_score` 연속값 → 이진 waste 매핑 규칙 데이터에 없음.
+- **제외 이유 2 — 라이선스**: LICENSE 파일 없음 (`rglob("LICENSE*")` / `COPYING*` NONE),
+  README MIT 배지 주석 처리 (`<!-- License: MIT -->`). 재배포·인용 라이선스 불명. 로컬 데이터 삭제.
+- 근거: `field_test/diagnostics/recon_tictoc.py` (Q1~Q2 raw; Q3~Q5 는 Q2 스코프 판정으로 사전 지시 하 생략).
+- 필드 인용 (`merged_fully_labeled_data.json`, n=5,592):
+  `{id, history, function, call_tool_output, no_call_tool_output, preference, pref_score, num_turn}`.
