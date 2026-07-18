@@ -105,6 +105,19 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
     if session_id is None:
         raise ValueError(f"{path}: sessionId 필드가 없음 (Claude Code JSONL 아님?)")
 
+    # compact 경계 timestamp 수집 (§22.11.2).
+    # 두 마커 필드는 classify_21_positives.py:_window_compact_flag 가 실제로 본 것 그대로:
+    #   - entry["compactMetadata"] is not None   (type=='system' 라인)
+    #   - entry["isCompactSummary"] is True      (type=='user' 라인)
+    # 두 마커 모두 entry["timestamp"] 를 가짐 (2026-07-18 실 JSONL 확인).
+    compact_boundaries: list[datetime] = []
+    for entry in entries:
+        ts = entry.get("timestamp")
+        if not ts:
+            continue
+        if entry.get("compactMetadata") is not None or entry.get("isCompactSummary") is True:
+            compact_boundaries.append(_parse_ts(ts))
+
     # 1차 스캔: tool_use / tool_result 수집
     tool_uses: dict[str, tuple[dict, str]] = {}
     tool_results: dict[str, tuple[dict, str]] = {}
@@ -231,5 +244,9 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
     return Trace(
         trace_id=session_id,
         spans=[root_span] + tool_spans,
-        metadata={"source": "claude_code_jsonl", "path": str(path.name)},
+        metadata={
+            "source": "claude_code_jsonl",
+            "path": str(path.name),
+            "compact_boundaries": compact_boundaries,
+        },
     )

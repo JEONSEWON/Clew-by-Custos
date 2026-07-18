@@ -910,3 +910,79 @@ ExitPlanMode 재검색 (agent=="ToolSearch" AND input 에 "ExitPlanMode") 3 건 
 - §22.11 본문은 사전등록 커밋 이후 무수정. 관찰은 §22.11.7 로 별도.
 - 병합은 반드시 merge commit (§19 규칙 8 부칙).
 - **규칙 7 부칙 (근거 스크립트 커밋) 이번엔 사전에 적용**: §22.8/§22.10 사전등록에서 각각 1건씩 누락되었던 계열 오류를 이번 라운드에서 예방.
+
+### §22.11.7 — 재실행 결과 (2026-07-18)
+
+**커밋**: `42c3439` (`src/clew/ingest/claude_code.py` + `src/clew/detect/cascade.py` + `tests/test_cascade.py` compact 창문 게이트).
+**테스트**: `python -m pytest -q` → **204 passed, 1 warning in 22.54s** (기존 198 + 신규 6, 회귀 0).
+**대상**: `~/.claude/projects/**/*.jsonl` 20 세션 전수 (§22.11.5 동일 집합).
+**실행 명령**: `python field_test/diagnostics/scan_all_cc_sessions.py`.
+
+**§22.11.5 예측 vs §22.11.7 실측**:
+
+| 지표 | §22.10 실측 | 예측 (§22.11.5) | 실측 (§22.11.7) | 판정 |
+|---|---|---|---|---|
+| 총 waste | 21 | 5 | **5** | 적중 |
+| compact 세션 waste | 16 | 0 | **0** | 적중 |
+| ExitPlanMode ToolSearch | 3 | 2 | **2** | 적중 |
+| 나머지 (cmp=N, usr≥2) | 3 | 3 | **3** | 적중 |
+
+**세션별 waste 변화 (compact 제거 내역)**:
+
+| session (앞8) | §22.10 waste | §22.11.7 waste | compact 제거 | compact_boundaries 수 |
+|---|---:|---:|---:|---:|
+| 07f97584 (self) | 13 | 0 | −13 | 12 (6 compact × 2 마커) |
+| 72015129 | 2 | 0 | −2 | 2 (1 compact) |
+| c848299d | 3 | 2 | −1 | 2 (1 compact, #2 ToolSearch 창문 안) |
+| 2502fe9a | 1 | 1 | 0 | 0 (compact 없음) |
+| 8228879e | 2 | 2 | 0 | 2 (compact 07:58:09Z, 원조회 07:58:22Z 이전 — 창문 밖) |
+| **합계** | **21** | **5** | **−16** | — |
+
+**남는 5건 상세**:
+
+```
+1. 2502fe9a #1 ToolSearch target=None gap=1140.0s   (ExitPlanMode 재검색, cmp=N)
+2. 8228879e #1 ToolSearch target=None gap=2985.4s   (ExitPlanMode 재검색, cmp=N)
+3. 8228879e #2 Bash       target=None gap=2998.8s   ('(Bash completed with no output)' 재실행, cmp=N)
+4. c848299d #1 Read       target=run_e3_diagnosis.py gap=3830.1s (cmp=N, usr=9)
+5. c848299d #4 Bash       target=None gap=1505.0s   ('(Bash completed with no output)' 재실행, cmp=N)
+```
+
+- 5 건 전부 **compact_in_win == False** (§22.11.5 예측 정확). §22.11 게이트는 정의대로 작동.
+- 2 건 (1, 2) 은 §22.11.4 대로 ExitPlanMode 재검색 — §22.12 별건.
+- 3 건 (3, 4, 5) 은 소유자 판정 대기 (Bash 빈 출력 · Read 재조회 with 창문 편집 없음). **이번 라운드 정의로는 waste, 소유자가 별도 축으로 재판정할 수 있음.**
+
+**중단 조건 발동 여부**:
+- 회귀 (조건 1): **없음** (198 전부 통과 + 신규 6 통과 = 204).
+- OTel/OpenInference 결과 변화 (조건 2): **없음** (`test_compact_gate_no_op_when_metadata_missing` 로 non-CC Trace no-op 검증).
+- φ/N/model/sha256 로직 변경 (조건 3): **없음** — 상수 그대로, sha256 로직 그대로.
+- Span 자료구조 확장 (조건 4): **없음** — `Trace.metadata` 만 확장 (기존 dict[str, Any] 슬롯 재사용).
+
+**정직 경계**:
+- 20세션 전수 실측. 다음 라운드에서 새 세션 추가 시 compact 감지 재검. `compact_boundaries` 는 두 마커 필드에 대해서만 반응하므로 벤더 포맷 변경 시 재확인 필요.
+- 5 건 waste 는 이번 게이트 통과분이지 "진짜 낭비 5 건 확증" 이 아니다. 판정은 소유자 별건.
+- §22.10.3 정직 경계 유지 (F1 0.857 합성 데이터, 실데이터 tool output φ 판별력 부재).
+
+### §22.11.8 — 잔여 5건 소유자 판정 (2026-07-18)
+
+재료: `field_test/diagnostics/diag_remaining5.py` (raw 재료 5건 추출, 진단; 결론 없음). 판정 주체: 세션 소유자 (전세원).
+
+| # | session | 대상 | 판정 | 근거 |
+|---|---|---|---|---|
+| 1 | 2502fe9a | ToolSearch `select:ExitPlanMode` | **정당** | gap 창문 안 `ExitPlanMode` tool_use 1회 (line=44) 후 Plan 모드 재진입 직전 도구 조회. Plan 모드 워크플로 |
+| 2 | 8228879e | ToolSearch `select:ExitPlanMode` | **정당** | gap 창문 안 `ExitPlanMode` 2회 (line=343, 397), Plan 모드 워크플로. cand 직전 user 발화 "Plan 모드. 계획 먼저, 승인 후 실행" |
+| 3 | 8228879e | Bash `git diff --name-only src/clew/detect/` | **정당** | description="detect diff check". 사전등록 read-only 규율 검증 명령. 출력 없음 = detect/ 불변 확인 (조용한 정상 실행) |
+| 4 | c848299d | Read `run_e3_diagnosis.py` | **정당** | gap 64분, 창문 안 `ExitPlanMode` 4회 (stage16 + stage17 계획 승인), 파일 자체는 창문 안 Edit/Write 없음. cand 직전 user "Plan 모드… detect/·eval·φ 전부 read-only". compact 없으나 장시간 워크플로 재확인 |
+| 5 | c848299d | Bash `git diff src/clew/detect/` | **정당** | description="Verify detect/ unchanged". case 3 과 동일한 사전등록 규율 검증. 출력 없음 = detect/ 불변 확인 |
+
+**결론**:
+- **20세션 확정 낭비 0건.** 21 후보 = compact 16 + ExitPlanMode 3 (case1·2·중복) + read-only 검증 2 (case3·5) + 장시간 재확인 1 (case4). 중복 감안.
+- **주목**: case 3/5 는 **우리 사전등록 규율(detect/ read-only)이 만든 검증 행동**을 게이트가 후보로 잡은 것. 낭비의 반대 — 규율 준수 확인이다.
+- **함의**: 이 코퍼스(우리 개발 세션 20개)는 낭비가 나올 구조가 아니다. compact 빈발 + Plan 모드 + 사전등록 재검증. SWE-chat Read 밀도 1.573% 와 일관.
+- **게이트 검증**: 21 후보 전부 정당으로 판정됨. 3단 게이트 (구조 → sha256 → compact) + 소유자 판정이 오탐 21건을 전량 식별. **단, 참양성 검출력은 이 코퍼스로 증명 불가** (낭비 자체가 없으므로). 낭비 있는 코퍼스 별도 필요.
+
+**정직 경계**:
+- **"clew 가 낭비 N건 검출" 여전히 인용 금지.** 이 코퍼스 확정 낭비 0.
+- **"오탐 0"** 은 말할 수 있다: 21 후보 전량 정당 판정, 게이트가 전부 걸러냄 (compact 16 → 자동, ExitPlanMode 3·검증 2·재확인 1 → 소유자 판정).
+- 참양성 검출력은 미증명. 낭비 있는 트레이스에서 별도 검증 필요.
+- 판정은 소유자 1인 (전세원) 단독. 다중 라벨러 교차 검증 없음.
