@@ -1,15 +1,15 @@
-"""구조 후보 탐지 (SPEC §8 2.1, §22.8).
+"""Structural candidate detection (SPEC §8 2.1, §22.8).
 
-start_time 시간순 노드 시퀀스에서:
-- 반복 노드: 같은 agent_or_node_id 가 N회+ 등장 → 각 하위그룹 내 (첫 등장, 재등장) 쌍.
-  span_kind=="tool" 인 노드는 `(agent_or_node_id, _normalize_input(input_text))` 로
-  하위그룹핑 (§22.8.1: origin 고정 해제 — 동일 서명의 모든 재등장 페어링).
-  그 외 kind 는 agent_or_node_id 만으로 그룹핑 (입력 게이트 미적용).
-- 핑퐁: A→B→A→B → 2회차 A·B 쌍. 4-window 4개 스팬 전부 span_kind=="llm" 일 때만
-  (§22.8.2: tool 호출 교대는 정상 작업이지 pingpong 이 아님).
-- requery: 반복 tool 노드의 특수형 → 하위그룹핑이 그대로 작동.
+In a node sequence ordered by start_time:
+- Repeat nodes: same agent_or_node_id appears N+ times -> (first occurrence, re-occurrence) pairs within each subgroup.
+  Nodes with span_kind=="tool" are subgrouped by `(agent_or_node_id, _normalize_input(input_text))`
+  (§22.8.1: origin pinning removed - pair every re-occurrence with the same signature).
+  Other kinds are grouped by agent_or_node_id alone (input gate not applied).
+- Pingpong: A->B->A->B -> 2nd-round A and B pairs. Only when all 4 spans in the 4-window have span_kind=="llm"
+  (§22.8.2: tool call alternation is normal work, not pingpong).
+- requery: a special form of repeated tool node -> subgrouping works as-is.
 
-라벨 미참조. 평가 set·dev set 어느 디렉터리도 읽지 않는다.
+No label references. Neither the evaluation set nor dev set directory is read.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from clew.model import Span, Trace
 
 
 def _normalize_input(s: str) -> str:
-    """SPEC §8 2.1 normalized-equal: 공백·대소문자만 정규화. 그 이상은 데이터 근거 없음."""
+    """SPEC §8 2.1 normalized-equal: normalize only whitespace and case. Anything more lacks data justification."""
     return s.strip().casefold()
 
 
@@ -29,10 +29,10 @@ def _spans_by_start_time(trace: Trace) -> list[Span]:
 def _nearest_agent_ancestor_id(
     start_id: str | None, spans_by_id: dict[str, Span]
 ) -> str | None:
-    """parent_span_id 체인을 거슬러 span_kind=='agent'인 첫 조상의 span_id 반환.
+    """Walk up the parent_span_id chain and return the span_id of the first ancestor with span_kind=='agent'.
 
-    없으면 None (단일 에이전트/평면 트레이스). None==None → 게이트 미적용(기존 동작 보존).
-    SPEC §16: 두 스팬의 반환값이 다르면 repeat 후보에서 제외.
+    None if none exists (single-agent/flat trace). None==None -> gate not applied (preserves existing behavior).
+    SPEC §16: if the two spans' return values differ, exclude from repeat candidates.
     """
     current_id = start_id
     while current_id is not None:
@@ -46,12 +46,12 @@ def _nearest_agent_ancestor_id(
 
 
 def find_repeat_candidates(trace: Trace, n: int) -> list[tuple[Span, Span]]:
-    """같은 agent_or_node_id 가 n회+ 등장 시 각 하위그룹 내 (첫 등장, 재등장) 쌍 반환.
+    """When the same agent_or_node_id appears n+ times, return (first occurrence, re-occurrence) pairs within each subgroup.
 
-    tool kind: `(agent_or_node_id, _normalize_input(input_text))` 로 하위그룹핑
-        (§22.8.1: 같은 서명의 모든 재등장 페어링. dict 로 O(n)).
-    그 외 kind: `agent_or_node_id` 만으로 그룹핑 (입력 게이트 미적용).
-    SPEC §16 parent-AGENT gate: 두 스팬의 가장 가까운 조상 AGENT 가 다르면 후보 제외.
+    tool kind: subgrouped by `(agent_or_node_id, _normalize_input(input_text))`
+        (§22.8.1: pair every re-occurrence with the same signature. O(n) via dict).
+    Other kinds: grouped by `agent_or_node_id` alone (input gate not applied).
+    SPEC §16 parent-AGENT gate: if the two spans' nearest ancestor AGENT differs, exclude from candidates.
     """
     if n < 2:
         raise ValueError("n must be >= 2 (a single occurrence is not a repeat)")
@@ -78,10 +78,10 @@ def find_repeat_candidates(trace: Trace, n: int) -> list[tuple[Span, Span]]:
 
 
 def find_pingpong_candidates(trace: Trace) -> list[tuple[Span, Span]]:
-    """A→B→A→B 교대 발견 시 2회차 (A, A_prev) + (B, B_prev) 쌍 반환.
+    """When A->B->A->B alternation is found, return 2nd-round (A, A_prev) + (B, B_prev) pairs.
 
-    §22.8.2: 4-window 4개 스팬 전부 `span_kind == "llm"` 일 때만 후보.
-    tool 호출 교대는 정상 작업이지 pingpong 이 아님.
+    §22.8.2: candidate only when all 4 spans in the 4-window have `span_kind == "llm"`.
+    Tool call alternation is normal work, not pingpong.
     """
     ordered = _spans_by_start_time(trace)
     pairs: list[tuple[Span, Span]] = []
@@ -105,7 +105,7 @@ def find_pingpong_candidates(trace: Trace) -> list[tuple[Span, Span]]:
 
 
 def find_candidates(trace: Trace, n: int) -> list[tuple[Span, Span]]:
-    """반복 + 핑퐁 후보를 합쳐 (origin, candidate) 쌍 리스트 반환. 중복 제거."""
+    """Combine repeat + pingpong candidates and return a (origin, candidate) pair list. Deduplicated."""
     seen: set[tuple[str, str]] = set()
     out: list[tuple[Span, Span]] = []
     for origin, cand in find_repeat_candidates(trace, n) + find_pingpong_candidates(trace):

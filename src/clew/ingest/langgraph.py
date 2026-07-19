@@ -1,19 +1,19 @@
-"""OTel/OpenInference 스팬 어댑터 — ReadableSpan 리스트 → 정규 Trace.
+"""OTel/OpenInference span adapter - ReadableSpan list -> canonical Trace.
 
-`openinference-instrumentation-*`으로 계측된 앱(LangGraph 포함)이 내보내는 OTel
-ReadableSpan 리스트를 받아 `clew.model.Trace`로 변환한다. (1단계 — plan §2)
+Takes the OTel ReadableSpan list emitted by apps instrumented with
+`openinference-instrumentation-*` (LangGraph included) and converts to `clew.model.Trace`. (Stage 1 - plan §2)
 
-LangGraph는 지원 프레임워크의 한 예다. CrewAI·AutoGen·LlamaIndex 등
-OpenInference 계측을 사용하는 모든 프레임워크의 스팬을 받는다.
+LangGraph is one example of a supported framework. Accepts spans from any
+framework using OpenInference instrumentation (CrewAI, AutoGen, LlamaIndex, etc.).
 
-설계 결정:
-- 단일 trace_id 강제 (다중이 섞이면 ValueError).
-- 단일 루트 강제 (다중 루트는 instrumentation misconfiguration — placeholder
-  output_text 잡음을 피하려고 합성 루트를 만들지 않는다).
-- cost_rate는 외부 주입 `cost_table`에서 lookup (OTel 표준 외 영역, 트레이스 본문
-  오염 방지).
-- span_kind 매핑: LLM→llm, TOOL→tool, CHAIN/RUNNABLE→chain, AGENT→agent, 그 외→chain.
-- output_text가 비면 어댑터 단계에서 명시적 ValueError (정규 모델 validator보다 친절).
+Design decisions:
+- Single trace_id enforced (ValueError if multiple mixed in).
+- Single root enforced (multi-root is instrumentation misconfiguration -
+  do not synthesize a root to avoid placeholder output_text noise).
+- cost_rate is looked up from externally-injected `cost_table` (outside OTel standard,
+  avoids polluting the trace body).
+- span_kind mapping: LLM->llm, TOOL->tool, CHAIN/RUNNABLE->chain, AGENT->agent, others->chain.
+- If output_text is empty, the adapter raises an explicit ValueError (friendlier than the canonical model validator).
 """
 
 from __future__ import annotations
@@ -81,10 +81,10 @@ def otel_spans_to_trace(
     cost_table: dict[str, float] | None = None,
     source_tag: str = "otel_adapter",
 ) -> Trace:
-    """OTel ReadableSpan 리스트 → 정규 `Trace`.
+    """OTel ReadableSpan list -> canonical `Trace`.
 
     Raises:
-        ValueError: spans 비어있음 / 다중 trace_id / 다중 루트 / 비어있는 output.value.
+        ValueError: spans empty / multiple trace_ids / multiple roots / empty output.value.
     """
     if not spans:
         raise ValueError("no spans provided to adapter")
@@ -151,10 +151,10 @@ def ingest_otel_spans(
     cost_table: dict[str, float] | None = None,
     source_tag: str = "otel_adapter",
 ) -> Trace:
-    """공식 인제스트 경로 = otel_spans_to_trace() + preprocess_trace().
+    """Official ingest path = otel_spans_to_trace() + preprocess_trace().
 
-    프로덕션/필드 사용은 반드시 이 함수를 쓴다.
-    otel_spans_to_trace()는 raw 변환 전용(테스트·디버깅).
+    Production/field use must go through this function.
+    otel_spans_to_trace() is for raw conversion only (testing/debugging).
     """
     return preprocess_trace(
         otel_spans_to_trace(spans, cost_table=cost_table, source_tag=source_tag)

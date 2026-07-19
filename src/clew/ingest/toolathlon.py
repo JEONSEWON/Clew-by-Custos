@@ -1,19 +1,19 @@
-"""src/clew/ingest/toolathlon.py — Toolathlon Trajectory JSONL → Trace.
+"""src/clew/ingest/toolathlon.py - Toolathlon Trajectory JSONL -> Trace.
 
-매핑 규약: docs/TOOLATHLON.md §23 (사전등록, PR 승인 후 확정).
+Mapping convention: docs/TOOLATHLON.md §23 (pre-registered, finalized after PR approval).
 
-입력: `data/toolathlon/<model>_<run>.jsonl` (JSONL, 한 줄 = 한 트레이스).
-출력: Clew 정규 Trace (synthetic CHAIN root + tool 스팬만).
+Input: `data/toolathlon/<model>_<run>.jsonl` (JSONL, one line = one trace).
+Output: Clew canonical Trace (synthetic CHAIN root + tool spans only).
 
-주요 결정 (§23.2):
-- 최상위 필드 값이 모두 JSON 문자열이라 재역직렬화 필요.
-- per-message timestamp 없음 → synthetic: base + (msg_idx*1000 + sub_idx) 초.
-- end_time = start_time (탐지기는 start_time 정렬만 사용).
-- tool_calls[j].function.arguments 는 이미 JSON 문자열 → 재파싱 + sort_keys 재직렬화.
+Main decisions (§23.2):
+- All top-level field values are JSON strings, so re-deserialization is required.
+- No per-message timestamp -> synthetic: base + (msg_idx*1000 + sub_idx) seconds.
+- end_time = start_time (the detector uses start_time sort only).
+- tool_calls[j].function.arguments is already a JSON string -> re-parse + sort_keys re-serialization.
 
-계약:
-- ingest_toolathlon_jsonl(path) → Trace (첫 라인만; CC 와 계약 동일)
-- iter_toolathlon_traces(path) → Iterator[Trace] (전량 스캔용)
+Contract:
+- ingest_toolathlon_jsonl(path) -> Trace (first line only; same contract as CC)
+- iter_toolathlon_traces(path) -> Iterator[Trace] (for full scans)
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from typing import Any
 
 from clew.model import Span, Trace
 
-# synthetic timestamp 기준점. 절대값은 무의미 (탐지기는 정렬만 씀).
+# synthetic timestamp reference point. Absolute value is meaningless (the detector only uses sort order).
 _TS_BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
@@ -36,7 +36,7 @@ def _synth_ts(msg_idx: int, sub_idx: int) -> datetime:
 
 
 def _load_str_field(entry: dict, key: str, expect_type: type) -> Any:
-    """entry[key] 는 JSON 문자열이라고 README 가 명시 → loads. 실패 시 명시적 에러."""
+    """README states entry[key] is a JSON string -> loads. Explicit error on failure."""
     v = entry.get(key)
     if v is None:
         raise ValueError(f"Toolathlon: 필수 필드 {key!r} 없음")
@@ -54,11 +54,11 @@ def _load_str_field(entry: dict, key: str, expect_type: type) -> Any:
 
 
 def _normalize_arguments(raw: Any) -> str:
-    """§23.1: arguments (JSON 문자열) 재파싱 후 sort_keys 재직렬화.
+    """§23.1: re-parse arguments (JSON string) then re-serialize with sort_keys.
 
-    파싱 실패 시 조용히 원문 사용 금지 — 에러.
-    단, 빈 문자열은 Toolathlon 관례상 "인자 없음" (recon Q2: playwright next_span 4세션).
-    → 빈 문자열은 {} 로 정규화 (하드 에러 아님).
+    Silent use of raw text on parse failure is forbidden - error.
+    However, an empty string is "no args" by Toolathlon convention (recon Q2: 4 playwright next_span sessions).
+    -> Normalize empty string to {} (not a hard error).
     """
     if isinstance(raw, str):
         if raw == "":
@@ -82,9 +82,9 @@ def _normalize_arguments(raw: Any) -> str:
 
 
 def _render_content(content: Any) -> str:
-    """tool 메시지 content → 문자열.
+    """tool message content -> string.
 
-    Toolathlon recon Q2 는 flat string 확인이지만 list-of-blocks 나오면 § 22.5 CC 규약 재사용.
+    Toolathlon recon Q2 confirms flat string, but if list-of-blocks appears reuse the §22.5 CC convention.
     """
     if isinstance(content, str):
         return content
@@ -112,26 +112,26 @@ def _render_content(content: Any) -> str:
 
 
 def _build_trace_from_entry(entry: dict, source_line: int) -> Trace:
-    """한 JSONL 라인(=한 트레이스) 을 Trace 로."""
-    # 순수 문자열 필드
+    """Convert one JSONL line (= one trace) into a Trace."""
+    # Plain string fields
     request_id = entry.get("request_id")
     if not isinstance(request_id, str) or not request_id:
         raise ValueError(f"line {source_line}: request_id 필드 없음/비어있음")
     modelname_run = entry.get("modelname_run") or None
     task_name = entry.get("task_name") or None
 
-    # JSON 문자열 필드 → 파싱
+    # JSON string fields -> parse
     messages = _load_str_field(entry, "messages", list)
-    # task_status 는 metadata 로만 씀 — 필수는 아니지만 recon 상 항상 존재
+    # task_status is used only for metadata - not mandatory but always present per recon
     try:
         task_status = _load_str_field(entry, "task_status", dict)
     except ValueError:
         task_status = {}
 
-    # 1차 스캔: tool_calls / tool_result 수집
-    tool_uses: dict[str, tuple[dict, int, int]] = {}  # id → (fn_block, msg_idx, sub_idx)
-    tool_results: dict[str, str] = {}  # tool_call_id → content_string
-    seen_call_order: list[str] = []  # msg 순서 유지 (span_id 는 재사용 안 됨 가정)
+    # First pass: collect tool_calls / tool_result
+    tool_uses: dict[str, tuple[dict, int, int]] = {}  # id -> (fn_block, msg_idx, sub_idx)
+    tool_results: dict[str, str] = {}  # tool_call_id -> content_string
+    seen_call_order: list[str] = []  # preserve msg order (assumes span_id is not reused)
 
     for msg_idx, msg in enumerate(messages):
         if not isinstance(msg, dict):
@@ -177,7 +177,7 @@ def _build_trace_from_entry(entry: dict, source_line: int) -> Trace:
     if not tool_uses:
         raise ValueError(f"line {source_line}: tool_calls 하나도 없음 (request_id={request_id})")
 
-    # 조인 검사 (§22.4 선례, §23.3)
+    # Join check (§22.4 precedent, §23.3)
     orphan_use = sorted(set(tool_uses) - set(tool_results))
     orphan_result = sorted(set(tool_results) - set(tool_uses))
     if orphan_use or orphan_result:
@@ -187,7 +187,7 @@ def _build_trace_from_entry(entry: dict, source_line: int) -> Trace:
             f"(첫 5개: {orphan_result[:5]})"
         )
 
-    # Span 생성
+    # Create spans
     root_span_id = f"root-{request_id}"
     tool_spans: list[Span] = []
     for tid in seen_call_order:
@@ -255,7 +255,7 @@ def _iter_raw_lines(path: Path) -> Iterator[tuple[int, dict]]:
 
 
 def ingest_toolathlon_jsonl(path: Path) -> Trace:
-    """첫 트레이스만 반환 (CC 와 계약 동일). 전량 스캔은 iter_toolathlon_traces."""
+    """Return only the first trace (same contract as CC). Use iter_toolathlon_traces for full scan."""
     for lineno, entry in _iter_raw_lines(path):
         with warnings.catch_warnings():
             warnings.simplefilter("default")
@@ -264,9 +264,9 @@ def ingest_toolathlon_jsonl(path: Path) -> Trace:
 
 
 def iter_toolathlon_traces(path: Path) -> Iterator[Trace]:
-    """파일 내 모든 트레이스를 yield.
+    """Yield every trace in the file.
 
-    개별 트레이스 파싱 실패 시 조용히 skip 하지 않고 raise — 호출측이 결정한다.
+    Individual trace parse failures raise rather than silently skip - the caller decides.
     """
     for lineno, entry in _iter_raw_lines(path):
         yield _build_trace_from_entry(entry, lineno)

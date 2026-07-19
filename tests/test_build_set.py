@@ -1,4 +1,4 @@
-"""tests/test_build_set.py — paired 라벨셋 빌더 검증."""
+"""tests/test_build_set.py — paired labelset builder verification."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ def small_set(tmp_path):
 
 def test_counts_match_pattern_distribution(small_set):
     m = small_set["manifest"]
-    # 4 패턴 × 2 쌍 = 8 positive + 8 negative
+    # 4 patterns x 2 pairs = 8 positive + 8 negative
     assert m["counts"]["positive"] == 8
     assert m["counts"]["negative"] == 8
     assert m["counts"]["total"] == 16
@@ -30,7 +30,7 @@ def test_counts_match_pattern_distribution(small_set):
 def test_trace_files_written(tmp_path, small_set):
     files = sorted((tmp_path / "traces").glob("*.json"))
     assert len(files) == 16
-    # 파일명 = trace_id.json
+    # filename = trace_id.json
     names = {f.stem for f in files}
     expected = {f"t-{i:04d}" for i in range(1, 17)}
     assert names == expected
@@ -75,11 +75,11 @@ def test_determinism_same_seed(tmp_path):
     b = tmp_path / "b"
     info_a = build_set(seed=42, pairs_per_pattern=2, out_dir=a)
     info_b = build_set(seed=42, pairs_per_pattern=2, out_dir=b)
-    # manifest sha256 동일
+    # manifest sha256 identical
     assert info_a["manifest_sha256"] == info_b["manifest_sha256"]
-    # labels.jsonl 바이트 단위 동일
+    # labels.jsonl byte-identical
     assert (a / "labels.jsonl").read_bytes() == (b / "labels.jsonl").read_bytes()
-    # 모든 트레이스 파일 바이트 단위 동일
+    # all trace files byte-identical
     files_a = sorted(p.name for p in (a / "traces").glob("*.json"))
     files_b = sorted(p.name for p in (b / "traces").glob("*.json"))
     assert files_a == files_b
@@ -96,7 +96,7 @@ def test_determinism_different_seeds_differ(tmp_path):
 
 
 def test_full_run_seed_42_pairs_10(tmp_path):
-    """플랜 §3.2 — 운영 규모 (4 패턴 × 10쌍 = positive 40 + negative 40)."""
+    """Plan §3.2 — operational scale (4 patterns x 10 pairs = 40 positive + 40 negative)."""
     info = build_set(seed=42, pairs_per_pattern=10, out_dir=tmp_path)
     m = info["manifest"]
     assert m["counts"] == {"positive": 40, "negative": 40, "total": 80}

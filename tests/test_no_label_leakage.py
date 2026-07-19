@@ -1,10 +1,10 @@
-"""tests/test_no_label_leakage.py — 누수 가드 (어기면 빌드 깨짐).
+"""tests/test_no_label_leakage.py — Leakage guard (violations break the build).
 
-(a) 디렉터리 분리는 폴더 구조로 보장.
-(b) AST + 본문 리터럴 정적 스캔.
-(c) 런타임 프로브 (src.clew import 시 라벨 파일을 열지 않는다).
-(d) detect/ + report/ 1단계에서 비어있음 단언 (DoD).
-(e) 가드 자체-검증 (의도적 위반을 잡는지 단위 테스트).
+(a) Directory separation is enforced by folder structure.
+(b) Static scan via AST + source-literal check.
+(c) Runtime probe (importing src.clew must not open label files).
+(d) DoD assertion of emptiness in detect/ + report/ at stage 1.
+(e) Guard self-verification (unit tests that catch intentional violations).
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import pytest
 ROOT = Path(__file__).parent.parent
 SRC_CLEW = ROOT / "src" / "clew"
 
-# 본문에 등장하면 누수로 간주하는 리터럴.
+# Literals whose presence in source is treated as leakage.
 LEAK_LITERALS = (
     "eval/labels",
     "eval\\labels",
@@ -35,11 +35,11 @@ def _python_files(root: Path) -> list[Path]:
 
 
 # ----------------------------------------------------------------------
-# (b) 정적 가드
+# (b) Static guard
 # ----------------------------------------------------------------------
 
 def test_src_clew_does_not_import_eval_or_labels():
-    """AST: src/clew 의 어떤 모듈도 eval.* 또는 labels 모듈을 import하지 않음."""
+    """AST: no module under src/clew imports eval.* or a labels module."""
     offenders: list[str] = []
     for f in _python_files(SRC_CLEW):
         tree = ast.parse(f.read_text(encoding="utf-8"), filename=str(f))
@@ -58,7 +58,7 @@ def test_src_clew_does_not_import_eval_or_labels():
 
 
 def test_src_clew_does_not_reference_label_paths():
-    """본문 리터럴: src/clew 의 .py 파일에 라벨 경로 문자열 등장 시 fail."""
+    """Source literals: fail if a label-path string appears in any .py file under src/clew."""
     offenders: list[str] = []
     for f in _python_files(SRC_CLEW):
         text = f.read_text(encoding="utf-8")
@@ -69,7 +69,7 @@ def test_src_clew_does_not_reference_label_paths():
 
 
 def test_no_noqa_leak_whitelist_comment():
-    """가드 우회 통로(`# noqa-leak`) 도입 금지."""
+    """Ban guard-bypass channel (`# noqa-leak`)."""
     offenders: list[str] = []
     for f in _python_files(SRC_CLEW):
         if "noqa-leak" in f.read_text(encoding="utf-8"):
@@ -78,11 +78,11 @@ def test_no_noqa_leak_whitelist_comment():
 
 
 # ----------------------------------------------------------------------
-# (c) 런타임 프로브
+# (c) Runtime probe
 # ----------------------------------------------------------------------
 
 def test_runtime_no_label_file_open():
-    """src.clew 임포트 패스에서 라벨 파일을 열지 않음."""
+    """The src.clew import path must not open label files."""
     opened: list[str] = []
     original_open = builtins.open
 
@@ -102,11 +102,11 @@ def test_runtime_no_label_file_open():
 
 
 # ----------------------------------------------------------------------
-# (d) DoD: 2단계 탐지 모듈 4개 존재 / 리포트는 여전히 없음
+# (d) DoD: stage-2 detection has exactly 4 modules / report/ is still absent
 # ----------------------------------------------------------------------
 
 def test_detect_directory_has_expected_modules():
-    """src/clew/detect/ 에 2단계 모듈 정확히 4개(structural/semantic/cascade/__init__)."""
+    """src/clew/detect/ contains exactly 4 stage-2 modules (structural/semantic/cascade/__init__)."""
     detect_dir = SRC_CLEW / "detect"
     py_files = sorted(p.name for p in detect_dir.glob("*.py"))
     expected = ["__init__.py", "cascade.py", "semantic.py", "structural.py"]
@@ -114,9 +114,9 @@ def test_detect_directory_has_expected_modules():
 
 
 def test_dod_report_directory_matches_stage3_scope():
-    """stage 경계 가드 — §10 진입(커밋 85da2b3)으로 경계 갱신.
-    동결 검증(누수 가드·eval)과 무관. report/ 의 .py가 §10 계획 모듈과 정확히 일치해야 함.
-    허용 목록 외 파일이 추가되면 이 테스트가 깨진다.
+    """Stage boundary guard — boundary refreshed by entering §10 (commit 85da2b3).
+    Unrelated to frozen verification (leakage guard / eval). The .py files in report/ must exactly match the §10 planned modules.
+    Adding any file outside the allowlist breaks this test.
     """
     expected = ["__init__.py", "_model.py", "json_report.py", "markdown.py"]
     report_dir = SRC_CLEW / "report"
@@ -125,10 +125,10 @@ def test_dod_report_directory_matches_stage3_scope():
 
 
 def test_calibrate_does_not_reference_eval_set():
-    """eval/calibrate.py 가 평가 set(seed=42) 경로 리터럴을 본문에 갖지 않는다.
+    """eval/calibrate.py must not contain the eval set (seed=42) path literal in its source.
 
-    dev set 경로(eval/dev/...)는 허용. 정확히 'eval/traces' 또는
-    'eval/labels.jsonl' 두 리터럴만 차단한다.
+    The dev set path (eval/dev/...) is allowed. Exactly the two literals 'eval/traces' and
+    'eval/labels.jsonl' are blocked.
     """
     calibrate_path = ROOT / "eval" / "calibrate.py"
     if not calibrate_path.exists():
@@ -144,9 +144,9 @@ def test_calibrate_does_not_reference_eval_set():
 
 
 def test_evaluate_does_not_reference_dev_set():
-    """eval/evaluate.py 가 dev set(seed=7) 경로 리터럴을 본문에 갖지 않는다.
+    """eval/evaluate.py must not contain the dev set (seed=7) path literal in its source.
 
-    대칭 가드: evaluate 가 dev 경로를 읽으면 동결 우회/누수 가능. 'eval/dev' 리터럴 차단.
+    Symmetric guard: if evaluate reads the dev path, frozen bypass / leakage is possible. Block the 'eval/dev' literal.
     """
     evaluate_path = ROOT / "eval" / "evaluate.py"
     text = evaluate_path.read_text(encoding="utf-8")
@@ -157,7 +157,7 @@ def test_evaluate_does_not_reference_dev_set():
 
 
 # ----------------------------------------------------------------------
-# (e) 가드 자체-검증 — 의도적 위반을 잡는지
+# (e) Guard self-verification — does it catch intentional violations?
 # ----------------------------------------------------------------------
 
 def test_guard_self_detects_import_violation(tmp_path):

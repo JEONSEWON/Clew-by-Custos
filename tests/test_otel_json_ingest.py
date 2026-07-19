@@ -1,10 +1,10 @@
-"""tests/test_otel_json_ingest.py — OTel SDK JSON 진입점 테스트 (G1·G2·G4, §12).
+"""tests/test_otel_json_ingest.py — OTel SDK JSON entry-point tests (G1·G2·G4, §12).
 
-Format A: span.to_json() 배열 → ingest_from_otel_json → Trace.
+Format A: span.to_json() array → ingest_from_otel_json → Trace.
 
-G1: OTel JSON 파일 → ingest_from_otel_json → Trace 생성
-G2: 기존 Clew Trace JSON → _load_trace_auto → Trace (하위 호환)
-G4: ReadableSpan 경로 ≡ JSON 경로 (동치성)
+G1: OTel JSON file → ingest_from_otel_json → Trace construction
+G2: existing Clew Trace JSON → _load_trace_auto → Trace (backward compatibility)
+G4: ReadableSpan path ≡ JSON path (equivalence)
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from clew.ingest.otel_json import (
 )
 from clew.io import save_trace
 
-# ── 공통 픽스처 상수 ────────────────────────────────────────────────────────
+# ── Shared fixture constants ────────────────────────────────────────────────
 
 _TID = "0xaabbccdd112233440000000011223344"
 _S1  = "0x0000000000000001"
@@ -63,7 +63,7 @@ def _sdk_span(
     }
 
 
-# 최소 유효 트레이스: root(CHAIN) → researcher(CHAIN) → claude(LLM)
+# Minimal valid trace: root(CHAIN) → researcher(CHAIN) → claude(LLM)
 _ROOT   = _sdk_span("pipeline",   _TID, _S1, None, "CHAIN",
                     {"input.value": "q", "output.value": "root out"})
 _WORKER = _sdk_span("researcher", _TID, _S2, _S1,  "CHAIN",
@@ -75,26 +75,26 @@ _LLM    = _sdk_span("claude",     _TID, _S3, _S2,  "LLM",
 MINIMAL_SDK_JSON = [_ROOT, _WORKER, _LLM]
 
 
-# ── 1. _iso_to_ns 단위 테스트 ────────────────────────────────────────────────
+# ── 1. _iso_to_ns unit test ────────────────────────────────────────────────
 
 def test_iso_to_ns_roundtrip():
-    """ISO datetime → ns → datetime 왕복 (1µs 이내)."""
+    """ISO datetime → ns → datetime round-trip (within 1µs)."""
     from datetime import datetime, timezone
     from clew.ingest.langgraph import _ns_to_utc
 
     iso = "2026-06-20T10:54:26.378797Z"
     ns = _iso_to_ns(iso)
     dt = _ns_to_utc(ns)
-    # microsecond 단위 비교 (float 정밀도 한계 허용)
+    # Compare at microsecond granularity (allowing float precision slack)
     expected = datetime.fromisoformat(iso.replace("Z", "+00:00"))
     diff_us = abs((dt - expected).total_seconds() * 1e6)
-    assert diff_us < 1.0, f"왕복 오차 {diff_us:.3f}µs > 1µs"
+    assert diff_us < 1.0, f"round-trip error {diff_us:.3f}µs > 1µs"
 
 
-# ── 2. _SdkJsonSpan shim 단위 테스트 ────────────────────────────────────────
+# ── 2. _SdkJsonSpan shim unit tests ─────────────────────────────────────────
 
 def test_shim_context_hex_parsing():
-    """trace_id / span_id "0x..." hex → int 변환 정확성."""
+    """trace_id / span_id "0x..." hex → int conversion correctness."""
     shim = _SdkJsonSpan(_ROOT)
     # "0xaabbccdd112233440000000011223344" → int
     expected_tid = int("aabbccdd112233440000000011223344", 16)
@@ -117,38 +117,38 @@ def test_shim_parent_null():
 
 
 def test_shim_attributes_passthrough():
-    """flat dict attributes가 변환 없이 그대로 전달됨."""
+    """Flat dict attributes are passed through without transformation."""
     shim = _SdkJsonSpan(_LLM)
     assert shim.attributes["openinference.span.kind"] == "LLM"
     assert shim.attributes["llm.token_count.total"] == 50
     assert shim.attributes["output.value"] == "llm out"
 
 
-# ── 3. ingest_from_otel_json 통합 테스트 (G1) ───────────────────────────────
+# ── 3. ingest_from_otel_json integration test (G1) ──────────────────────────
 
 def test_ingest_from_otel_json_file(tmp_path):
-    """Format A JSON 파일 → Trace 생성 (G1).
+    """Format A JSON file → Trace construction (G1).
 
-    preprocess 후 llm span 제거, 나머지 spans의 id·kind·name 확인.
+    After preprocess, llm span is removed; verify id·kind·name of remaining spans.
     """
     p = tmp_path / "trace.json"
     p.write_text(json.dumps(MINIMAL_SDK_JSON), encoding="utf-8")
 
     trace = ingest_from_otel_json(p)
 
-    assert trace.trace_id  # 비어있지 않음
-    # preprocess 후: pipeline(CHAIN), researcher(CHAIN) — llm(claude) collapse됨
+    assert trace.trace_id  # non-empty
+    # After preprocess: pipeline(CHAIN), researcher(CHAIN) — llm(claude) collapsed
     kinds = {s.span_kind for s in trace.spans}
-    assert "llm" not in kinds  # collapse 확인
+    assert "llm" not in kinds  # verify collapse
     names = {s.agent_or_node_id for s in trace.spans}
     assert "pipeline" in names
     assert "researcher" in names
 
 
-# ── 4. preprocess 정확히 1회 단언 ────────────────────────────────────────────
+# ── 4. Assert preprocess runs exactly once ──────────────────────────────────
 
 def test_preprocess_runs_exactly_once(tmp_path):
-    """ingest_from_otel_json → ingest_otel_spans → preprocess_trace 정확히 1회."""
+    """ingest_from_otel_json → ingest_otel_spans → preprocess_trace exactly once."""
     import clew.ingest.langgraph as lg_module
 
     call_count: list[int] = []
@@ -164,16 +164,16 @@ def test_preprocess_runs_exactly_once(tmp_path):
     with patch.object(lg_module, "preprocess_trace", side_effect=counting):
         ingest_from_otel_json(p)
 
-    assert len(call_count) == 1, f"preprocess_trace가 {len(call_count)}회 호출됨 (기대: 1)"
+    assert len(call_count) == 1, f"preprocess_trace called {len(call_count)} times (expected: 1)"
 
 
-# ── 5. G4 동치성 테스트 (ReadableSpan 경로 ≡ JSON 경로) ─────────────────────
+# ── 5. G4 equivalence test (ReadableSpan path ≡ JSON path) ──────────────────
 
 def test_g4_equivalence(tmp_path):
-    """동일 스팬을 ReadableSpan 경로 / Format A JSON 경로로 각각 ingest → 동치.
+    """Ingest the same spans via the ReadableSpan path and the Format A JSON path → equivalent.
 
-    span_id · span_kind · agent_or_node_id 세트가 일치함을 단언.
-    opentelemetry 미설치 시 skip.
+    Assert the sets of (span_id · span_kind · agent_or_node_id) are identical.
+    Skip if opentelemetry is not installed.
     """
     pytest.importorskip("opentelemetry.sdk.trace")
     pytest.importorskip("openinference.instrumentation.langchain")
@@ -215,10 +215,10 @@ def test_g4_equivalence(tmp_path):
     finally:
         instrumentor.uninstrument()
 
-    # 경로 A: ReadableSpan 직접 ingest
+    # Path A: ingest ReadableSpan directly
     trace_a = ingest_otel_spans(raw_spans)
 
-    # 경로 B: span.to_json() → JSON 파일 → ingest_from_otel_json
+    # Path B: span.to_json() → JSON file → ingest_from_otel_json
     sdk_json = [json.loads(s.to_json()) for s in raw_spans]
     p = tmp_path / "spans.json"
     p.write_text(json.dumps(sdk_json), encoding="utf-8")
@@ -228,17 +228,17 @@ def test_g4_equivalence(tmp_path):
         return (s.span_id, s.span_kind, s.agent_or_node_id)
 
     assert set(_key(s) for s in trace_a.spans) == set(_key(s) for s in trace_b.spans), (
-        f"경로 A spans: {[_key(s) for s in trace_a.spans]}\n"
-        f"경로 B spans: {[_key(s) for s in trace_b.spans]}"
+        f"Path A spans: {[_key(s) for s in trace_a.spans]}\n"
+        f"Path B spans: {[_key(s) for s in trace_b.spans]}"
     )
 
 
-# ── 6. 에러 케이스 ───────────────────────────────────────────────────────────
+# ── 6. Error cases ──────────────────────────────────────────────────────────
 
 def test_missing_output_value_raises_clear_error(tmp_path):
-    """output.value 없는 스팬 → ValueError, 메시지에 span name 포함."""
+    """Span missing output.value → ValueError, message contains the span name."""
     bad_span = _sdk_span("bad_node", _TID, _S1, None, "CHAIN",
-                         {"input.value": "x"})  # output.value 누락
+                         {"input.value": "x"})  # output.value missing
     good_span = _sdk_span("good_node", _TID, _S2, _S1, "CHAIN",
                           {"input.value": "x", "output.value": "ok"})
 
@@ -252,7 +252,7 @@ def test_missing_output_value_raises_clear_error(tmp_path):
 
 
 def test_format_b_resource_spans_error(tmp_path):
-    """Format B (resource_spans 키) → 명확한 에러 + 변환 안내."""
+    """Format B (resource_spans key) → clear error + conversion guidance."""
     proto_json = {"resource_spans": [{"scope_spans": [{"spans": []}]}]}
     p = tmp_path / "trace.json"
     p.write_text(json.dumps(proto_json), encoding="utf-8")
@@ -265,7 +265,7 @@ def test_format_b_resource_spans_error(tmp_path):
     assert "미지원" in msg or "Format A" in msg
 
 
-# ── 7. CLI _load_trace_auto 테스트 (G1·G2) ───────────────────────────────────
+# ── 7. CLI _load_trace_auto tests (G1·G2) ───────────────────────────────────
 
 def _get_load_trace_auto():
     mod = importlib.import_module("clew.__main__")
@@ -273,10 +273,10 @@ def _get_load_trace_auto():
 
 
 def test_load_trace_auto_clew_format(tmp_path):
-    """기존 Clew Trace JSON → _load_trace_auto → Trace (G2 하위 호환)."""
+    """Existing Clew Trace JSON → _load_trace_auto → Trace (G2 backward compat)."""
     from clew.ingest.otel_json import ingest_from_otel_json as _ingest
 
-    # 유효한 Clew Trace JSON 생성: Format A 로 만든 후 save_trace
+    # Produce a valid Clew Trace JSON: build via Format A, then save_trace
     p_sdk = tmp_path / "spans.json"
     p_sdk.write_text(json.dumps(MINIMAL_SDK_JSON), encoding="utf-8")
     trace_orig = ingest_from_otel_json(p_sdk)
@@ -292,7 +292,7 @@ def test_load_trace_auto_clew_format(tmp_path):
 
 
 def test_load_trace_auto_format_a(tmp_path):
-    """Format A JSON → _load_trace_auto → Trace (G1 CLI 경로)."""
+    """Format A JSON → _load_trace_auto → Trace (G1 CLI path)."""
     p = tmp_path / "trace.json"
     p.write_text(json.dumps(MINIMAL_SDK_JSON), encoding="utf-8")
 
@@ -305,7 +305,7 @@ def test_load_trace_auto_format_a(tmp_path):
 
 
 def test_load_trace_auto_format_b_error(tmp_path):
-    """resource_spans 키 → _load_trace_auto가 명확한 에러 반환."""
+    """resource_spans key → _load_trace_auto returns a clear error."""
     proto_json = {"resource_spans": []}
     p = tmp_path / "bad.json"
     p.write_text(json.dumps(proto_json), encoding="utf-8")
@@ -318,7 +318,7 @@ def test_load_trace_auto_format_b_error(tmp_path):
     assert "미지원" in str(exc_info.value)
 
 
-# ── STAGE 14: Format C (OpenInference/TRAIL) — H1~H6 ────────────────────────
+# ── STAGE 14: Format C (OpenInference/TRAIL) — H1–H6 ────────────────────────
 
 import warnings as _warnings_mod
 
@@ -374,9 +374,9 @@ def _sdk_oi_span(name, span_id, parent_id, kind, output, inp="q"):
 
 # H1 ─────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.skipif(not _TRAIL_PATH.exists(), reason="trail_sample.json 없음")
+@pytest.mark.skipif(not _TRAIL_PATH.exists(), reason="trail_sample.json missing")
 def test_h1_trail_smoke():
-    """TRAIL 파일 → _load_trace_auto → Trace 반환 (H1)."""
+    """TRAIL file → _load_trace_auto → returns Trace (H1)."""
     from clew.model import Trace
     load_auto = _get_load_trace_auto()
     with _warnings_mod.catch_warnings():
@@ -387,9 +387,9 @@ def test_h1_trail_smoke():
     assert len(trace.spans) > 0
 
 
-@pytest.mark.skipif(not _TRAIL_PATH.exists(), reason="trail_sample.json 없음")
+@pytest.mark.skipif(not _TRAIL_PATH.exists(), reason="trail_sample.json missing")
 def test_h1_trail_analyze_report():
-    """TRAIL → cascade → render_markdown 성공 (H1)."""
+    """TRAIL → cascade → render_markdown succeeds (H1)."""
     from clew.detect.cascade import cascade
     from clew.detect.semantic import Embedder
     from clew.report.markdown import render_markdown
@@ -413,9 +413,9 @@ def test_h1_trail_analyze_report():
 
 # H2 ─────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.skipif(not _REAL_REQUERY_PATH.exists(), reason="real_requery_known.json 없음")
+@pytest.mark.skipif(not _REAL_REQUERY_PATH.exists(), reason="real_requery_known.json missing")
 def test_h2_format_a_regression():
-    """real_requery_known.json → _load_trace_auto → Trace (H2 회귀)."""
+    """real_requery_known.json → _load_trace_auto → Trace (H2 regression)."""
     from clew.model import Trace
     load_auto = _get_load_trace_auto()
     trace = load_auto(_REAL_REQUERY_PATH)
@@ -425,9 +425,9 @@ def test_h2_format_a_regression():
 
 # H3 ─────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.skipif(not _VERIFY_README_PATH.exists(), reason="verify_readme_output.json 없음")
+@pytest.mark.skipif(not _VERIFY_README_PATH.exists(), reason="verify_readme_output.json missing")
 def test_h3_serialized_trace_regression():
-    """verify_readme_output.json → _load_trace_auto → Trace (H3 회귀)."""
+    """verify_readme_output.json → _load_trace_auto → Trace (H3 regression)."""
     from clew.model import Trace
     load_auto = _get_load_trace_auto()
     trace = load_auto(_VERIFY_README_PATH)
@@ -435,7 +435,7 @@ def test_h3_serialized_trace_regression():
     assert len(trace.spans) > 0
 
 
-# H5 — Format A ↔ Format C 동치성 ────────────────────────────────────────────
+# H5 — Format A ↔ Format C equivalence ──────────────────────────────────────
 
 def _trace_a(tmp_path):
     spans = [
@@ -454,7 +454,7 @@ def _trace_c(tmp_path):
 
 
 def test_h5_equivalence_span_count(tmp_path):
-    """Format A vs C — span 수 동일 (H5)."""
+    """Format A vs C — same span count (H5)."""
     (tmp_path / "a").mkdir(); (tmp_path / "c").mkdir()
     ta = _trace_a(tmp_path / "a")
     tc = _trace_c(tmp_path / "c")
@@ -462,7 +462,7 @@ def test_h5_equivalence_span_count(tmp_path):
 
 
 def test_h5_equivalence_span_kinds(tmp_path):
-    """Format A vs C — span_kind 집합 동일 (H5)."""
+    """Format A vs C — same span_kind set (H5)."""
     (tmp_path / "a").mkdir(); (tmp_path / "c").mkdir()
     ta = _trace_a(tmp_path / "a")
     tc = _trace_c(tmp_path / "c")
@@ -470,17 +470,17 @@ def test_h5_equivalence_span_kinds(tmp_path):
 
 
 def test_h5_equivalence_output_text(tmp_path):
-    """Format A vs C — output_text 집합 동일 (H5)."""
+    """Format A vs C — same output_text set (H5)."""
     (tmp_path / "a").mkdir(); (tmp_path / "c").mkdir()
     ta = _trace_a(tmp_path / "a")
     tc = _trace_c(tmp_path / "c")
     assert {s.output_text for s in ta.spans} == {s.output_text for s in tc.spans}
 
 
-# H6 — 깨진 Format C 에러 ─────────────────────────────────────────────────────
+# H6 — Broken Format C errors ───────────────────────────────────────────────
 
 def test_h6_no_oi_spans_raises(tmp_path):
-    """openinference.span.kind 없는 스팬만 → ValueError (H6)."""
+    """Only spans without openinference.span.kind → ValueError (H6)."""
     bad = {
         "span_id": _OI_S1, "parent_span_id": None, "trace_id": _OI_TID,
         "span_name": "wrapper", "timestamp": _OI_T0, "duration": "PT1S",
@@ -492,7 +492,7 @@ def test_h6_no_oi_spans_raises(tmp_path):
 
 
 def test_h6_missing_output_value_raises(tmp_path):
-    """output.value 없는 OI 스팬만 있을 때 → ValueError (H6)."""
+    """When only OI spans missing output.value are present → ValueError (H6)."""
     no_out = _oi_raw(_OI_S1, None, "empty_node", "CHAIN", "")
     no_out["span_attributes"].pop("output.value")
     with pytest.raises(ValueError):
@@ -502,24 +502,24 @@ def test_h6_missing_output_value_raises(tmp_path):
 
 
 def test_h6_invalid_hex_span_id_raises(tmp_path):
-    """비hex span_id → ValueError (H6)."""
+    """Non-hex span_id → ValueError (H6)."""
     bad_hex = _oi_raw("ZZZZZZZZZZZZZZZZ", None, "bad_node", "CHAIN", "out")
     with pytest.raises(ValueError):
         ingest_from_openinference_json(_oi_file(tmp_path, [bad_hex]))
 
 
 def test_h6_empty_spans_raises(tmp_path):
-    """빈 spans 배열 → ValueError (H6)."""
+    """Empty spans array → ValueError (H6)."""
     p = tmp_path / "empty.json"
     p.write_text(json.dumps({"trace_id": _OI_TID, "spans": []}), encoding="utf-8")
     with pytest.raises(ValueError):
         ingest_from_openinference_json(p)
 
 
-# shim 단위 / CLI 라우팅 / preprocess ─────────────────────────────────────────
+# shim unit / CLI routing / preprocess ──────────────────────────────────────
 
 def test_oi_shim_ids_and_parent():
-    """_OISpan: hex ID 파싱, root parent=None (§14)."""
+    """_OISpan: hex ID parsing, root parent=None (§14)."""
     raw = _oi_raw(_OI_S1, None, "root", "CHAIN", "out")
     shim = _OISpan(raw, parent_int=None)
     assert shim.context.trace_id == int(_OI_TID, 16)
@@ -533,7 +533,7 @@ def test_oi_shim_ids_and_parent():
 
 
 def test_load_trace_auto_routes_oi_nested(tmp_path):
-    """dict + span_attributes → ingest_from_openinference_json 경로 (§14)."""
+    """dict + span_attributes → ingest_from_openinference_json path (§14)."""
     child = _oi_raw(_OI_S2, _OI_S1, "tool", "TOOL", "hello tool")
     root  = _oi_raw(_OI_S1, None,   "root", "CHAIN", "hello root", children=[child])
     p = _oi_file(tmp_path, [root])
@@ -547,7 +547,7 @@ def test_load_trace_auto_routes_oi_nested(tmp_path):
 
 
 def test_oi_preprocess_exactly_once(tmp_path):
-    """ingest_from_openinference_json → preprocess_trace 정확히 1회 (§14)."""
+    """ingest_from_openinference_json → preprocess_trace exactly once (§14)."""
     import clew.ingest.langgraph as lg_module
 
     call_count: list[int] = []
@@ -563,4 +563,4 @@ def test_oi_preprocess_exactly_once(tmp_path):
     with patch.object(lg_module, "preprocess_trace", side_effect=counting):
         ingest_from_openinference_json(_oi_file(tmp_path, [root]))
 
-    assert len(call_count) == 1, f"preprocess_trace {len(call_count)}회 호출 (기대: 1)"
+    assert len(call_count) == 1, f"preprocess_trace called {len(call_count)} times (expected: 1)"

@@ -1,4 +1,4 @@
-"""clew.detect — 2단계 탐지 캐스케이드.
+"""clew.detect - 2-stage detection cascade.
 
-라벨 파일을 import·read 하지 않는다 (누수 가드 (a)/(b)/(c)로 강제).
+Does not import or read label files (enforced by leakage guards (a)/(b)/(c)).
 """

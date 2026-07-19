@@ -1,7 +1,7 @@
-"""tests/test_redundancy_bench_ingest.py — RB JSON 어댑터 검증 (§24).
+"""tests/test_redundancy_bench_ingest.py — RB JSON adapter verification (§24).
 
-- 데이터 파일 커밋 금지 (docs/REDUNDANCY_BENCH.md §24.6): fixture 는 tmp_path 에 작성.
-- 검증 항목: §24.2 매핑 + requestor 필터, turn_pair metadata, 조인, 감지 분기.
+- Data files must not be committed (docs/REDUNDANCY_BENCH.md §24.6): fixtures are written under tmp_path.
+- Verification items: §24.2 mapping + requestor filter, turn_pair metadata, join, detection routing.
 """
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def _tool_call(tid: str, name: str, arguments: dict | str) -> dict:
 
 
 def _sim(sim_id: str = "sim-1", task_id: str = "1", messages: list[dict] | None = None) -> dict:
-    # turn_idx 필드 자동 부여 (recon Q3: 리스트 인덱스와 동일)
+    # Auto-assign turn_idx field (recon Q3: identical to list index)
     msgs = messages or []
     for i, m in enumerate(msgs):
         m.setdefault("turn_idx", i)
@@ -65,10 +65,10 @@ def _write_rb(tmp_path: Path, sims: list[dict], name: str = "final_traces.json")
     return p
 
 
-# ─── §24.2 매핑 ───────────────────────────────────────────────────────────
+# ─── §24.2 mapping ───────────────────────────────────────────────────────
 
 def test_basic_serial_pair(tmp_path: Path) -> None:
-    """assistant → tool : span 1개, turn_pair 보존. span_id = tid#call_idx."""
+    """assistant → tool : 1 span, turn_pair preserved. span_id = tid#call_idx."""
     sim = _sim("s1", "t1", messages=[
         _user_msg("hi"),
         _asst_msg([_tool_call("c1", "get_user", {"id": 100})]),
@@ -80,7 +80,7 @@ def test_basic_serial_pair(tmp_path: Path) -> None:
     assert trace.trace_id == "s1"
     assert len(trace.spans) == 2  # root + 1 tool
     tool = next(s for s in trace.spans if s.span_kind == "tool")
-    # RB 는 tid 재사용 → span_id = f"{tid}#{call_idx}"
+    # RB reuses tid → span_id = f"{tid}#{call_idx}"
     assert tool.span_id == "c1#1"
     assert tool.agent_or_node_id == "get_user"
     assert tool.output_text == '{"name": "John"}'
@@ -91,11 +91,11 @@ def test_basic_serial_pair(tmp_path: Path) -> None:
 
 
 def test_duplicate_tool_call_id_split_by_occurrence(tmp_path: Path) -> None:
-    """§24.2: RB 는 같은 sim 안에서 tool_call.id 재사용. FIFO 로 짝지어 span 분리."""
+    """§24.2: RB reuses tool_call.id within the same sim. Pair via FIFO to split into separate spans."""
     sim = _sim("s-dup", messages=[
         _asst_msg([_tool_call("call_x", "get_res", {"id": "A"})]),  # turn 0
         _tool_msg("call_x", "result-1"),                              # turn 1
-        _asst_msg([_tool_call("call_x", "get_res", {"id": "A"})]),  # turn 2 (같은 tid 재사용)
+        _asst_msg([_tool_call("call_x", "get_res", {"id": "A"})]),  # turn 2 (same tid reused)
         _tool_msg("call_x", "result-2"),                              # turn 3
     ])
     path = _write_rb(tmp_path, [sim])
@@ -113,7 +113,7 @@ def test_duplicate_tool_call_id_split_by_occurrence(tmp_path: Path) -> None:
 
 
 def test_arguments_normalized_sort_keys(tmp_path: Path) -> None:
-    """§24.2: arguments dict → sort_keys 재직렬화."""
+    """§24.2: arguments dict → re-serialize with sort_keys."""
     sim = _sim(messages=[
         _asst_msg([_tool_call("c1", "read_file", {"z": 1, "a": 2})]),
         _tool_msg("c1", "content"),
@@ -125,7 +125,7 @@ def test_arguments_normalized_sort_keys(tmp_path: Path) -> None:
 
 
 def test_arguments_str_form_parsed(tmp_path: Path) -> None:
-    """안전장치: arguments 가 str 로 오는 경우도 처리."""
+    """Safety net: also handle the case where arguments arrive as a str."""
     sim = _sim(messages=[
         _asst_msg([_tool_call("c1", "read_file", '{"a": 1}')]),
         _tool_msg("c1", "content"),
@@ -146,15 +146,15 @@ def test_arguments_invalid_raises(tmp_path: Path) -> None:
         ingest_redundancy_bench_json(path)
 
 
-# ─── §24.2 requestor 필터 (telecom 사용자 시뮬) ─────────────────────────
+# ─── §24.2 requestor filter (telecom user simulation) ───────────────────
 
 def test_user_requestor_tool_excluded(tmp_path: Path) -> None:
-    """role=user + tool_calls (telecom) 는 span 화 안 됨. tool msg (requestor='user') 도 span 아님."""
+    """role=user + tool_calls (telecom) is not turned into a span. tool msg (requestor='user') is not a span either."""
     sim = _sim(messages=[
         _user_msg("hello"),
         _asst_msg([_tool_call("c_asst", "get_x", {})]),
         _tool_msg("c_asst", "asst-result", requestor="assistant"),
-        # 사용자 시뮬 툴콜 (telecom 패턴)
+        # User-simulated tool call (telecom pattern)
         {"role": "user", "content": "", "tool_calls": [{"id": "c_user", "name": "device_check", "arguments": {}, "requestor": "user"}]},
         _tool_msg("c_user", "device-result", requestor="user"),
     ])
@@ -162,14 +162,14 @@ def test_user_requestor_tool_excluded(tmp_path: Path) -> None:
     trace = ingest_redundancy_bench_json(path)
 
     tool_spans = [s for s in trace.spans if s.span_kind == "tool"]
-    assert [s.span_id for s in tool_spans] == ["c_asst#1"]  # c_user 제외, tid#call_idx
+    assert [s.span_id for s in tool_spans] == ["c_asst#1"]  # c_user excluded, tid#call_idx
     # rb_user_tool_idx: turn_idx 4 (tool msg with requestor='user')
     assert trace.metadata["rb_user_tool_idx"] == [4]
-    # turn_pair 는 c_asst 만
+    # turn_pair covers only c_asst
     assert trace.metadata["rb_span_to_turn_pair"] == {"c_asst#1": [1, 2]}
 
 
-# ─── §24.2 timestamp ─────────────────────────────────────────────────────
+# ─── §24.2 timestamp ────────────────────────────────────────────────────
 
 def test_timestamp_uses_original_when_present(tmp_path: Path) -> None:
     sim = _sim(messages=[
@@ -194,16 +194,17 @@ def test_timestamp_fallback_synthetic(tmp_path: Path) -> None:
     trace = ingest_redundancy_bench_json(path)
     tool = next(s for s in trace.spans if s.span_kind == "tool")
     # call_turn_idx = 0 → synthetic base + 0s
+
     assert tool.start_time == _synth_ts(0)
 
 
-# ─── §24.2 조인 ─────────────────────────────────────────────────────────
+# ─── §24.2 join ─────────────────────────────────────────────────────────
 
 def test_orphan_call_raises(tmp_path: Path) -> None:
     sim = _sim(messages=[
         _asst_msg([_tool_call("c1", "r", {}), _tool_call("c2", "r", {})]),
         _tool_msg("c1", "ok"),
-        # c2 결과 누락
+        # c2 result missing
     ])
     path = _write_rb(tmp_path, [sim])
     with pytest.raises(ValueError, match="조인 실패"):
@@ -238,7 +239,7 @@ def test_metadata_carries_domain_task_id(tmp_path: Path) -> None:
         _asst_msg([_tool_call("c1", "r", {})]),
         _tool_msg("c1", "ok"),
     ])
-    # domain 은 경로 관례로 추정
+    # domain is inferred by path convention
     dom_dir = tmp_path / "airline"
     dom_dir.mkdir()
     p = dom_dir / "final_traces.json"
@@ -247,7 +248,7 @@ def test_metadata_carries_domain_task_id(tmp_path: Path) -> None:
     assert trace.metadata["domain"] == "airline"
     assert trace.metadata["task_id"] == "task_xyz"
     assert trace.metadata["sim_id"] == "s7"
-    # compact_boundaries 키 없음 (compact 게이트 no-op)
+    # compact_boundaries key absent (compact gate is a no-op)
     assert "compact_boundaries" not in trace.metadata
 
 
@@ -265,7 +266,7 @@ def test_iter_multiple_sims(tmp_path: Path) -> None:
     assert [t.trace_id for t in traces] == ["s1", "s2"]
 
 
-# ─── §24.4 감지 분기 (CLI auto-load) ─────────────────────────────────────
+# ─── §24.4 detection routing (CLI auto-load) ────────────────────────────
 
 def test_auto_dispatch_redundancy_bench(tmp_path: Path) -> None:
     from clew.__main__ import _load_trace_auto
@@ -280,7 +281,7 @@ def test_auto_dispatch_redundancy_bench(tmp_path: Path) -> None:
 
 
 def test_auto_dispatch_clew_trace_json_still_works(tmp_path: Path) -> None:
-    """중단조건 2: RB 분기 추가가 Clew Trace JSON 경로를 안 깬다."""
+    """Stop-condition 2: adding the RB branch does not break the Clew Trace JSON path."""
     from clew.__main__ import _load_trace_auto
     p = tmp_path / "trace.json"
     p.write_text(json.dumps({

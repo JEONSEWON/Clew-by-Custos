@@ -1,4 +1,4 @@
-"""src/clew/report/markdown.py — 사람용 마크다운 리포트 렌더러."""
+"""src/clew/report/markdown.py - human-facing markdown report renderer."""
 
 from __future__ import annotations
 
@@ -23,10 +23,10 @@ def render_markdown(
     no_snippets: bool = False,
     snippet_len: int = _SNIPPET_LEN,
 ) -> str:
-    """CascadeResult + WasteDetail 목록 → 마크다운 문자열.
+    """CascadeResult + WasteDetail list -> markdown string.
 
-    스니펫: output_text[:snippet_len] 기본 (no_snippets=True면 행 자체 생략).
-    리포트 머리에 동결 파라미터(φ, N, 모델) 인쇄.
+    Snippet: output_text[:snippet_len] by default (omits the row entirely if no_snippets=True).
+    Prints frozen parameters (phi, N, model) at the report header.
     """
     lines: list[str] = []
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

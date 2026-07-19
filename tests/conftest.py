@@ -1,4 +1,4 @@
-"""pytest conftest — 프로젝트 루트를 sys.path에 추가해 'eval', 'src.clew' 임포트 가능하게."""
+"""pytest conftest — add project root to sys.path so 'eval' and 'src.clew' can be imported."""
 
 from __future__ import annotations
 

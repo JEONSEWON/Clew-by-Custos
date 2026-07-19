@@ -1,10 +1,10 @@
-"""src/clew/capture.py — LangGraph 앱 실행 → OTel 캡처 → Trace 저장 헬퍼.
+"""src/clew/capture.py — LangGraph app execution -> OTel capture -> Trace saving helper.
 
-LangGraph 전용 경로: compiled app.invoke() → InMemorySpanExporter → ingest_otel_spans.
-범용 경로(OTel SDK JSON 파일 → Trace)는 이 함수를 거치지 않는다.
-  → clew.ingest.otel_json.ingest_from_otel_json(path) 사용.
+LangGraph-specific path: compiled app.invoke() -> InMemorySpanExporter -> ingest_otel_spans.
+The general-purpose path (OTel SDK JSON file -> Trace) does not go through this function.
+  -> Use clew.ingest.otel_json.ingest_from_otel_json(path).
 
-사용 예:
+Usage example:
     from clew.capture import capture_langgraph
     trace = capture_langgraph(app, {"topic": "..."}, Path("trace.json"))
 """
@@ -29,18 +29,18 @@ def capture_langgraph(
     *,
     cost_table: dict[str, float] | None = None,
 ) -> Trace:
-    """LangGraph 앱 실행 → ingest_otel_spans → trace.json 저장.
+    """LangGraph app execution -> ingest_otel_spans -> save trace.json.
 
-    LangGraph 전용. 범용 파일 입력은 ingest_from_otel_json()을 사용.
+    LangGraph-specific. For general-purpose file input use ingest_from_otel_json().
 
     Args:
-        app: compiled LangGraph app (app.invoke 가능한 객체).
-        inputs: app.invoke()에 전달할 입력 dict.
-        out_path: trace.json 저장 경로.
-        cost_table: 모델명 → 토큰당 비용 매핑 (optional).
+        app: compiled LangGraph app (an object that supports app.invoke).
+        inputs: input dict to pass to app.invoke().
+        out_path: path to save trace.json.
+        cost_table: model name -> cost-per-token mapping (optional).
 
     Returns:
-        저장된 Trace 객체.
+        The saved Trace object.
     """
     try:
         from openinference.instrumentation.langchain import LangChainInstrumentor

@@ -1,13 +1,13 @@
-"""src/clew/ingest/claude_code.py — Claude Code JSONL transcript → Trace.
+"""src/clew/ingest/claude_code.py - Claude Code JSONL transcript -> Trace.
 
-매핑 규약: docs/CC_TRANSCRIPT.md §22 (사전등록, PR 승인 후 확정).
+Mapping convention: docs/CC_TRANSCRIPT.md §22 (pre-registered, finalized after PR approval).
 
-입력: `~/.claude/projects/<slug>/<uuid>.jsonl` (JSONL, 한 줄 = 한 JSON).
-출력: Clew 정규 Trace (synthetic CHAIN root + tool 스팬만).
+Input: `~/.claude/projects/<slug>/<uuid>.jsonl` (JSONL, one line = one JSON).
+Output: Clew canonical Trace (synthetic CHAIN root + tool spans only).
 
-v1 범위 (§22.3):
-  - `tool_use` ↔ `tool_result` 쌍만 스팬으로 변환.
-  - thinking / assistant text / user text 블록은 스팬 안 만듦.
+v1 scope (§22.3):
+  - Only `tool_use` <-> `tool_result` pairs are converted into spans.
+  - thinking / assistant text / user text blocks do not produce spans.
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from clew.model import Span, Trace
 
 
 def _load_jsonl(path: Path) -> list[dict]:
-    """JSONL 파일 → dict 리스트. 파싱 실패 시 조용히 skip 금지 (§21.4)."""
+    """JSONL file -> list of dicts. Silent skip on parse failure is forbidden (§21.4)."""
     out: list[dict] = []
     with path.open(encoding="utf-8") as f:
         for lineno, raw in enumerate(f, start=1):
@@ -39,19 +39,19 @@ def _load_jsonl(path: Path) -> list[dict]:
 
 
 def _parse_ts(ts: str) -> datetime:
-    """ISO-8601 (Z suffix 허용) → tz-aware datetime."""
+    """ISO-8601 (Z suffix allowed) -> tz-aware datetime."""
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
 
 def _extract_result_text(content: object) -> str:
-    """tool_result.content → 문자열 (§22.5 규약).
+    """tool_result.content -> string (§22.5 convention).
 
-    - str 이면 그대로.
-    - list 면 블록별 렌더 후 '\n' 결합:
-        * type=='text' → block['text']
-        * 그 외 모든 타입 → json.dumps(block, sort_keys=True, ensure_ascii=False)
-                            + warnings.warn (신호 보존, §21.4).
-    - 렌더 후에도 빈 문자열이면 Span validator 가 raise (호출측에서). 여기선 무해.
+    - str -> return as-is.
+    - list -> render each block and join with '\n':
+        * type=='text' -> block['text']
+        * all other types -> json.dumps(block, sort_keys=True, ensure_ascii=False)
+                            + warnings.warn (signal preservation, §21.4).
+    - If empty after rendering, the Span validator raises (at the caller). Harmless here.
     """
     if isinstance(content, str):
         return content
@@ -83,19 +83,19 @@ def _extract_result_text(content: object) -> str:
 
 
 def _serialize_input(input_obj: object) -> str:
-    """tool_use.input → 결정론 JSON 문자열 (§22.2 sort_keys)."""
+    """tool_use.input -> deterministic JSON string (§22.2 sort_keys)."""
     return json.dumps(input_obj, sort_keys=True, ensure_ascii=False)
 
 
 def ingest_claude_code_jsonl(path: Path) -> Trace:
-    """Claude Code JSONL transcript → Trace (§22.1 매핑 규약).
+    """Claude Code JSONL transcript -> Trace (§22.1 mapping convention).
 
     Raises:
-        ValueError: 파싱/조인 실패, output_text 빈 스팬, sessionId 부재 등.
+        ValueError: parse/join failure, empty output_text span, missing sessionId, etc.
     """
     entries = _load_jsonl(path)
 
-    # sessionId 추출 (모든 라인이 동일 sessionId 를 갖는다고 가정)
+    # Extract sessionId (assume all lines share the same sessionId)
     session_id: str | None = None
     for e in entries:
         sid = e.get("sessionId")
@@ -105,11 +105,11 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
     if session_id is None:
         raise ValueError(f"{path}: sessionId 필드가 없음 (Claude Code JSONL 아님?)")
 
-    # compact 경계 timestamp 수집 (§22.11.2).
-    # 두 마커 필드는 classify_21_positives.py:_window_compact_flag 가 실제로 본 것 그대로:
-    #   - entry["compactMetadata"] is not None   (type=='system' 라인)
-    #   - entry["isCompactSummary"] is True      (type=='user' 라인)
-    # 두 마커 모두 entry["timestamp"] 를 가짐 (2026-07-18 실 JSONL 확인).
+    # Collect compact boundary timestamps (§22.11.2).
+    # The two marker fields are exactly what classify_21_positives.py:_window_compact_flag actually looks at:
+    #   - entry["compactMetadata"] is not None   (type=='system' line)
+    #   - entry["isCompactSummary"] is True      (type=='user' line)
+    # Both markers carry entry["timestamp"] (confirmed via 2026-07-18 real JSONL).
     compact_boundaries: list[datetime] = []
     for entry in entries:
         ts = entry.get("timestamp")
@@ -118,7 +118,7 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
         if entry.get("compactMetadata") is not None or entry.get("isCompactSummary") is True:
             compact_boundaries.append(_parse_ts(ts))
 
-    # 1차 스캔: tool_use / tool_result 수집
+    # First pass: collect tool_use / tool_result
     tool_uses: dict[str, tuple[dict, str]] = {}
     tool_results: dict[str, tuple[dict, str]] = {}
     unknown_block_types: dict[str, int] = {}
@@ -150,7 +150,7 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
                         raise ValueError(f"중복 tool_use.id: {tid!r}")
                     tool_uses[tid] = (block, ts)
                 elif btype in ("thinking", "text"):
-                    # §22.3: 스팬 안 만듦
+                    # §22.3: do not create a span
                     continue
                 else:
                     unknown_block_types[str(btype)] = (
@@ -188,7 +188,7 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
     if not tool_uses:
         raise ValueError(f"{path}: tool_use 블록이 하나도 없음")
 
-    # 조인 검사 (§22.4 중단 조건 2)
+    # Join check (§22.4 abort condition 2)
     orphan_use = sorted(set(tool_uses) - set(tool_results))
     orphan_result = sorted(set(tool_results) - set(tool_uses))
     if orphan_use or orphan_result:
@@ -199,7 +199,7 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
             f"(첫 5개: {orphan_result[:5]})"
         )
 
-    # Span 생성
+    # Create spans
     root_span_id = f"root-{session_id}"
     tool_spans: list[Span] = []
     for tid, (use_block, use_ts) in tool_uses.items():
@@ -208,7 +208,7 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
         output_text = _extract_result_text(result_block.get("content"))
         start = _parse_ts(use_ts)
         end = _parse_ts(result_ts)
-        # end < start (시계 역전) 방지 — Span validator 가 잡지만 명시적으로 클램프 없이 raise
+        # Prevent end < start (clock inversion) - the Span validator catches this, but raises explicitly without clamping
         tool_spans.append(
             Span(
                 trace_id=session_id,
@@ -226,7 +226,7 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
             )
         )
 
-    # Synthetic CHAIN root (otel_json.py:278 선례)
+    # Synthetic CHAIN root (precedent at otel_json.py:278)
     root_start = min(s.start_time for s in tool_spans)
     root_end = max(s.end_time for s in tool_spans)
     root_span = Span(

@@ -1,4 +1,4 @@
-"""tests/test_roundtrip.py — JSON 직렬화/역직렬화 라운드트립 동치 검증."""
+"""tests/test_roundtrip.py — JSON serialize/deserialize round-trip equivalence check."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def _assert_roundtrip(trace: Trace) -> None:
     raw = trace.model_dump_json()
     restored = Trace.model_validate_json(raw)
     assert restored == trace
-    assert restored.model_dump_json() == raw  # 멱등
+    assert restored.model_dump_json() == raw  # idempotent
 
 
 def test_roundtrip_minimal_trace():
