@@ -13,31 +13,28 @@ venv/
 # uv
 uv.lock
 
-# eval 생성물 — seed 고정으로 재생성 가능
+# eval artifacts — regeneratable with fixed seed
 eval/traces/*.json
 eval/labels.jsonl
 eval/set_manifest.json
 
-# 2단계 dev set (seed=7) — 평가 set과 절대 섞이면 안 됨
+# stage-2 dev set (seed=7) — must never mix with the evaluation set
 eval/dev/
 
-# 임베딩 캐시
+# embedding cache
 .cache/embeddings/
 
-# 외부 데이터셋 (CC-BY-4.0 등 재배포 표기 필요, 로컬 분석만)
+# external datasets (CC-BY-4.0 etc. require redistribution notice — local analysis only)
 data/
 ./data/
 
-# 일회성 진단 스크립트 워크 디렉토리
+# one-off diagnostic script work dir
 .tmp/
 
 # Internal files — not for public repo
 .claude/
 CLAUDE.md
 SPEC.md
-진단표.md
-Day2_입력값.md
-docs/Clew_*단계_작업키트.md
 field_test/E3_DIAGNOSIS.md
 field_test/REAL_PROBE_LOG.md
 field_test/REQUERY_DIAGNOSIS.md
