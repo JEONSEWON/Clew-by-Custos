@@ -150,14 +150,16 @@ def render_markdown(
         lines.append(
             f"- **events counted**: {amplification.n_events} "
             f"(skipped {amplification.n_skipped_prev_eq_next} prev==next retry, "
-            f"{amplification.n_skipped_no_metadata} without metadata)"
+            f"{amplification.n_skipped_no_metadata} without metadata, "
+            f"{amplification.n_skipped_error} error-response spans)"
         )
     elif amplification is not None:
         lines.append(
             f"- **estimated cost impact**: unknown "
             f"(no eligible events after skip: "
             f"{amplification.n_skipped_prev_eq_next} prev==next, "
-            f"{amplification.n_skipped_no_metadata} no-metadata)"
+            f"{amplification.n_skipped_no_metadata} no-metadata, "
+            f"{amplification.n_skipped_error} error-response spans)"
         )
     else:
         lines.append("- **estimated cost impact**: unknown (adapter metadata unavailable)")
@@ -167,9 +169,15 @@ def render_markdown(
     lines.append("## Wasted Span Details")
     lines.append("")
 
-    enriched = enrich(trace, details)
+    enrichment = enrich(trace, details)
+    if enrichment.n_skipped_error > 0:
+        lines.append(
+            f"_Skipped **{enrichment.n_skipped_error}** error-response span(s) "
+            f"(is_error=True tool_result — not waste; §29.2)._"
+        )
+        lines.append("")
     ev_lookup = _event_lookup(amplification)
-    for i, ed in enumerate(enriched, 1):
+    for i, ed in enumerate(enrichment.enriched, 1):
         ev = ev_lookup.get(ed.detail.candidate.span_id)
         lines.extend(_render_pair(i, ed, ev))
 

@@ -249,6 +249,78 @@ def test_tool_result_mixed_text_and_nontext(tmp_path: Path) -> None:
     assert '"type": "image"' in span.output_text
 
 
+def test_is_error_tool_result_is_gated(tmp_path: Path) -> None:
+    """§29.2 tool-error gate: is_error=True tool_result spans are collected in metadata,
+    and are excluded from waste details + amplification with explicit counts.
+
+    Scenario: 3 tool spans.
+      tu1, tu2: two identical error tool_results ("<tool_use_error>File not read")
+                — would be sha256-identical → cascade flags tu2 as waste.
+      tu3, tu4: two identical *normal* tool_results ("hello world")
+                — sha256-identical → cascade flags tu4 as waste (kept).
+    Expected: adapter puts tu1+tu2 in error_span_ids; enrich skips (tu1,tu2);
+    amplification.n_skipped_error==1 (tu2 in cr.waste_span_ids gets excluded).
+    """
+    from clew.cost.amplification import estimate_amplification
+    from clew.detect.cascade import CascadeResult
+    from clew.report._enrich import enrich
+    from clew.report._model import WasteDetail
+
+    err_msg = "<tool_use_error>File has not been read yet</tool_use_error>"
+    entries = [
+        _asst("a1", None, "2026-07-17T10:00:00Z", [
+            {"type": "tool_use", "id": "tu1", "name": "Read", "input": {"file_path": "/x"}},
+        ]),
+        _user("u1", "a1", "2026-07-17T10:00:05Z", [
+            {"type": "tool_result", "tool_use_id": "tu1",
+             "content": err_msg, "is_error": True},
+        ]),
+        _asst("a2", "u1", "2026-07-17T10:00:10Z", [
+            {"type": "tool_use", "id": "tu2", "name": "Read", "input": {"file_path": "/y"}},
+        ]),
+        _user("u2", "a2", "2026-07-17T10:00:15Z", [
+            {"type": "tool_result", "tool_use_id": "tu2",
+             "content": err_msg, "is_error": True},
+        ]),
+        _asst("a3", "u2", "2026-07-17T10:00:20Z", [
+            {"type": "tool_use", "id": "tu3", "name": "Bash", "input": {"cmd": "echo hi"}},
+        ]),
+        _user("u3", "a3", "2026-07-17T10:00:25Z", [
+            {"type": "tool_result", "tool_use_id": "tu3", "content": "hello world"},
+        ]),
+        _asst("a4", "u3", "2026-07-17T10:00:30Z", [
+            {"type": "tool_use", "id": "tu4", "name": "Bash", "input": {"cmd": "echo hi"}},
+        ]),
+        _user("u4", "a4", "2026-07-17T10:00:35Z", [
+            {"type": "tool_result", "tool_use_id": "tu4", "content": "hello world"},
+        ]),
+    ]
+    p = _write_jsonl(tmp_path, entries)
+    trace = ingest_claude_code_jsonl(p)
+
+    # 1) adapter collects both error tids
+    assert trace.metadata["error_span_ids"] == ["tu1", "tu2"]
+
+    # 2) enrich skips error pair, keeps normal repeat
+    spans_by_id = {s.span_id: s for s in trace.spans}
+    err_pair = WasteDetail(origin=spans_by_id["tu1"], candidate=spans_by_id["tu2"], cosine=1.0)
+    ok_pair = WasteDetail(origin=spans_by_id["tu3"], candidate=spans_by_id["tu4"], cosine=1.0)
+    result = enrich(trace, [err_pair, ok_pair])
+    assert result.n_skipped_error == 1
+    assert len(result.enriched) == 1
+    assert result.enriched[0].detail.candidate.span_id == "tu4"
+
+    # 3) amplification skips tu2 (in waste_span_ids ∩ error_span_ids) with explicit count
+    cr = CascadeResult(
+        trace_id=trace.trace_id,
+        wasteful=True,
+        waste_span_ids=["tu2", "tu4"],
+    )
+    est = estimate_amplification(cr, trace)
+    assert est.n_skipped_error == 1
+    assert all(ev.span_id != "tu2" for ev in est.events)
+
+
 def test_duplicate_tool_use_id_raises(tmp_path: Path) -> None:
     """Reusing the same tool_use.id -> explicit error."""
     entries = [

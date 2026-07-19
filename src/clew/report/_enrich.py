@@ -34,6 +34,13 @@ class EnrichedDetail:
     input_summary: str  # fallback display when neither file_path nor command
 
 
+@dataclass
+class EnrichmentResult:
+    """enrich(...) return: kept EnrichedDetails + count skipped due to tool-error gate."""
+    enriched: list[EnrichedDetail]
+    n_skipped_error: int
+
+
 def _parse_input(text: str) -> Any:
     try:
         return json.loads(text)
@@ -81,12 +88,24 @@ def _has_intervening_edit(trace: Trace, origin: Span, cand: Span, file_path: str
     return False
 
 
-def enrich(trace: Trace, details: list[WasteDetail]) -> list[EnrichedDetail]:
+def enrich(trace: Trace, details: list[WasteDetail]) -> EnrichmentResult:
+    """Enrich WasteDetails; skip pairs whose origin or candidate is an error-response span.
+
+    §29.2 tool-error gate: `trace.metadata["error_span_ids"]` (populated by the CC adapter
+    from Anthropic `is_error: true` structural flag) marks tool_result spans that failed.
+    Cosine similarity between two "File has not been read yet" outputs is not waste — it's
+    tool infrastructure repeatedly emitting the same error. Skips are counted, not silent.
+    """
     turn_index: dict[str, int] = trace.metadata.get("cc_turn_index") or {}
     total_turns: int | None = trace.metadata.get("cc_total_turns")
+    error_ids: set[str] = set(trace.metadata.get("error_span_ids") or [])
     out: list[EnrichedDetail] = []
+    n_skipped_error = 0
     for wd in details:
         o, c = wd.origin, wd.candidate
+        if o.span_id in error_ids or c.span_id in error_ids:
+            n_skipped_error += 1
+            continue
         parsed = _parse_input(c.input_text)
         fp = _file_path_of(parsed)
         cmd = _command_of(parsed)
@@ -106,4 +125,4 @@ def enrich(trace: Trace, details: list[WasteDetail]) -> list[EnrichedDetail]:
             state_change_uncertain=uncertain,
             input_summary=summary,
         ))
-    return out
+    return EnrichmentResult(enriched=out, n_skipped_error=n_skipped_error)

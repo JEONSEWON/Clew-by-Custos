@@ -34,11 +34,11 @@ def render_json(
     """
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    enriched = enrich(trace, details)
+    enrichment = enrich(trace, details)
     ev_by_sid = {ev.span_id: ev for ev in amplification.events} if amplification else {}
 
     waste_details_list = []
-    for ed in enriched:
+    for ed in enrichment.enriched:
         wd = ed.detail
         wt = wd.waste_tokens
         wc = wd.waste_cost
@@ -80,6 +80,7 @@ def render_json(
             "n_events": amplification.n_events,
             "n_skipped_prev_eq_next": amplification.n_skipped_prev_eq_next,
             "n_skipped_no_metadata": amplification.n_skipped_no_metadata,
+            "n_skipped_error": amplification.n_skipped_error,
             "approx_events": amplification.approx_events,
             "model_key": amplification.model_key,
         }
@@ -105,6 +106,7 @@ def render_json(
         "total_tokens_wasted": total_tok if total_tok is not None else "unknown",
         "total_cost_wasted": round(total_cost, 8) if total_cost is not None else "unknown",
         "amplification": amp_block,
+        "n_skipped_error_details": enrichment.n_skipped_error,
         "waste_details": waste_details_list,
         "note": (
             "Detection thresholds were calibrated on synthetic traces; "

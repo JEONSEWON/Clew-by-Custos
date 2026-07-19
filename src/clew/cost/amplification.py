@@ -53,6 +53,7 @@ class AmplificationEstimate:
     n_events: int
     n_skipped_prev_eq_next: int
     n_skipped_no_metadata: int
+    n_skipped_error: int  # §29.2 tool-error gate — is_error tool_result spans excluded
     approx_events: int
     events: list[AmplificationEvent]
     model_key: str
@@ -94,18 +95,26 @@ def estimate_amplification(
     turn_index: dict[str, int] = trace.metadata.get("cc_turn_index") or {}
     usage_pair: dict[str, dict] = trace.metadata.get("cc_usage_pair") or {}
     total_turns: int = int(trace.metadata.get("cc_total_turns") or 0)
+    error_ids: set[str] = set(trace.metadata.get("error_span_ids") or [])
 
     spans_by_id = {s.span_id: s for s in trace.spans}
 
     events: list[AmplificationEvent] = []
     n_skip_pne = 0
     n_skip_meta = 0
+    n_skip_err = 0
     n_approx = 0
     total_amp_tokens = 0
     total_lower = 0.0
     total_upper = 0.0
 
     for sid in cr.waste_span_ids:
+        # §29.2 tool-error gate: is_error tool_result spans are infrastructure noise,
+        # not amplification. Skip with explicit count (no silent drop).
+        if sid in error_ids:
+            n_skip_err += 1
+            continue
+
         pair = usage_pair.get(sid)
         if pair is None:
             n_skip_meta += 1
@@ -159,6 +168,7 @@ def estimate_amplification(
         n_events=len(events),
         n_skipped_prev_eq_next=n_skip_pne,
         n_skipped_no_metadata=n_skip_meta,
+        n_skipped_error=n_skip_err,
         approx_events=n_approx,
         events=events,
         model_key=model_key or "sonnet-4.5",
