@@ -5,9 +5,25 @@ description = "Detect wasteful cycles in multi-agent traces (Custos / Clew, S0 M
 authors = [{ name = "Custos" }]
 readme = "README.md"
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.12",
     "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: Software Development :: Quality Assurance",
+]
+keywords = [
+    "agent",
+    "observability",
+    "llm",
+    "tokens",
+    "waste",
+    "tracing",
+    "opentelemetry",
+    "claude-code",
+    "cost",
+    "deterministic",
 ]
 requires-python = ">=3.12"
 dependencies = [
@@ -36,6 +52,7 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/JEONSEWON/Clew-by-Custos"
 Repository = "https://github.com/JEONSEWON/Clew-by-Custos"
+Issues = "https://github.com/JEONSEWON/Clew-by-Custos/issues"
 
 [project.scripts]
 clew = "clew.__main__:main"
