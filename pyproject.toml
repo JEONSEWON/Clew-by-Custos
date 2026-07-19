@@ -23,7 +23,7 @@ adapter = [
     "opentelemetry-api>=1.25",
 ]
 detect = [
-    # 재현성 동결: 이 버전 조합에서 SHA 재현 검증됨 (stage18 배포준비).
+    # reproducibility freeze: SHA verified reproducible on this version set (stage18 release prep).
     "sentence-transformers==5.5.1",
     "transformers==5.0.0",
     "torch>=2.0",

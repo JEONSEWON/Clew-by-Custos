@@ -26,8 +26,8 @@ jobs:
           echo "exit code: ${PIPESTATUS[0]}"
       - name: Assert report produced
         run: |
-          grep -q "Clew Waste Report" /tmp/report.txt || (echo "리포트 생성 실패" && exit 1)
-          echo "콜드 스타트 성공: 토큰 없이 설치+실행+리포트 생성됨"
+          grep -q "Clew Waste Report" /tmp/report.txt || (echo "report generation failed" && exit 1)
+          echo "cold start OK: install + run + report with no token"
 
   tests:
     name: Test suite
