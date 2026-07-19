@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
+from clew.cost.amplification import AmplificationEstimate
 from clew.detect.cascade import CascadeResult
 from clew.model import Trace
 from clew.report._model import WasteDetail
@@ -23,6 +24,7 @@ def render_json(
     *,
     no_snippets: bool = False,
     snippet_len: int = _SNIPPET_LEN,
+    amplification: AmplificationEstimate | None = None,
 ) -> str:
     """CascadeResult + WasteDetail list -> JSON string (indent=2).
 
@@ -49,6 +51,27 @@ def render_json(
     total_tok = cr.waste_tokens if cr.waste_tokens > 0 else None
     total_cost = cr.waste_cost if cr.waste_cost > 0.0 else None
 
+    amp_block: dict
+    if amplification is not None:
+        amp_block = {
+            "cost_lower_usd": round(amplification.lower_usd, 8),
+            "cost_upper_usd": round(amplification.upper_usd, 8),
+            "amp_tokens": amplification.total_amp_tokens,
+            "n_events": amplification.n_events,
+            "n_skipped_prev_eq_next": amplification.n_skipped_prev_eq_next,
+            "n_skipped_no_metadata": amplification.n_skipped_no_metadata,
+            "approx_events": amplification.approx_events,
+            "model_key": amplification.model_key,
+        }
+    else:
+        amp_block = {
+            "cost_lower_usd": "unknown",
+            "cost_upper_usd": "unknown",
+            "amp_tokens": "unknown",
+            "n_events": 0,
+            "note": "adapter metadata unavailable (non-CC source)",
+        }
+
     report: dict = {
         "trace_id": trace.trace_id,
         "analyzed": now,
@@ -61,11 +84,14 @@ def render_json(
         "waste_span_count": len(cr.waste_span_ids),
         "total_tokens_wasted": total_tok if total_tok is not None else "unknown",
         "total_cost_wasted": round(total_cost, 8) if total_cost is not None else "unknown",
+        "amplification": amp_block,
         "waste_details": waste_details_list,
         "note": (
             "Detection thresholds were calibrated on synthetic traces; "
             "real-trace calibration is in progress. Borderline matches "
-            "(cosine near 0.51) deserve human review."
+            "(cosine near 0.51) deserve human review. Amplification cost "
+            "is estimated saving potential (cache-hit lower to cache-miss upper), "
+            "not measured — assumes wasted output is re-consumed each subsequent turn."
         ),
     }
 

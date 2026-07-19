@@ -87,6 +87,65 @@ def _serialize_input(input_obj: object) -> str:
     return json.dumps(input_obj, sort_keys=True, ensure_ascii=False)
 
 
+def _collect_cc_usage_metadata(
+    entries: list[dict],
+) -> tuple[dict[str, int], dict[str, dict], int]:
+    """Recon §21.2: per-tool_use turn index + prev/next assistant usage.
+
+    Returns (cc_turn_index, cc_usage_pair, cc_total_turns).
+
+    - cc_turn_index[span_id] = 1-based assistant turn number that issued the tool_use.
+    - cc_usage_pair[span_id] = {"prev": host_assistant_usage_dict_or_None,
+                                 "next": next_assistant_usage_dict_or_None}
+    - cc_total_turns = total assistant entries (regardless of usage presence).
+
+    Consumer contract: cost/amplification module reads these; adapter itself
+    does not use them. Span construction unchanged.
+    """
+    assistant_positions: list[int] = [
+        i for i, e in enumerate(entries) if e.get("type") == "assistant"
+    ]
+    total_turns = len(assistant_positions)
+
+    cc_turn_index: dict[str, int] = {}
+    cc_usage_pair: dict[str, dict] = {}
+
+    for order, pos in enumerate(assistant_positions):
+        turn_1based = order + 1
+        entry = entries[pos]
+        msg = entry.get("message")
+        if not isinstance(msg, dict):
+            continue
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+
+        prev_usage = msg.get("usage")
+        next_usage: dict | None = None
+        if order + 1 < total_turns:
+            nm = entries[assistant_positions[order + 1]].get("message")
+            if isinstance(nm, dict):
+                nu = nm.get("usage")
+                if isinstance(nu, dict):
+                    next_usage = nu
+
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") != "tool_use":
+                continue
+            tid = block.get("id")
+            if not isinstance(tid, str) or not tid:
+                continue
+            cc_turn_index[tid] = turn_1based
+            cc_usage_pair[tid] = {
+                "prev": prev_usage if isinstance(prev_usage, dict) else None,
+                "next": next_usage,
+            }
+
+    return cc_turn_index, cc_usage_pair, total_turns
+
+
 def ingest_claude_code_jsonl(path: Path) -> Trace:
     """Claude Code JSONL transcript -> Trace (§22.1 mapping convention).
 
@@ -241,6 +300,8 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
         output_text="[claude-code session root]",
     )
 
+    cc_turn_index, cc_usage_pair, cc_total_turns = _collect_cc_usage_metadata(entries)
+
     return Trace(
         trace_id=session_id,
         spans=[root_span] + tool_spans,
@@ -248,5 +309,8 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
             "source": "claude_code_jsonl",
             "path": str(path.name),
             "compact_boundaries": compact_boundaries,
+            "cc_turn_index": cc_turn_index,
+            "cc_usage_pair": cc_usage_pair,
+            "cc_total_turns": cc_total_turns,
         },
     )

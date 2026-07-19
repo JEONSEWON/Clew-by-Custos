@@ -181,9 +181,15 @@ def _analyze(args: argparse.Namespace) -> int:
     cr = cascade(trace, embedder, n=_N, phi=_PHI)
     details = _build_details(trace, cr, embedder) if cr.wasteful else []
 
+    # Amplification estimate (only meaningful when CC metadata is present).
+    amp = None
+    if cr.wasteful and "cc_usage_pair" in trace.metadata:
+        from clew.cost.amplification import estimate_amplification
+        amp = estimate_amplification(cr, trace)
+
     # Markdown report
     from clew.report.markdown import render_markdown
-    md = render_markdown(trace, cr, details, no_snippets=no_snippets)
+    md = render_markdown(trace, cr, details, no_snippets=no_snippets, amplification=amp)
 
     if args.out:
         out_path = Path(args.out)
@@ -195,7 +201,7 @@ def _analyze(args: argparse.Namespace) -> int:
     # JSON report (optional)
     if args.json_out:
         from clew.report.json_report import render_json
-        jstr = render_json(trace, cr, details, no_snippets=no_snippets)
+        jstr = render_json(trace, cr, details, no_snippets=no_snippets, amplification=amp)
         json_path = Path(args.json_out)
         json_path.write_text(jstr, encoding="utf-8")
         print(f"json report written → {json_path}")
