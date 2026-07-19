@@ -1,6 +1,6 @@
-# EVAL_RUNS.md — 평가 set 실행 기록
+# EVAL_RUNS.md — eval set run log
 
-회색지대 GREY 행이 3 초과면 4번째 evaluate 실행이 차단된다.
+If the number of GREY rows in the grey zone exceeds 3, the 4th `evaluate` run is blocked.
 
 | run | date | phi | N | model@rev | f1 | fpr | verdict |
 |---|---|---|---|---|---|---|---|

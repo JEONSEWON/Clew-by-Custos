@@ -1,4 +1,4 @@
-"""4 낭비 패턴 등록자."""
+"""Registry of the 4 waste patterns."""
 
 from __future__ import annotations
 

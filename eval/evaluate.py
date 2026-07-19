@@ -1,11 +1,15 @@
-"""eval/evaluate.py — 2단계 평가 진입점.
+"""eval/evaluate.py — stage-2 evaluation entry point.
 
-★ 유일한 라벨 reader. cascade/structural/semantic 에는 라벨을 인자로도 안 넘긴다.
+* The only label reader. cascade/structural/semantic never receive labels
+  as arguments.
 
-★ 평가 set(seed=42) 접근 순서 강제:
-   1) CRITERIA_FROZEN.md 의 '탐지 파라미터' 섹션이 TBD 면 즉시 RuntimeError → 평가 set 미접근.
-   2) EVAL_RUNS.md 의 GREY 행 수가 3 초과면 KILL 로 즉시 RuntimeError → 4번째 시도 차단.
-   3) 위 두 게이트를 통과한 뒤에야 EVAL_TRACE_DIR / EVAL_LABELS_PATH 를 처음 읽는다.
+* Enforced access order for the eval set (seed=42):
+   1) If the 'Detection parameters' section of CRITERIA_FROZEN.md is TBD,
+      immediately RuntimeError → eval set not touched.
+   2) If EVAL_RUNS.md has more than 3 GREY rows, KILL and immediately
+      RuntimeError → the 4th attempt is blocked.
+   3) Only after both gates pass do EVAL_TRACE_DIR / EVAL_LABELS_PATH
+      get read for the first time.
 """
 
 from __future__ import annotations
@@ -53,7 +57,11 @@ def _load_frozen_params(criteria_path: Path = CRITERIA_PATH) -> FrozenParams:
         raise RuntimeError(
             "stage 2 parameters not frozen in CRITERIA_FROZEN.md; refuse to read eval set"
         )
-    # 단순 행 기반 파서: "φ ... : <value>" / "반복 임계 N: <value>" / "임베딩 모델 ... : <name> @ revision <sha>"
+    # Simple line-based parser:
+    # "φ ... : <value>" / "반복 임계 N: <value>" / "임베딩 모델 ... : <name> @ revision <sha>"
+    # (Korean labels are intentionally preserved — they are what the docstring
+    #  above calls the 'Detection parameters' section keys, and the regexes
+    #  below depend on that spelling.)
     phi = _parse_phi(text)
     n = _parse_n(text)
     model_name, revision = _parse_model(text)
@@ -63,21 +71,21 @@ def _load_frozen_params(criteria_path: Path = CRITERIA_PATH) -> FrozenParams:
 def _parse_phi(text: str) -> float:
     m = re.search(r"φ[^:]*:\s*([0-9]*\.?[0-9]+)", text)
     if not m:
-        raise RuntimeError("CRITERIA_FROZEN.md: φ value not found in 탐지 파라미터")
+        raise RuntimeError("CRITERIA_FROZEN.md: φ value not found in Detection parameters")
     return float(m.group(1))
 
 
 def _parse_n(text: str) -> int:
     m = re.search(r"반복 임계\s*N\s*:\s*([0-9]+)", text)
     if not m:
-        raise RuntimeError("CRITERIA_FROZEN.md: 반복 임계 N value not found")
+        raise RuntimeError("CRITERIA_FROZEN.md: '반복 임계 N' value not found")
     return int(m.group(1))
 
 
 def _parse_model(text: str) -> tuple[str, str]:
     m = re.search(r"임베딩 모델[^:]*:\s*([\w\-/.]+)\s*@\s*revision\s+([0-9a-f]{40})", text)
     if not m:
-        raise RuntimeError("CRITERIA_FROZEN.md: 임베딩 모델 @ revision <40-hex> not found")
+        raise RuntimeError("CRITERIA_FROZEN.md: '임베딩 모델 @ revision <40-hex>' not found")
     return m.group(1), m.group(2)
 
 
@@ -114,7 +122,7 @@ def _trace_level_metrics(results: list, labels: dict[str, dict[str, Any]]) -> di
 def _per_pattern_metrics(
     results: list, labels: dict[str, dict[str, Any]]
 ) -> dict[str, dict]:
-    """labels의 pattern 필드로 그루핑 → 패턴별 TP/FP/FN/TN/TPR/FPR."""
+    """Group by the labels' `pattern` field → per-pattern TP/FP/FN/TN/TPR/FPR."""
     buckets: dict[str, dict] = {}
     for r in results:
         lbl = labels[r.trace_id]
@@ -150,7 +158,8 @@ def evaluate(embedder_factory=None, *, criteria_path: Path = CRITERIA_PATH,
              runs_path: Path = EVAL_RUNS_PATH,
              trace_dir: Path = EVAL_TRACE_DIR,
              labels_path: Path = EVAL_LABELS_PATH) -> dict[str, Any]:
-    """평가 set 단 1회 측정. embedder_factory 가 None 이면 production Embedder 사용."""
+    """Single measurement on the eval set. If embedder_factory is None,
+    use the production Embedder."""
     from clew.detect.cascade import cascade
     from clew.detect.semantic import Embedder
     from clew.model import Trace
@@ -158,7 +167,10 @@ def evaluate(embedder_factory=None, *, criteria_path: Path = CRITERIA_PATH,
     params = _load_frozen_params(criteria_path)
     grey_used = _grey_count(runs_path)
     if grey_used >= GREY_BUDGET:
-        raise RuntimeError(f"KILL: 회색지대 예산 N={GREY_BUDGET} 소진 ({grey_used} GREY runs 이미 기록됨)")
+        raise RuntimeError(
+            f"KILL: 회색지대 예산 N={GREY_BUDGET} exhausted "
+            f"({grey_used} GREY runs already recorded)"
+        )
 
     if embedder_factory is None:
         embedder = Embedder(
@@ -193,8 +205,9 @@ def evaluate(embedder_factory=None, *, criteria_path: Path = CRITERIA_PATH,
 def _append_run(result: dict[str, Any], runs_path: Path = EVAL_RUNS_PATH) -> None:
     if not runs_path.exists():
         header = (
-            "# EVAL_RUNS.md — 평가 set 실행 기록\n\n"
-            "회색지대 GREY 행이 3 초과면 4번째 evaluate 실행이 차단된다.\n\n"
+            "# EVAL_RUNS.md — eval set run log\n\n"
+            "If the number of GREY rows in the grey zone exceeds 3, "
+            "the 4th evaluate run is blocked.\n\n"
             "| run | date | phi | N | model@rev | f1 | fpr | verdict |\n"
             "|---|---|---|---|---|---|---|---|\n"
         )

@@ -1,11 +1,11 @@
-"""regen_handoff 패턴.
+"""regen_handoff pattern.
 
-구조: root → start → A(llm) → B(llm) → finalize
-positive: B가 A의 요약을 의미적으로 거의 재생성 → 낭비.
-clean   : B가 A의 요약에 새 정보(다음 단계 결정)를 더함.
+Structure: root → start → A(llm) → B(llm) → finalize
+positive: B semantically re-generates A's summary → waste.
+clean   : B adds new information (next-step decision) on top of A's summary.
 
-토폴로지는 positive/clean 동일.
-낭비 라벨: positive의 B.
+Topology is identical between positive and clean.
+Waste label: B in the positive trace.
 """
 
 from __future__ import annotations
@@ -77,7 +77,8 @@ def _topology(ctx, a_out: str, b_out: str) -> tuple[Trace, str, str]:
 
 def make_positive(*, trace_id: str, seed: int) -> GeneratedTrace:
     ctx = make_context(seed=seed, trace_id=trace_id)
-    # B가 A의 요약을 의미는 그대로, 표면만 바꿔 재생성 (현실의 LLM 재생성 패턴).
+    # B re-generates A's summary — same meaning, different surface form
+    # (the real-world LLM re-generation pattern).
     a_out = "요약: 3분기 매출은 전분기 대비 12% 증가, 신규 가입자 8.4만 명."
     b_out = "정리: 3분기 매출 +12% (전분기 대비), 가입자 84,000명 증가."
     trace, a_id, b_id = _topology(ctx, a_out, b_out)

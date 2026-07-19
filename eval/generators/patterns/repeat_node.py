@@ -1,11 +1,12 @@
-"""repeat_node 패턴.
+"""repeat_node pattern.
 
-구조: root → start → analyze ×N → finalize (N=3)
-positive: analyze N회 출력이 서로 거의 동일 (단어만 약간 다름) → 낭비.
-clean   : analyze N회 매 회 실제 진전.
+Structure: root → start → analyze × N → finalize (N=3)
+positive: the N analyze outputs are near-identical (only wording differs) → waste.
+clean   : each of the N analyze steps makes real progress.
 
-토폴로지(노드 시퀀스·span_kind·parent edge)는 positive/clean 동일.
-낭비 라벨: positive의 2회차 이후 analyze.
+Topology (node sequence, span_kind, parent edge) is identical between
+positive and clean.
+Waste label: analyze occurrences #2 and later in the positive trace.
 """
 
 from __future__ import annotations
@@ -74,8 +75,9 @@ def _topology(ctx, outputs: list[str]) -> tuple[Trace, list[str]]:
 
 def make_positive(*, trace_id: str, seed: int) -> GeneratedTrace:
     ctx = make_context(seed=seed, trace_id=trace_id)
-    # 의미는 같고 표면(어순·어휘·구두점)만 다른 3개 패러프레이즈 —
-    # LLM이 같은 분석을 다시 했을 때 실제로 나오는 near-duplicate.
+    # Three paraphrases with the same meaning but different surface form
+    # (word order, vocabulary, punctuation) — the near-duplicates you
+    # actually see when an LLM redoes the same analysis.
     outputs = [
         "분석 결과: 핵심 요인은 A, B, C가 관측됨",
         "분석: 핵심 요인 A·B·C가 관찰됨",
