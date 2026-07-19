@@ -1,174 +1,174 @@
-# §23 — Toolathlon 어댑터 사전등록 (2026-07-18, 규칙 8)
+# §23 — Toolathlon adapter pre-registration (2026-07-18, Rule 8)
 
-**대상 데이터**: [hkust-nlp/Toolathlon-Trajectories](https://huggingface.co/datasets/hkust-nlp/Toolathlon-Trajectories) (HF, CC-BY-4.0, gated).
+**Target data**: [hkust-nlp/Toolathlon-Trajectories](https://huggingface.co/datasets/hkust-nlp/Toolathlon-Trajectories) (HF, CC-BY-4.0, gated).
 
-**왜 별도 어댑터인가**:
-- 우리 개발 세션 20개(§22.11.8) 확정 낭비 0. 검증기의 참양성 검출력은 이 코퍼스로 증명 불가.
-- Toolathlon 은 17 모델 × 3 런 × 실제 장기 도구사용 트레이스 (task 성공/실패 라벨 포함). arXiv:2602.19008 이 canonical path deviation 이 실패 원인이라고 명명 → 낭비가 실재할 가능성이 높음.
-- 리콘(§23.5 근거) 결과 재호출 실재 확인: 108 트레이스 중 39 (36%) 에 (name, args) 재호출 있음, 총 177 candidate.
+**Why a separate adapter**:
+- On our 20 development sessions (§22.11.8), confirmed waste = 0. The detector's true-positive capability cannot be demonstrated on this corpus.
+- Toolathlon has 17 models × 3 runs × real long-horizon tool-use traces (with task success/failure labels). arXiv:2602.19008 names canonical path deviation as the failure cause → waste is likely to exist in reality.
+- Recon (§23.5 evidence) confirmed re-invocations exist: of 108 traces, 39 (36%) contain (name, args) re-invocations, 177 candidates total.
 
-**리콘 산출물** (규칙 7 부칙, 같은 커밋에 동봉):
-- `field_test/diagnostics/recon_toolathlon.py` — 스키마 리콘 (Q1–Q6)
-- `field_test/diagnostics/recon_toolathlon_waste.py` — 낭비 실재 확인 (Q1–Q5)
+**Recon artifacts** (Rule 7 addendum, bundled in the same commit):
+- `field_test/diagnostics/recon_toolathlon.py` — schema recon (Q1–Q6)
+- `field_test/diagnostics/recon_toolathlon_waste.py` — waste-reality check (Q1–Q5)
 
 ---
 
-## §23.1 — 확정 매핑 (recon 근거)
+## §23.1 — Confirmed mapping (recon evidence)
 
-| Span 필드 | Toolathlon 소스 | 근거 |
+| Span field | Toolathlon source | Evidence |
 |---|---|---|
-| `trace_id` | `request_id` (uuid 문자열) | recon Q1 (`request_id`가 유니크) |
-| `span_id` | `messages[i].tool_calls[j].id` (예: `toolu_01BFHkVg…`) | recon Q3 (조인 키), 10/10 매칭 |
-| `parent_span_id` | synthetic root (`root-<request_id>`) | CC 선례 (`claude_code.py:203`) |
-| `agent_or_node_id` | `tool_calls[j].function.name` | recon Q5 (206 유니크 tool 이름) |
-| `span_kind` | `"tool"` | 전부 tool 호출 |
-| `input_text` | `json.dumps(json.loads(tool_calls[j].function.arguments), sort_keys=True, ensure_ascii=False)` | 원본은 이미 JSON 문자열. §22.2 CC 선례처럼 **재직렬화로 sort_keys 정규화** → sha256 게이트 안정성 |
-| `output_text` | 매칭 tool 메시지의 `content` (문자열 그대로) | recon Q2 (list content 없음, flat string). list 형식 발견 시 §22.5 규약 재사용 |
-| `start_time` / `end_time` | synthetic (아래 §23.2) | recon Q4 |
-| `token_count` | `None` | recon Q5 (`key_stats`는 트레이스 총합만) |
-| `model` | 최상위 `modelname_run` | recon Q5 |
-| `cost_rate` | `None` (span 단위 불명, `agent_cost`는 트레이스 총합) | recon Q5 |
+| `trace_id` | `request_id` (uuid string) | recon Q1 (`request_id` is unique) |
+| `span_id` | `messages[i].tool_calls[j].id` (e.g. `toolu_01BFHkVg…`) | recon Q3 (join key), 10/10 match |
+| `parent_span_id` | synthetic root (`root-<request_id>`) | CC precedent (`claude_code.py:203`) |
+| `agent_or_node_id` | `tool_calls[j].function.name` | recon Q5 (206 unique tool names) |
+| `span_kind` | `"tool"` | all tool calls |
+| `input_text` | `json.dumps(json.loads(tool_calls[j].function.arguments), sort_keys=True, ensure_ascii=False)` | source is already a JSON string. As in the §22.2 CC precedent, **re-serialize with sort_keys** → stability of the sha256 gate |
+| `output_text` | matching tool message `content` (raw string) | recon Q2 (no list content, flat string). If list format is found, reuse the §22.5 convention |
+| `start_time` / `end_time` | synthetic (see §23.2) | recon Q4 |
+| `token_count` | `None` | recon Q5 (`key_stats` is per-trace total only) |
+| `model` | top-level `modelname_run` | recon Q5 |
+| `cost_rate` | `None` (span unit unknown, `agent_cost` is per-trace total) | recon Q5 |
 
-## §23.2 — synthetic timestamp 규약
+## §23.2 — Synthetic-timestamp convention
 
-**사실**: per-message timestamp 없음 (recon Q5 확인). 최상위 `initial_run_time` / `completion_time` 만 존재하지만 span 단위 배분 불가.
+**Fact**: no per-message timestamp (recon Q5). Only top-level `initial_run_time` / `completion_time` exist; span-level distribution not possible.
 
-**규약**:
-- 기준: `base = 2026-01-01T00:00:00+00:00` (탐지기 정렬만 쓰므로 절대값 무의미, 단조성만 필요)
+**Convention**:
+- Base: `base = 2026-01-01T00:00:00+00:00` (the detector only uses ordering, so the absolute value is meaningless; only monotonicity is needed)
 - `start_time = base + timedelta(seconds = msg_idx * 1000 + sub_idx)`
-  - `msg_idx`: `messages` 배열의 인덱스 (0-based)
-  - `sub_idx`: 해당 assistant 메시지의 `tool_calls` 배열 내 순서 (0-based)
-- `end_time = start_time` (동일)
+  - `msg_idx`: index in the `messages` array (0-based)
+  - `sub_idx`: order within that assistant message's `tool_calls` array (0-based)
+- `end_time = start_time` (same)
 
-**정당화**:
-- 탐지기 grep 확인 (2026-07-18): `src/clew/detect/structural.py:26,58,86` 는 `start_time` 만 정렬 키로 사용. `end_time` 정렬 없음. `cascade.py:60` 은 compact 창문 검사에만 사용 (Toolathlon 은 compact 없음 → no-op).
-- recon Q4 실측: 병렬 호출 메시지 365건 중
-  - 같은 msg 안 (name, args) 중복 **0** → sub_idx 로 순서 결정해도 tie-break 걱정 없음
-  - 결과 순서 뒤바뀐 케이스 **0** → tool 결과가 tool_calls 배열 순서대로 옴
-  → 이 규약이 origin ↔ candidate 순서를 보존한다.
+**Justification**:
+- Detector grep verification (2026-07-18): `src/clew/detect/structural.py:26,58,86` uses only `start_time` as an ordering key. No `end_time` ordering. `cascade.py:60` uses it only for the compact-window check (Toolathlon has no compact → no-op).
+- recon Q4 observation: of 365 parallel-call messages
+  - (name, args) duplicates within the same msg: **0** → no tie-break concern when using sub_idx for ordering
+  - Cases where the result order was reversed: **0** → tool results arrive in `tool_calls`-array order
+  → this convention preserves the origin ↔ candidate order.
 
-**한계**:
-- 이건 근사다. 실제 wall-clock 이 아니므로 gap(초) 는 msg 인덱스 차이 × 1000 (병렬은 +1). 시간 기반 통계(gap describe 등) 는 이 스케일 위에서만 해석 가능.
-- §22.11 compact 게이트는 **no-op**: Trace.metadata 에 `compact_boundaries` 를 넣지 않으므로 기존 `.get(key, [])` 경로에서 자동 무시됨. Toolathlon 에는 CC 스타일 compact 개념 없음.
+**Limits**:
+- This is an approximation. It is not real wall-clock, so gap(sec) = msg-index difference × 1000 (parallel = +1). Time-based statistics (gap describe etc.) are only interpretable on this scale.
+- The §22.11 compact gate is a **no-op**: `Trace.metadata` does not contain `compact_boundaries`, so the existing `.get(key, [])` path automatically ignores it. Toolathlon has no CC-style compact concept.
 
-## §23.3 — 역직렬화 주의
+## §23.3 — Deserialization caution
 
-**사실** (recon Q1):
-- 최상위 11개 필드 **전부 JSON 문자열**. `json.loads()` 필요한 필드: `task_status`, `config`, `tool_calls`, `messages`, `key_stats`, `agent_cost`.
-- 순수 문자열: `modelname_run`, `task_name`, `request_id`, `initial_run_time`, `completion_time`.
+**Facts** (recon Q1):
+- All 11 top-level fields are **JSON strings**. Fields requiring `json.loads()`: `task_status`, `config`, `tool_calls`, `messages`, `key_stats`, `agent_cost`.
+- Plain strings: `modelname_run`, `task_name`, `request_id`, `initial_run_time`, `completion_time`.
 
-**어댑터 규약**:
-- 각 필드 파싱 실패 시 **조용히 skip 금지, 명시적 `ValueError` raise** (§21.4).
-- `tool_calls[j].function.arguments` 는 이미 JSON 문자열. 파싱 후 `sort_keys=True` 로 재직렬화 → sha256 게이트 안정.
-- `content` 가 list 형식 (Anthropic content blocks) 인 경우 § 22.5 CC 규약 재사용 (block-by-block 렌더 + 비-text 블록은 `json.dumps` + warn). recon Q2 는 flat string 확인이지만 전 파일 확인은 어댑터 실행 시.
+**Adapter convention**:
+- On per-field parse failure, **do not silently skip; raise `ValueError` explicitly** (§21.4).
+- `tool_calls[j].function.arguments` is already a JSON string. Parse then re-serialize with `sort_keys=True` → sha256-gate stable.
+- If `content` is in list form (Anthropic content blocks), reuse the §22.5 CC convention (block-by-block render + non-text blocks get `json.dumps` + warn). recon Q2 confirmed flat string, but full-file confirmation happens at adapter runtime.
 
-**조인 검증** (§22.4 선례):
-- assistant 측 호출 id set = tool 측 결과 tool_call_id set 이 되어야 함.
-- orphan 존재 시 명시적 에러 (첫 5개 id 로그).
+**Join verification** (§22.4 precedent):
+- The assistant-side call id set must equal the tool-side result tool_call_id set.
+- On orphan presence, explicit error (log the first 5 ids).
 
-## §23.4 — 감지 분기
+## §23.4 — Detection dispatch
 
-**현재 상태** (`src/clew/__main__.py:30`):
+**Current state** (`src/clew/__main__.py:30`):
 ```python
 if path.suffix == ".jsonl":
     from clew.ingest.claude_code import ingest_claude_code_jsonl
     return ingest_claude_code_jsonl(path)
 ```
-→ `.jsonl` 확장자는 무조건 CC 로 라우팅. Toolathlon .jsonl 도 여기 걸린다.
+→ the `.jsonl` extension unconditionally routes to CC. Toolathlon `.jsonl` also lands here.
 
-**개정**:
-- `.jsonl` 진입 후 **첫 줄 JSON 을 peek** 해서 최상위 키로 분기:
+**Revision**:
+- After entering `.jsonl`, **peek the first-line JSON** and branch by top-level keys:
   - `modelname_run` AND `task_status` AND `messages` → Toolathlon
-  - `sessionId` (CC 마커) → CC
-  - 어느 쪽도 아니면 명시적 에러 (최상위 키 앞 5개 로그)
-- 두 마커 셋은 **겹치지 않음** (CC 는 `modelname_run` 없음, Toolathlon 은 `sessionId` 없음).
+  - `sessionId` (CC marker) → CC
+  - Otherwise explicit error (log first 5 top-level keys)
+- The two marker sets **do not overlap** (CC has no `modelname_run`; Toolathlon has no `sessionId`).
 
-**신규 모듈**: `src/clew/ingest/toolathlon.py`
-- 함수: `ingest_toolathlon_jsonl(path: Path) -> Trace`
-- 파일 내 각 라인 = 트레이스 1개. **파일당 다중 Trace 반환은 하지 않음** — 어댑터는 "path → single Trace" 계약. 다중 트레이스 파일은 CLI 상위에서 iterate.
-- 잠정 결정: `_load_trace_auto` 는 **첫 트레이스만** 반환 (CC 와 계약 동일). 파일 전량 스캔은 별도 헬퍼 `iter_toolathlon_traces(path) -> Iterator[Trace]` 로 노출, `field_test/diagnostics/scan_toolathlon.py` 에서 사용.
+**New module**: `src/clew/ingest/toolathlon.py`
+- Function: `ingest_toolathlon_jsonl(path: Path) -> Trace`
+- Each line in the file = 1 trace. **Not returning multiple Traces per file** — the adapter contract is "path → single Trace". Multi-trace files are iterated at the CLI level above.
+- Provisional decision: `_load_trace_auto` returns **only the first trace** (contract identical to CC). Full-file scanning is exposed via the separate helper `iter_toolathlon_traces(path) -> Iterator[Trace]`, used in `field_test/diagnostics/scan_toolathlon.py`.
 
-## §23.5 — 재실행 전 예측 (결과 보기 전)
+## §23.5 — Predictions before rerun (before seeing results)
 
-**대상**: 받은 파일 `claude-4.5-sonnet-0929_1.jsonl` (108 트레이스). 어댑터 + 3단 게이트 (구조 → sha256 → compact) 를 108 트레이스 전량에 돌린다.
+**Target**: the received file `claude-4.5-sonnet-0929_1.jsonl` (108 traces). Run adapter + 3-stage gate (structural → sha256 → compact) on all 108.
 
-recon 은 잠정 정의 (파이썬 dict 그룹핑) 였다. 어댑터는 clew 구조 게이트 (`find_candidates`, N=2) 를 통해 갈 것이므로 카운트가 다를 수 있다.
+recon was a provisional definition (python dict groupby). The adapter goes through the clew structural gate (`find_candidates`, N=2), so counts may differ.
 
-| 지표 | recon 잠정 | 예측 |
+| Metric | recon provisional | Prediction |
 |---|---|---|
-| repeat 후보 (구조 게이트 통과) | 177 | **150 – 177** (동일 정의면 유사, N=2 구조 게이트가 인접성 조건을 더 엄격하게 볼 수 있음) |
-| sha256 게이트 통과 (tool kind) | 32 | **25 – 35** (recon 시뮬레이션과 근접해야 함) |
-| compact 게이트 no-op 확인 | — | Trace.metadata 에 키 없음 → cascade `.get(..., [])` 통과, 0건 제외 |
-| 최종 waste (candidate 스팬 수) | — | **25 – 35** |
+| repeat candidates (structural gate passed) | 177 | **150 – 177** (similar if definition same; the N=2 structural gate may see adjacency more strictly) |
+| sha256 gate passed (tool kind) | 32 | **25 – 35** (should be close to recon simulation) |
+| compact gate no-op confirmed | — | no key in Trace.metadata → cascade `.get(..., [])` passes, 0 excluded |
+| Final waste (candidate span count) | — | **25 – 35** |
 
-**예측 근거**:
-- sha256 게이트가 recon 시뮬 (32) 과 근접해야 어댑터 조인이 정확한 것. 크게 벗어나면 어댑터 조인/파싱 버그.
-- 빈-인자 (args='') 반복이 다수 포함될 것. playwright browser workflow (`playwright_with_chunk-browser_snapshot_navigate_to_next_span`, args='') 4 세션에서 count 7~13. 이는 "후보이지 확정 낭비 아님" — CC 의 ExitPlanMode 선례처럼 소유자 판정 필요.
+**Prediction grounding**:
+- The sha256 gate must be close to the recon sim (32) for the adapter join to be correct. Large deviation = adapter join/parse bug.
+- Empty-argument (args='') repeats will be included in numbers. In the playwright browser workflow (`playwright_with_chunk-browser_snapshot_navigate_to_next_span`, args=''), 4 sessions have count 7~13. These are "candidates, not confirmed waste" — as with the CC ExitPlanMode precedent, owner adjudication needed.
 
-**틀리면 틀렸다고 기록**.
+**If wrong, record it as wrong.**
 
-### 음성 결과 정의
-- waste (sha256 게이트 통과) 가 recon 시뮬 (32) 대비 ±10 이상 벗어나면 어댑터 조인/파싱 차이. 원인 규명 (§23.7 결과 섹션에), 정의 유지.
+### Negative-result definition
+- If waste (sha256 gate passed) deviates from recon sim (32) by ±10 or more, it is an adapter join/parse difference. Root-cause in (§23.7 result section); keep the definition.
 
-### 중단 조건
-1. 기존 204 테스트 회귀 → 멈춤. 테스트 고쳐 통과 금지.
-2. CC / OTel / OpenInference 결과 변화 → 멈춤. Toolathlon 분기는 독립이어야 함 (`_load_trace_auto` 분기 추가 외 다른 어댑터 파일 수정 금지).
-3. φ / N / model / sha256 로직 변경 필요 → 즉시 멈춤 (§22.10 규정 재확인).
-4. Span 자료구조 확장 필요 → 즉시 멈춤 (§22.11 선례처럼 `Trace.metadata` 만 확장 허용).
+### Stop conditions
+1. Existing 204 tests regress → halt. Do not fix tests to pass.
+2. CC / OTel / OpenInference results change → halt. The Toolathlon branch must be independent (no adapter-file modifications other than adding a `_load_trace_auto` branch).
+3. φ / N / model / sha256 logic needs changing → halt immediately (recheck §22.10 rule).
+4. Span data structure needs extending → halt immediately (as in §22.11 precedent, only `Trace.metadata` extension allowed).
 
 ---
 
-## §23.6 — 규칙 8 커밋 체인 (사전등록 시각 증명)
+## §23.6 — Rule 8 commit chain (pre-registration timestamp proof)
 
-이 문서 (§23.1–§23.5) + recon 스크립트 2개 = **사전등록 커밋**.
-- push → 서버 timestamp 찍힘.
-- 어댑터 구현 코드는 **push 확인 후** 별도 커밋.
-- PR / 머지 는 §23 완주 후 feat/cc-adapter 브랜치 통째로 (별도 요청).
+This document (§23.1–§23.5) + 2 recon scripts = **pre-registration commit**.
+- push → server timestamp stamped.
+- Adapter implementation code is a **separate commit after push confirmation**.
+- PR / merge is for after §23 is complete, on the entire feat/cc-adapter branch (separate request).
 
-## §23.7 — 재실행 결과 (2026-07-18)
+## §23.7 — Rerun results (2026-07-18)
 
-**실행**: `python field_test/diagnostics/scan_toolathlon.py data/toolathlon/claude-4.5-sonnet-0929_1.jsonl`
-**게이트**: φ=0.514345, N=2, model=paraphrase-multilingual-MiniLM-L12-v2@e8f8c21, sha256 tool-kind ON.
-**소요**: wall 0.7s.
+**Run**: `python field_test/diagnostics/scan_toolathlon.py data/toolathlon/claude-4.5-sonnet-0929_1.jsonl`
+**Gates**: φ=0.514345, N=2, model=paraphrase-multilingual-MiniLM-L12-v2@e8f8c21, sha256 tool-kind ON.
+**Elapsed**: wall 0.7s.
 
-### 예측 vs 실측
+### Prediction vs. observed
 
-| 지표 | 예측 (§23.5) | 실측 | 판정 |
+| Metric | Prediction (§23.5) | Observed | Verdict |
 |---|---|---|---|
-| repeat 후보 (구조 게이트 N=2) | 150–177 | **173** | ✓ 범위 안 |
-| sha256 게이트 통과 (tool kind) | 25–35 | **28** | ✓ 범위 안 |
-| waste 최종 | 25–35 | **28** | ✓ 범위 안 |
+| repeat candidates (structural gate N=2) | 150–177 | **173** | ✓ in range |
+| sha256 gate passed (tool kind) | 25–35 | **28** | ✓ in range |
+| Final waste | 25–35 | **28** | ✓ in range |
 
-세 예측 모두 적중. recon 잠정치 (177 후보 / 32 sha 동일) 대비 -4 / -4 인데, 이는 구조 게이트가 N=2 인접성 조건으로 recon 의 dict-groupby 보다 좁게 자르기 때문이라 사전등록 예측과 일관.
+All three predictions hit. Vs. recon provisional (177 candidates / 32 sha), -4 / -4 — the structural gate narrows more than recon's dict-groupby because of the N=2 adjacency condition, consistent with the pre-registration prediction.
 
-### 로드 요약
+### Load summary
 
-- 파일 라인 수: 108
-- 성공적으로 cascade 실행: **107**
-- build 예외: **1** — `line#30 [build] ValueError: arguments JSON 파싱 실패 (원문 앞 80자: '{"path": "/workspace/dumps/workspace/format_data.py"')`
-  - **원인**: 실데이터의 `filesystem-write_file` arguments 값이 52 자에서 잘림 (task=`quantitative-financial-analysis`, request_id=`671bb135-6a28-4ffa-acac-24374c8aa93b`). Toolathlon 데이터셋 원본 결함.
-  - **처리**: 어댑터는 §21.4 대로 명시 raise. 스캔 스크립트가 라인별 catch 로 나머지 107 개 처리 계속.
-  - 스캔 스크립트만 관용, 어댑터 계약(1 line → 1 Trace or ValueError)은 변경 없음.
+- File line count: 108
+- cascade executed successfully: **107**
+- build exception: **1** — `line#30 [build] ValueError: arguments JSON parse failed (raw first 80 chars: '{"path": "/workspace/dumps/workspace/format_data.py"')`
+  - **Cause**: real-data `filesystem-write_file` arguments value truncated at 52 chars (task=`quantitative-financial-analysis`, request_id=`671bb135-6a28-4ffa-acac-24374c8aa93b`). Defect in the Toolathlon dataset source.
+  - **Handling**: adapter raises explicitly per §21.4. The scan script catches per-line and continues processing the remaining 107.
+  - Only the scan script tolerates; the adapter contract (1 line → 1 Trace or ValueError) unchanged.
 
-### waste > 0 트레이스 분포 (14 트레이스)
+### waste > 0 trace distribution (14 traces)
 
-| task_name | eval | waste 수 |
+| task_name | eval | waste count |
 |---|---|---|
 | k8s-pr-preview-testing | False | 8 |
 | email-paper-homepage | False | 3 |
 | reimbursement-form-filler | True | 3 |
 | fillout-online-forms | True | 2 |
-| (나머지 10 트레이스: 각 1–2 건) | mix | 12 |
+| (remaining 10 traces: 1–2 each) | mix | 12 |
 
-**evaluation 별 낭비율**:
-- eval=`False` (실패 63): waste 21건, waste-트레이스 11 (17.5%)
-- eval=`True` (성공 44): waste 7건, waste-트레이스 3 (6.8%)
+**Waste rate by evaluation**:
+- eval=`False` (63 failed): waste 21, waste-traces 11 (17.5%)
+- eval=`True` (44 succeeded): waste 7, waste-traces 3 (6.8%)
 
-실패 트레이스가 성공 트레이스 대비 낭비 트레이스 비율 **2.6배**. arXiv:2602.19008 "canonical path deviation → failure" 방향과 일관 (통계 아님, 관측).
+Failed traces show a **2.6×** waste-trace ratio vs. successful traces. Consistent with the arXiv:2602.19008 "canonical path deviation → failure" direction (not statistics, observation).
 
-### waste 도구 분포
+### waste tool distribution
 
-**args 있음 (27건)** — 상위:
+**With args (27)** — top:
 - `filesystem-read_file` 5
 - `pdf-tools-read_pdf_pages` 4
 - `github-get_file_contents` 4
@@ -176,45 +176,45 @@ recon 은 잠정 정의 (파이썬 dict 그룹핑) 였다. 어댑터는 clew 구
 - `k8s-kubectl_get` 2
 - `playwright_with_chunk-browser_navigate` 2
 - `playwright_with_chunk-browser_wait_for` 2
-- (기타 6 tool × 1건)
+- (other 6 tools × 1 each)
 
-**args='' or '{}' (1건)**: `playwright_with_chunk-browser_close` args=`{}` × 1
+**args='' or '{}' (1)**: `playwright_with_chunk-browser_close` args=`{}` × 1
 
-recon 예측: "playwright next_span args='' 반복이 다수 포함될 것" — **틀림**. sha256 게이트가 대부분의 args='' 반복을 걸러냈다 (다른 페이지 → 다른 스냅샷 → sha256 불일치). CC 의 ExitPlanMode 선례처럼 args 없어도 낭비가 되려면 output 동일해야 하는데, playwright next_span 은 매 호출마다 다른 페이지로 진행하는 게 정상 사용법이라 output 이 다름. 결과: playwright next_span 은 waste=0.
+recon prediction: "playwright next_span args='' repeats will be included in numbers" — **wrong**. The sha256 gate filtered out most args='' repeats (different page → different snapshot → sha256 mismatch). As with the CC ExitPlanMode precedent, even without args, output must match to be waste — but playwright next_span normally advances to a different page per call, so outputs differ. Result: playwright next_span waste=0.
 
-### 어댑터 실장 노트 (사전등록 대비 미세 조정)
+### Adapter implementation notes (fine tuning vs. pre-registration)
 
-- `_normalize_arguments`: raw=`""` (빈 문자열) 은 Toolathlon 관례상 "인자 없음" 이므로 `{}` 로 정규화. 사전등록 (§23.3) 은 "파싱 실패 시 raise" 만 명시했는데, 빈 문자열은 파싱 실패가 아니라 관례로 처리. 어댑터 테스트 `test_arguments_parse_failure_raises` 는 "not valid json!!" 같은 진짜 malformed 만 대상.
-- 여전히 malformed JSON (line 30 케이스) 은 하드 raise. §21.4 준수.
+- `_normalize_arguments`: raw=`""` (empty string) is Toolathlon convention for "no arguments", so normalize to `{}`. The pre-registration (§23.3) only stated "raise on parse failure"; the empty string is not a parse failure, but a convention. The adapter test `test_arguments_parse_failure_raises` targets truly malformed strings like "not valid json!!".
+- Still, malformed JSON (line-30 case) hard-raises. §21.4 respected.
 
-### 중단 조건 재확인
+### Stop-condition recheck
 
-1. **204 회귀** — 216 통과 (신규 12 포함). 회귀 없음.
-2. **CC/OTel/OpenInference 결과 변화** — `_load_trace_auto` 분기 로직만 확장. CC 테스트 `test_auto_dispatch_cc_still_works` 통과. 다른 어댑터 파일 수정 없음.
-3. **φ / N / model / sha256 로직 변경** — 없음.
-4. **Span 자료구조 확장** — 없음. `Trace.metadata` 에만 `source, task_name, task_status, modelname_run` 추가.
+1. **204 regression** — 216 pass (12 new included). No regression.
+2. **CC/OTel/OpenInference result change** — only the `_load_trace_auto` branch logic expanded. CC test `test_auto_dispatch_cc_still_works` passes. No other adapter files modified.
+3. **φ / N / model / sha256 logic change** — none.
+4. **Span data-structure extension** — none. Only added `source, task_name, task_status, modelname_run` to `Trace.metadata`.
 
-### 병합 방침
+### Merge policy
 
-- 이 커밋은 `feat/cc-adapter` 브랜치의 §23 결과 커밋 (사전등록 e8da282 → 구현 → 결과).
-- push 만. PR 은 별도 요청 (규칙 8 배치 PR 계획).
+- This commit is the §23 result commit on the `feat/cc-adapter` branch (pre-registration e8da282 → implementation → result).
+- push only. PR is separate request (Rule 8 batched PR plan).
 
 ---
 
-## §26 — 22모델 확장 스캔 (2026-07-18, post-hoc, 로드맵 ③)
+## §26 — 22-model expansion scan (2026-07-18, post-hoc, roadmap ③)
 
-§23 어댑터 (main 병합분 `52a38ea`) **무수정 재사용**. `hkust-nlp/Toolathlon-Trajectories` 전량 `snapshot_download` → 66 파일 (22 모델 × 3 런). 스크립트: `field_test/diagnostics/scan_toolathlon_17models.py` (규칙 7 부칙).
+Reuse the §23 adapter (main-merged `52a38ea`) **unmodified**. `snapshot_download` the full `hkust-nlp/Toolathlon-Trajectories` → 66 files (22 models × 3 runs). Script: `field_test/diagnostics/scan_toolathlon_17models.py` (Rule 7 addendum).
 
-### §26.1 — 규모
+### §26.1 — Scale
 
-- **파일 66, 트레이스 7,116** (일부 파일 106, 나머지 108).
+- **66 files, 7,116 traces** (some files 106, rest 108).
 - **spans 183,050, tool spans 176,270.**
-- **repeat 후보 17,101** (구조 게이트 N=2 통과).
-- **waste 8,042** (sha256 게이트 추가 통과), **waste_traces 1,280.**
-- **eval 분포**: `pass=1,613  fail=5,046  other=121` (나머지 336 = 파싱 실패 라인).
-- **wall time**: 32.1 s (임베딩 캐시 워밍 후, 라벨 미참조).
+- **17,101 repeat candidates** (structural gate N=2 passed).
+- **8,042 waste** (sha256 gate additionally passed), **waste_traces 1,280.**
+- **eval distribution**: `pass=1,613  fail=5,046  other=121` (remaining 336 = parse-failed lines).
+- **wall time**: 32.1 s (after embedding cache warm; labels not referenced).
 
-### §26.2 — 모델별 waste 밀도 (3런 aggregate)
+### §26.2 — Per-model waste density (aggregated over 3 runs)
 
 ```
 model                    trc   cnd   wst   wT  w/trc  w/1kt   sha%  wf/tf  wp/tp
@@ -242,17 +242,17 @@ o4-mini                  324   305   305   91  0.941  57.79  70.3%  0.925  0.500
 qwen-3-coder             324   584   178   86  0.549  20.28  30.5%  0.631  0.340
 ```
 
-범례: `w/trc` = waste/trace, `w/1kt` = waste/1,000 tool spans, `sha%` = waste/cands (sha256 게이트 통과율), `wf/tf` = waste / 실패트레이스, `wp/tp` = waste / 성공트레이스.
+Legend: `w/trc` = waste/trace, `w/1kt` = waste/1,000 tool spans, `sha%` = waste/cands (sha256 gate pass rate), `wf/tf` = waste / failed-trace, `wp/tp` = waste / passed-trace.
 
-- **w/trc 최고 = gemini-2.5-pro 8.463** (2,742 waste / 324 traces).
-- **w/trc 최저 = gpt-5-high 0.157** (51 waste). **54배 편차.**
+- **w/trc max = gemini-2.5-pro 8.463** (2,742 waste / 324 traces).
+- **w/trc min = gpt-5-high 0.157** (51 waste). **54× spread.**
 
-### §26.3 — sha256 게이트 범용성 + 빈-인자 분포
+### §26.3 — sha256 gate generality + empty-arg distribution
 
-- 전체 `sha%` = 8,042 / 17,101 = **47.0%**.
-- 모델별 `sha%` 범위: **16.0% (glm-4.6) — 73.2% (grok-4-fast).**
-- claude-4.5-sonnet-0929 sha% 19.1% (§23.7 baseline 16.2% 근방).
-- **빈-인자 waste** (`input` ∈ {"", "{}"}):
+- Overall `sha%` = 8,042 / 17,101 = **47.0%**.
+- Per-model `sha%` range: **16.0% (glm-4.6) — 73.2% (grok-4-fast).**
+- claude-4.5-sonnet-0929 sha% 19.1% (near the §23.7 baseline 16.2%).
+- **Empty-arg waste** (`input` ∈ {"", "{}"}):
   ```
   gemini-2.5-pro       645 / 2742
   grok-code-fast-1     185 /  668
@@ -261,23 +261,23 @@ qwen-3-coder             324   584   178   86  0.549  20.28  30.5%  0.631  0.340
   gpt-5                  0 /  113
   gpt-5-high             0 /   51
   ```
-  gpt-5 계열 빈-인자 0. gemini/grok/claude-opus 는 빈-인자 waste 상당수.
+  gpt-5 family: 0 empty-arg. gemini / grok / claude-opus have substantial empty-arg waste.
 
-### §26.4 — 정직 정정: "실패 2.6배" 철회 (중요)
+### §26.4 — Honest correction: retract "failure 2.6×" (important)
 
-**§23.7 서술 철회**: "실패 트레이스 낭비 2.6배 (claude-4.5-sonnet 단일)" 는 **소수 표본 (108 트레이스) 인상값**이었다. 22 모델 재실행에서 claude-4.5-sonnet-0929 는 `wf/tf 0.271 / wp/tp 0.285 = 0.95배` — 배율 관계 역전. **철회한다.**
+**Retract §23.7 statement**: "failed traces show 2.6× waste (claude-4.5-sonnet, single)" was a **small-sample (108 traces) impression**. On the 22-model rerun, claude-4.5-sonnet-0929 gives `wf/tf 0.271 / wp/tp 0.285 = 0.95×` — the multiplier inverts. **Retracted.**
 
-**큰 표본 사실** (n=7,116, 22 모델):
-- 22 모델 중 **18** 에서 `wf/tf > wp/tp` (실패 트레이스가 성공 대비 waste 밀도 더 높음).
-- 4 모델은 역전 (성공 > 실패): `claude-4.5-sonnet-0929 (0.271 vs 0.285)`, `gpt-5.1 (0.206 vs 0.552)`, `grok-4 (1.354 vs 1.854)`, `qwen-3-coder (0.631 vs 0.340)`.
-- 배율은 모델마다 다름 (예: `grok-4-fast 4.127 / 0.133 = 31배`; `gpt-5-mini 1.490 / 0.217 = 6.9배`; 반대편 `gpt-5.1 0.206 / 0.552 = 0.37배`). **단일 "N배" 서술 불가.**
+**Large-sample facts** (n=7,116, 22 models):
+- Of 22 models, **18** have `wf/tf > wp/tp` (failed-trace waste density higher than passed).
+- 4 models invert (passed > failed): `claude-4.5-sonnet-0929 (0.271 vs 0.285)`, `gpt-5.1 (0.206 vs 0.552)`, `grok-4 (1.354 vs 1.854)`, `qwen-3-coder (0.631 vs 0.340)`.
+- The multiplier varies per model (e.g. `grok-4-fast 4.127 / 0.133 = 31×`; `gpt-5-mini 1.490 / 0.217 = 6.9×`; on the other side `gpt-5.1 0.206 / 0.552 = 0.37×`). **A single "N×" statement is not possible.**
 
-**말할 수 있음**: "대다수 모델 (18/22) 에서 실패 트레이스 낭비율이 성공보다 높다."
-**말할 수 없음**: "실패 트레이스는 성공보다 낭비가 N배 많다" — 큰 표본에서 배율 자체가 모델 함수, 단일 상수 아님.
+**Can be said**: "In most models (18/22), failed traces have higher waste rates than passed."
+**Cannot be said**: "Failed traces have N× more waste than passed" — on a large sample the multiplier itself is a function of the model, not a single constant.
 
-**편차 등록 (규칙 5 — 일반화 전 계수)**: 108 트레이스 인상값을 배율로 서술한 것이 22 모델에서 반증. **소수 표본 배율은 "관측" 으로만 서술, "배율" 단정 금지.**
+**Deviation registered (Discipline 5 — count before generalizing)**: describing a 108-trace impression as a multiplier is refuted on 22 models. **Small-sample multipliers must be stated only as "observation"; no "multiplier" assertion.**
 
-### §26.5 — tool 카테고리 분포 (전 waste 8,042)
+### §26.5 — Tool category distribution (all waste 8,042)
 
 ```
 read     : 3,536  (44.0%)
@@ -287,7 +287,7 @@ browser  :   524  ( 6.5%)
 execute  :   330  ( 4.1%)
 ```
 
-**tool 이름 top-10**:
+**Tool name top-10**:
 ```
 1478  [read   ]  github-get_file_contents
 1042  [other  ]  local-claim_done
@@ -301,101 +301,101 @@ execute  :   330  ( 4.1%)
  136  [execute]  terminal-run_command
 ```
 
-**모델 특징 (raw)**:
-- `grok-4-fast`: 1,022 read / 1,081 waste = **94.5% read** 편중.
-- `grok-code-fast-1`: **write 318** (모델 중 최다 write 절대량).
-- `claude-4.5-opus`: **execute 115** (모델 중 최다 execute).
-- `gemini-2.5-flash`: **browser 165** (모델 중 최다 browser).
-- `github-get_file_contents 1,478` 최다 — requery_known (안 변하는 정보 재조회) 실증.
+**Model characteristics (raw)**:
+- `grok-4-fast`: 1,022 read / 1,081 waste = **94.5% read** skew.
+- `grok-code-fast-1`: **write 318** (largest absolute write among models).
+- `claude-4.5-opus`: **execute 115** (largest execute among models).
+- `gemini-2.5-flash`: **browser 165** (largest browser among models).
+- `github-get_file_contents 1,478` largest — empirical requery_known (re-lookup of information that does not change).
 
-### §26.6 — 파싱 실패 336 건 (§21.4 준수 재확인)
+### §26.6 — 336 parse failures (§21.4 re-confirmed)
 
-- 전 실패 모두 `_build_trace_from_entry` 단계 `ValueError` (조용히 skip 아님, 라인별 raw 로그).
-- 최다 유형:
-  - `deepseek-3.2-thinking_*`: `Unterminated string starting at line 1 col ~10` (code arg 내 raw 이스케이프 실패).
-  - `claude-*_*`: `Expecting ',' delimiter` (`{"path": "…"` 뒤 백슬래시 이스케이프 오류).
-  - `deepseek-v3.2-exp_3`: `Expecting value` (`{"resourceType": …, "name": ,` — 빈 값).
-- **어댑터 계약 무수정** — malformed JSON 은 라인 단위 raise, 파일 단위 skip 아님.
+- All failures come from the `_build_trace_from_entry` step `ValueError` (not silent skip; per-line raw log).
+- Most common types:
+  - `deepseek-3.2-thinking_*`: `Unterminated string starting at line 1 col ~10` (raw-escape failure inside code arg).
+  - `claude-*_*`: `Expecting ',' delimiter` (backslash-escape error after `{"path": "…"`).
+  - `deepseek-v3.2-exp_3`: `Expecting value` (`{"resourceType": …, "name": ,` — empty value).
+- **Adapter contract unmodified** — malformed JSON raises per line, not per file skip.
 
-### §26.7 — 정직 경계 (Toolathlon 스코프)
+### §26.7 — Honesty boundary (Toolathlon scope)
 
-- Toolathlon 은 **성공/실패 라벨만** 제공. **waste 8,042 는 후보** 이지 확정 낭비 아님 (RB 처럼 step-level GT 없음).
-- 아래 규정으로 인용:
-  - "탐지된 낭비 후보 8,042 / 트레이스당 평균 1.13" (√)
-  - "F1 / precision / recall" 은 **인용 금지** — 라벨 없음.
-- **축 분담**:
-  - **규모·모델비교 축** = Toolathlon (22 모델 × 3 런, 정밀도 미측정).
-  - **정밀도 축** = RedundancyBench (F1 0.2642, 인간 라벨, 단일 도메인 셋).
-- **사용 가능** (raw 인용): "22 모델 규모에서 트레이스당 waste 후보 밀도 편차 54 배 (0.157–8.463)."
-- **사용 불가**: "gemini-2.5-pro 는 낭비가 gpt-5-high 대비 54 배 많다" — 라벨 없음, 후보 밀도이지 확정 낭비 아님. 태스크 구성·성공률 confound 미통제.
+- Toolathlon provides **only pass/fail labels**. The **8,042 waste are candidates**, not confirmed waste (no step-level GT as in RB).
+- Cite per the following rules:
+  - "8,042 waste candidates detected / average 1.13 per trace" (√)
+  - **Do not cite** "F1 / precision / recall" — no labels.
+- **Axis split**:
+  - **Scale · model-comparison axis** = Toolathlon (22 models × 3 runs, precision not measured).
+  - **Precision axis** = RedundancyBench (F1 0.2642, human labels, single-domain set).
+- **Usable** (raw citation): "At 22-model scale, per-trace waste-candidate density spread of 54× (0.157–8.463)."
+- **Unusable**: "gemini-2.5-pro wastes 54× more than gpt-5-high" — no labels; this is candidate density, not confirmed waste. Task composition · success-rate confounds uncontrolled.
 
-### §26.8 — 병합 방침
+### §26.8 — Merge policy
 
-- 이 커밋은 `feat/N-recon` 브랜치 (로드맵 ② N 리콘 + ③ Toolathlon 확장 배치).
-- push 만. PR 은 로드맵 ② ③ 끝 일괄.
+- This commit is on the `feat/N-recon` branch (roadmap ② N recon + ③ Toolathlon expansion batched).
+- push only. PR is at the end of roadmap ② ③, bundled.
 
 ---
 
-## §27 — 비용 산정 리콘 (2026-07-18, 백로그, Phase 2)
+## §27 — Cost calculation recon (2026-07-18, backlog, Phase 2)
 
-**목적**: report.md 의 "낭비 = 토큰 X = $Y" 인용 가능성 확인. 코드 무수정 리콘.
-스크립트: `field_test/diagnostics/recon_cost_calc.py` (규칙 7 부칙).
+**Purpose**: check citation viability of report.md's "waste = tokens X = $Y". Code-unmodified recon.
+Script: `field_test/diagnostics/recon_cost_calc.py` (Rule 7 addendum).
 
-### §27.1 — report 파이프는 준비됨
+### §27.1 — Report pipe is ready
 
-- `src/clew/report/markdown.py:60-67, 79-89`: `estimated wasted tokens/cost` 슬롯 이미 존재. 값 없으면 `"unknown"`.
+- `src/clew/report/markdown.py:60-67, 79-89`: `estimated wasted tokens/cost` slots already exist. If value absent, `"unknown"`.
 - `src/clew/report/_model.py::WasteDetail`: `waste_tokens = candidate.token_count`, `waste_cost = token_count × cost_rate`.
-- `src/clew/detect/cascade.py:70-77`: waste 합산 로직 존재 (`tc = s.token_count or 0`).
-- **즉 어댑터가 `Span.token_count` / `Span.cost_rate` 를 채우기만 하면 report 에 자동 표시.**
+- `src/clew/detect/cascade.py:70-77`: waste-aggregation logic exists (`tc = s.token_count or 0`).
+- **So as soon as the adapter fills `Span.token_count` / `Span.cost_rate`, the report auto-displays them.**
 
-### §27.2 — 어댑터별 채움 상태 (현재 report cost 는 전부 "unknown")
+### §27.2 — Per-adapter fill state (current report cost is all "unknown")
 
-| 어댑터 | token_count | cost_rate | model |
+| Adapter | token_count | cost_rate | model |
 |---|---|---|---|
 | `claude_code.py:223-225` | None | None | None |
 | `redundancy_bench.py:226-228` | None | None | None |
-| `toolathlon.py:210-212` | None | None | `modelname_run` (파일명) |
+| `toolathlon.py:210-212` | None | None | `modelname_run` (file name) |
 | `langgraph.py:127-129` | `_token_count_of(attrs)` | `cost_table[model]` | `model` |
-| `otel_json.py` | (langgraph 와 동일 유틸) | — | — |
+| `otel_json.py` | (same utility as langgraph) | — | — |
 
-- **낭비 span 토큰을 직접 셀 수 있는 어댑터** = LangGraph / OTel JSON 뿐. 우리 실측 스캔한 CC/RB/Toolathlon 은 전부 미채움.
+- **Adapters that can directly count waste-span tokens** = only LangGraph / OTel JSON. The CC / RB / Toolathlon we actually scanned are all unfilled.
 
-### §27.3 — CC 데이터 있으나 매핑 안 됨
+### §27.3 — CC has the data but not the mapping
 
-CC JSONL 원본 `type: "assistant"` 메시지 usage:
+CC JSONL source `type: "assistant"` message usage:
 ```
 {'input_tokens': 3, 'cache_creation_input_tokens': 10705,
  'cache_read_input_tokens': 13305, 'output_tokens': 195, ...}
 ```
-- usage 는 **assistant (LLM) 메시지에 부착**.
-- Clew CC 어댑터는 **tool 스팬만 생성** (LLM 스팬 미생성). → 원본에 있으나 어댑터가 안 잡음.
-- 토큰 넣으려면: (a) LLM 스팬 신설, 또는 (b) 인접 assistant usage 를 tool 스팬에 귀속. **구조 결정 필요 (Phase 2).**
+- Usage is **attached to the assistant (LLM) message**.
+- The Clew CC adapter **only produces tool spans** (no LLM spans). → present in source, not captured by the adapter.
+- To inject tokens: (a) introduce LLM spans, or (b) attribute adjacent assistant usage to the tool span. **Structural decision required (Phase 2).**
 
-### §27.4 — char 기반 근사
+### §27.4 — Char-based approximation
 
-- `tiktoken` 미설치. 대안: `chars/4` 중앙값, 범위 `chars/5..3`.
-- JSON/코드는 `chars/3` 근처, 자연어는 `chars/4`. 단일값 "정확 토큰" 서술 금지.
-- 낭비 = origin·cand output_text 동일 sha256 → cand output_text 문자 수 ≈ 재소비 컨텍스트 크기.
+- `tiktoken` not installed. Alternative: `chars/4` median, range `chars/5..3`.
+- JSON/code near `chars/3`, natural language `chars/4`. No single-value "exact token" statement.
+- Waste = origin·cand output_text same sha256 → cand output_text char count ≈ re-consumed context size.
 
-### §27.5 — 핵심 통찰: multi-turn amplification
+### §27.5 — Key insight: multi-turn amplification
 
-- **단순 재소비 $ 는 소액**: Toolathlon 8,042 waste × chars/4 × input $3/M = **~$9.76** (전 22 모델 × 3 런, 트레이스당 $0.00137).
-- **진짜 낭비 = tool_result 가 이후 매 턴 LLM input 으로 재소비 × 남은 턴 수.**
-  - i.e. amplification factor ≈ (waste span 등장 이후 남은 assistant 턴 수).
-  - arXiv:2509.23586 (tool 메시지 30.4K 토큰 반복 낭비) 논지와 일치.
-- 정확한 amplification 모델링 (턴 카운트, cache_read vs input 구분) 은 별도 작업. **Phase 2 백로그.**
+- **Simple re-consumption $ is small**: Toolathlon 8,042 waste × chars/4 × input $3/M = **~$9.76** (all 22 models × 3 runs, per trace $0.00137).
+- **Real waste = tool_result re-consumed as LLM input on every subsequent turn × remaining turn count.**
+  - i.e. amplification factor ≈ (assistant turns remaining after waste-span appearance).
+  - Consistent with the arXiv:2509.23586 argument (tool messages, 30.4K token repeated waste).
+- Accurate amplification modeling (turn count, cache_read vs. input distinction) is separate work. **Phase 2 backlog.**
 
-### §27.6 — 단가 취급
+### §27.6 — Unit-price handling
 
-- 단가는 시변 → **하드코딩 금지**. 사용자 입력 / env / 외부 표 권장.
-- 2026-07 대략 (인용 금지, 리콘 참고값):
+- Unit price is time-variant → **no hardcoding**. Recommend user input / env / external table.
+- 2026-07 approx (do not cite; recon reference values):
   - Anthropic Claude 4.5 Sonnet: input $3/M, output $15/M
   - OpenAI GPT-5: input $2.50/M, output $10/M
-- `Span.cost_rate` 는 **단일 $/token** (input/output 미분리). 정밀 원가는 Span 확장 필요.
+- `Span.cost_rate` is a **single $/token** (no input/output split). Precise costing requires Span extension.
 
-### §27.7 — 백로그 상태
+### §27.7 — Backlog state
 
-- **Phase 2 착수 조건**: (a) 어댑터 토큰 매핑 (CC LLM 스팬 신설 결정), (b) amplification 모델 사전등록, (c) 단가 주입 인터페이스.
-- **README / 대외 인용 이전 미착수** — report cost 는 계속 "unknown" 유지.
-- **말할 수 있음** (지금): "낭비 = 토큰 X = $ Y 는 파이프 준비 완료. 어댑터 확장 대기."
-- **말할 수 없음**: "$X 절감했다" — 어떤 어댑터도 report 에서 $ 를 계산 안 함, 근사만 리콘.
+- **Phase 2 kickoff conditions**: (a) adapter token mapping (CC LLM-span introduction decision), (b) amplification model pre-registration, (c) unit-price injection interface.
+- **Not started before README / external citation** — report cost remains "unknown".
+- **Can be said** (now): "waste = tokens X = $Y pipe is ready. Awaiting adapter extension."
+- **Cannot be said**: "Saved $X" — no adapter computes $ in the report; only recon approximation.
