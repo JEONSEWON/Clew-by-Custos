@@ -80,5 +80,5 @@ def test_dod_detect_and_report_modules_match_stage3_scope():
     report_dir = ROOT / "src" / "clew" / "report"
     detect_files = sorted(p.name for p in detect_dir.glob("*.py"))
     assert detect_files == ["__init__.py", "cascade.py", "semantic.py", "structural.py"]
-    expected_report = ["__init__.py", "_model.py", "json_report.py", "markdown.py"]
+    expected_report = ["__init__.py", "_enrich.py", "_model.py", "json_report.py", "markdown.py"]
     assert sorted(p.name for p in report_dir.glob("*.py")) == expected_report

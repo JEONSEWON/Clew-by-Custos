@@ -118,7 +118,7 @@ def test_dod_report_directory_matches_stage3_scope():
     Unrelated to frozen verification (leakage guard / eval). The .py files in report/ must exactly match the §10 planned modules.
     Adding any file outside the allowlist breaks this test.
     """
-    expected = ["__init__.py", "_model.py", "json_report.py", "markdown.py"]
+    expected = ["__init__.py", "_enrich.py", "_model.py", "json_report.py", "markdown.py"]
     report_dir = SRC_CLEW / "report"
     py_files = sorted(p.name for p in report_dir.glob("*.py"))
     assert py_files == expected, f"report/ expected {expected}, found: {py_files}"
