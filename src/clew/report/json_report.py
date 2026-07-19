@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from clew.cost.amplification import AmplificationEstimate
 from clew.detect.cascade import CascadeResult
 from clew.model import Trace
+from clew.report._enrich import enrich
 from clew.report._model import WasteDetail
 
 _PHI = 0.514345
@@ -33,8 +34,12 @@ def render_json(
     """
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    enrichment = enrich(trace, details)
+    ev_by_sid = {ev.span_id: ev for ev in amplification.events} if amplification else {}
+
     waste_details_list = []
-    for wd in details:
+    for ed in enrichment.enriched:
+        wd = ed.detail
         wt = wd.waste_tokens
         wc = wd.waste_cost
         entry: dict = {
@@ -43,7 +48,22 @@ def render_json(
             "cosine": round(wd.cosine, 6),
             "tokens_wasted": wt if wt is not None else "unknown",
             "cost_wasted": round(wc, 8) if wc is not None else "unknown",
+            "pattern_label": ed.pattern_label,
+            "file_path": ed.file_path,
+            "command": ed.command,
+            "origin_turn": ed.origin_turn,
+            "candidate_turn": ed.candidate_turn,
+            "total_turns": ed.total_turns,
+            "modified_in_between": ed.modified_in_between,
+            "state_change_uncertain": ed.state_change_uncertain,
         }
+        ev = ev_by_sid.get(wd.candidate.span_id)
+        if ev is not None:
+            entry["turns_after"] = ev.turns_after
+            entry["amp_tokens"] = ev.amp_tokens
+            entry["cost_lower_usd"] = round(ev.lower_usd, 8)
+            entry["cost_upper_usd"] = round(ev.upper_usd, 8)
+            entry["tokens_are_approx"] = ev.tokens_are_approx
         if not no_snippets:
             entry["snippet"] = wd.candidate.output_text[:snippet_len]
         waste_details_list.append(entry)
@@ -60,6 +80,7 @@ def render_json(
             "n_events": amplification.n_events,
             "n_skipped_prev_eq_next": amplification.n_skipped_prev_eq_next,
             "n_skipped_no_metadata": amplification.n_skipped_no_metadata,
+            "n_skipped_error": amplification.n_skipped_error,
             "approx_events": amplification.approx_events,
             "model_key": amplification.model_key,
         }
@@ -85,6 +106,7 @@ def render_json(
         "total_tokens_wasted": total_tok if total_tok is not None else "unknown",
         "total_cost_wasted": round(total_cost, 8) if total_cost is not None else "unknown",
         "amplification": amp_block,
+        "n_skipped_error_details": enrichment.n_skipped_error,
         "waste_details": waste_details_list,
         "note": (
             "Detection thresholds were calibrated on synthetic traces; "

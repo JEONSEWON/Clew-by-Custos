@@ -987,3 +987,173 @@ Material: `field_test/diagnostics/diag_remaining5.py` (raw material for 5, diagn
 - **"FP = 0"** can be said: all 21 candidates judged legitimate; the gate caught all (compact 16 → auto; ExitPlanMode 3 · verification 2 · re-confirmation 1 → owner judgment).
 - True-positive capability unverified. Separate verification needed on waste-bearing traces.
 - Judgment by 1 owner (Jeon Sewon) alone. No multi-labeler cross-verification.
+
+---
+
+## §29 — trace-commons/agent-traces 실사용 검증 (2026-07-19)
+
+**컨텍스트**: 처음으로 외부 공개 CC 세션(우리 세션이 아닌)에 도구 전체 파이프라인
+(ingest → cascade → estimate_amplification) 을 돌린 검증. 지금까지 §21~§28 모든 검증은
+우리 개발 세션(6473e463 등) 위주였음.
+
+**대상**: `trace-commons/agent-traces` HF dataset의 `sessions/claude_code/*.jsonl` 28개
+(cf. Q_A 리콘에서 34개로 세었으나 `.gitkeep` 포함, 실제 `.jsonl` = 28).
+
+### 사전등록 (실행 전 push)
+
+- waste 있는 세션: 10~17 (35~60%)
+- 오탐: compact 재검 / ExitPlanMode 반복 / Bash state-uncertain 중 최소 1건
+- amp $ 세션당: $0.05~$1, 총 $2~$15
+- 성공 기준: 크래시 없음 + `cc_usage_pair` skip 20% 이하 + waste 재현 명확
+- 실패 기준: 크래시 3건 이상 / `cc_usage_pair` skip 50% 이상 / 명백한 오탐 다수
+
+### 결과 (raw, GT 없음)
+
+| 항목 | 예측 | 실측 |
+|---|---|---|
+| waste 세션 수 | 10~17 (35~60%) | **9/25 = 36%** ✅ 하단 |
+| 크래시 | 실패 기준 3+ | **3/28 = 10.7%** ⚠ 정확히 실패 하한 |
+| cc_usage_pair skip | 20% 이하 | **0%** ✅ |
+| amp $ 세션당 | $0.05~$1 | 실측 $0.001~$1.33 ✅ |
+| 총 amp $ | $2~$15 | **$0.42~$4.21** ⚠ 예측보다 낮음 |
+| compact/ExitPlanMode 오탐 | 최소 1건 | **0건** ❌ 예측 틀림 (좋은 방향) |
+
+- 처리 성공: 25/28
+- 낭비 있는 세션: 9 (36%)
+- 총 waste span: 16
+- amplification events: 16 (skip prev==next 0, skip no-meta 0)
+- 총 $: $0.4210 ~ $4.2098 (amp tokens 1,403,280)
+- cc_usage_pair populate: 25/25 (100%)
+- §21.2 가설 (prev.cache_read + prev.cache_creation = next.cache_read): skip 0건으로 성립
+
+### 발견된 3이슈 (외부 데이터가 드러냄, 우리 세션엔 없던 것)
+
+**Issue 1: 크래시 3건 — orphan tool_use 조인 실패 (중단/이상종료 세션)**
+- 4222016d: line 254 raise, 334 tool_use vs 333 tool_result (1 orphan)
+- c99032e9: line 254 raise, 354 vs 353 (1 orphan)
+- 4c09dfa9: line 248 raise, 12 entries, tool_use 0건
+- 정황: session 이상종료 (마지막 tool_use 가 result 받기 전에 끊김) 또는 대화만 있고 도구 미사용
+- **해결**: §22.4 abort condition 2 는 우리 자체 세션에는 정당하지만 외부 실사용 세션에는
+  회복 경로가 필요함. 아래 §29.1 recovery amendment.
+
+**Issue 2: tool-error 오탐 — `<tool_use_error>` 응답 identical 이면 낭비 오분류 (1건)**
+- 7563bddf waste#6: Write turn 141→143 두 번 다 `<tool_use_error>File has not been read yet.
+  Read it first before writing to it.</tool_use_error>` — output identical → cosine 1.0 → waste 분류
+- 새 오탐 클래스: 에러 응답 반복. 요청은 낭비지만 응답이 에러 → 비용 산정 부적절
+- **해결**: 게이트 (B) 로 다음 턴 (본 §29 는 크래시만).
+
+**Issue 3: $ 과대예측 — 낭비가 세션 후반 몰려 turns_after 작음**
+- 예측 $2~15 vs 실측 $0.42~4.21
+- amp = waste_tokens × turns_after, waste 대부분 마지막 <30% 구간에서 발생 → turns_after 작음
+- 우리 세션 (c848299d: 314971 amp tokens per event) 대비 trace-commons 는 event 당 평균 87700 amp tokens
+- **해결**: 예측 조정. amp 상한은 세션 형태 (waste 시점 분포) 에 크게 의존.
+
+### §29.1 — Recovery amendment (§22.4 부분 개정)
+
+**변경 대상**: `src/clew/ingest/claude_code.py` — join failure 로 abort 하던 케이스 중 특정
+패턴만 recovery, 나머지는 그대로 abort.
+
+**개정 내용**:
+1. `orphan tool_use` 만 있고 `orphan tool_result` = 0 → 해당 `tool_use` 는 span 생성에서
+   skip, `warnings.warn` 로 skip 수 노출. 사유: session 중단 (마지막 tool_use 가 result
+   받기 전 끊김) 은 실사용에서 자연 발생. 낭비 탐지에 무관.
+2. `orphan tool_result` 이 하나라도 있으면 **여전히 raise**. 사유: tool_use 없이 result만
+   있는 것은 원인 불명 (데이터 오염 가능성).
+3. tool_use 가 하나도 없으면 (paired 후) → root-only Trace 반환 + `warnings.warn`. 사유:
+   대화만 있고 도구 미사용 세션 (4c09dfa9 = 12 entries 짧은 대화). Trace 는 존재 유효,
+   waste 탐지 결과는 자동으로 wasteful=False (span 없음).
+
+**보존**: §22.4 abort condition 2 의 정신 (silent skip 금지) — 두 경우 다 `warnings.warn`
+로 skip 사실을 반드시 노출. 조용한 recovery 금지.
+
+**테스트 영향**: `test_orphan_tool_use_raises` → `test_orphan_tool_use_warns_and_skips` 로
+변경 (raise 대신 warn 검증). pytest 계수 238 유지.
+
+**재확인 (Step 4, recovery 적용 후)**:
+- 4222016d, c99032e9, 4c09dfa9: 크래시 → 정상 처리 (raw 는 아래 diagnostics 산출물).
+- 7563bddf (정상 세션): waste 수·amp 결과 무변.
+
+### 사전등록 논증 정정
+
+- 크래시 3건 = 실패 하한 정확히 도달. 정직 인정: **실패 기준 hit**.
+- 다만 세 크래시가 전부 동일 클래스 (orphan tool_use / no tool_use, adapter strict-mode)
+  이므로 회복 가능. 회복 후 재실행에서 25→28 처리로 상승.
+
+### 정직 경계
+
+- "9/25 waste" 는 **탐지 후보**. GT 없음, precision 측정 불가.
+- amp $ 는 saving potential 상한 (cache-hit lower ~ cache-miss upper), 실측 아님.
+- tool-error 오탐 1건은 카운트에 포함된 상태 → 실 낭비는 최소 16-1 = 15건 이하.
+
+### 재현
+
+- 스캔: `field_test/diagnostics/scan_trace_commons.py`
+- 표본 검사: `field_test/diagnostics/inspect_waste_samples.py`
+- 데이터: `data/hf_recon/trace_commons_paths.txt` (gitignore 됨, HF cache 경로 참조)
+
+### §29.2 — 외부 검증 발견 이슈 수정 (2026-07-19)
+
+trace-commons 28세션 실사용 검증에서 두 종류의 이슈가 드러남. 두 수정 다 외부
+데이터가 아니었다면 발견 불가 — 각 수정이 각각 **숨은 진짜 데이터를 노출**했다.
+
+#### (A) 크래시 recovery (§29.1 통합·완결)
+
+이미 §29.1 에 반영됨. 요약:
+
+- `orphan tool_use` → skip + warn (session mid-run abort, 자연 발생).
+- `tool_use` 전무 → root-only Trace 반환 + warn (대화만 있는 세션).
+- `orphan tool_result` → **여전히 raise** (원인 불명).
+- **효과**: 크래시 3/28 → 0/28. 처리 25 → 28. 그 결과 `c99032e9` (숨은
+  18-waste, 두 번째 큰 세션) 이 드러나 원래 예측 $2-15 범위 안착에 기여.
+
+#### (B) tool-error 게이트 (신규)
+
+**문제**: 7563bddf 표본 검사에서 waste #6 이 서로 다른 두 파일 `Read` 의
+`<tool_use_error>File has not been read yet</tool_use_error>` 응답이 cascade
+sha256 게이트에 걸린 것으로 확인. 도구 인프라 에러 응답의 중복은 낭비가 아님.
+
+**설계 결정**:
+- 판정 신호: **`is_error: true` 구조 필드** (Anthropic tool_result 계약 필드).
+  텍스트 패턴 `<tool_use_error>` 매칭은 파생 신호로 취약 → 채택 안 함.
+- 위치: **어댑터 (수집) + report/cost (필터)** 하이브리드.
+  - `claude_code.py`: `is_error is True` 인 `tool_use_id` 를 리스트로 모아
+    `trace.metadata["error_span_ids"]: list[str]` 로 노출. Span 자체는 유지
+    (실제 벌어진 이벤트).
+  - `_enrich.py`: `EnrichmentResult(enriched, n_skipped_error)` 반환. origin
+    또는 candidate 가 error set 에 속하면 detail 생성 skip + 카운트.
+  - `amplification.py`: `AmplificationEstimate.n_skipped_error` 필드 추가. waste
+    루프 앞에서 `sid in error_ids` → skip + 카운트.
+- **cascade / N / φ / sha256 무변** (frozen).
+- **명시 카운팅**: markdown/json 리포트에 `n_skipped_error` 노출, silent skip
+  금지 원칙 유지.
+
+**28세션 재검증 결과** (cascade frozen 이므로 total waste spans 는 34 유지):
+
+| 지표 | 사전-게이트 | 사후-게이트 | 변화 |
+|---|---|---|---|
+| wasteful sessions | 10/28 | 10/28 | 0 |
+| total waste spans (cascade) | 34 | 34 | 0 (frozen) |
+| **enrich-표시 waste 쌍** | 34 | **32** | **−2 (에러 FP 제거)** |
+| **amp events** | 32 | **30** | **−2** |
+| **$ 총합** | $1.06 ~ $10.61 | **$1.01 ~ $10.12** | −$0.05 ~ −$0.49 |
+| 총 is_error tool_results | — | 269 | (전체 신호 규모) |
+
+**세션별 확인**:
+- `7563bddf` (사전 목표): waste #6 정확히 제외 (`enrich_skip=1`, `amp_skip_err=1`).
+- `860618e1`: **숨은 오탐 신규 발견** — 유일 waste 가 error-FP 였음. 이 세션
+  amp events 0, $0 으로 정정.
+- 나머지 8개 wasteful 세션: **정상 waste 무변** (skip 0). 특히 c99032e9 18개
+  waste 는 전부 정상 유지.
+
+**신호비**: 269 is_error tool_results 중 **cascade가 waste 로 오분류한 것은 2건뿐**
+(0.74%). 대다수 에러는 애초에 non-repeating 이라 sha256 게이트를 통과하지 못했음.
+게이트가 잡는 것은 "같은 에러가 반복되어 sha256 일치하는" 매우 좁은 표면.
+
+**테스트 영향**: `test_is_error_tool_result_is_gated` 신규 추가 (238 → **239**).
+어댑터의 metadata 수집 + enrich 필터 + amplification 필터를 end-to-end 로 검증.
+
+#### 공통 교훈
+
+두 수정 모두 합성 테스트로는 발견 불가능한 이슈. 실제 코딩-에이전트 세션의
+자연스러운 실패 모드 (mid-run abort, 도구 인프라 에러 반복) 가 드러낸 gap.
+외부 데이터 실사용이 프리징 이전에 필요한 이유의 한 케이스로 기록.
