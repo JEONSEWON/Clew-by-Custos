@@ -119,17 +119,29 @@ def test_end_time_is_tool_result_timestamp(tmp_path: Path) -> None:
     assert span.end_time.isoformat().startswith("2026-07-17T10:00:07")
 
 
-def test_orphan_tool_use_raises(tmp_path: Path) -> None:
-    """§22.4 stop condition 2: orphan tool_use -> explicit error."""
+def test_orphan_tool_use_warns_and_skips(tmp_path: Path) -> None:
+    """§29.1 recovery: orphan tool_use is skipped with warning (not raise).
+
+    Two tool_uses; the second lacks a matching tool_result (session abort scenario).
+    Adapter must warn once and produce a Trace containing only the paired one.
+    """
     entries = [
         _asst("a1", None, "2026-07-17T10:00:00Z", [
             {"type": "tool_use", "id": "tu1", "name": "Read", "input": {"file_path": "/x"}},
         ]),
-        # no tool_result
+        _user("u1", "a1", "2026-07-17T10:00:05Z", [
+            {"type": "tool_result", "tool_use_id": "tu1", "content": "ok"},
+        ]),
+        _asst("a2", "u1", "2026-07-17T10:00:10Z", [
+            {"type": "tool_use", "id": "tu2", "name": "Bash", "input": {"cmd": "make"}},
+        ]),
+        # tu2 has no matching tool_result (session ended mid-call)
     ]
     p = _write_jsonl(tmp_path, entries)
-    with pytest.raises(ValueError, match="조인 실패"):
-        ingest_claude_code_jsonl(p)
+    with pytest.warns(UserWarning, match="orphan tool_use 1건 skip"):
+        trace = ingest_claude_code_jsonl(p)
+    tool_ids = [s.span_id for s in trace.spans if s.span_kind == "tool"]
+    assert tool_ids == ["tu1"], f"expected only tu1 span, got {tool_ids}"
 
 
 def test_orphan_tool_result_raises(tmp_path: Path) -> None:

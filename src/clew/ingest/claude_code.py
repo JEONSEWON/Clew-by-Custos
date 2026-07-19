@@ -181,6 +181,11 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
     tool_uses: dict[str, tuple[dict, str]] = {}
     tool_results: dict[str, tuple[dict, str]] = {}
     unknown_block_types: dict[str, int] = {}
+    # §29.2 tool-error gate: Anthropic tool_result carries structural is_error=True
+    # on tool crashes (e.g. "File has not been read yet"). Adapter collects tids only;
+    # cascade/frozen path unchanged. Report/cost layers consume this list to skip
+    # error-response spans from waste/amplification with explicit counts.
+    error_span_ids: list[str] = []
 
     for entry in entries:
         etype = entry.get("type")
@@ -230,6 +235,8 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
                     if tid in tool_results:
                         raise ValueError(f"중복 tool_result for {tid!r}")
                     tool_results[tid] = (block, ts)
+                    if block.get("is_error") is True:
+                        error_span_ids.append(tid)
                 elif btype == "text":
                     continue
                 else:
@@ -244,19 +251,26 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
             stacklevel=2,
         )
 
-    if not tool_uses:
-        raise ValueError(f"{path}: tool_use 블록이 하나도 없음")
-
-    # Join check (§22.4 abort condition 2)
+    # Join check (§22.4 abort condition 2 — amended by §29.1):
+    #   orphan tool_result   → still raise (unknown-cause data corruption).
+    #   orphan tool_use only → skip those tool_uses + warn (session-abort recovery).
     orphan_use = sorted(set(tool_uses) - set(tool_results))
     orphan_result = sorted(set(tool_results) - set(tool_uses))
-    if orphan_use or orphan_result:
+    if orphan_result:
         raise ValueError(
             f"조인 실패 — orphan tool_use={len(orphan_use)}건 "
             f"(첫 5개: {orphan_use[:5]}), "
             f"orphan tool_result={len(orphan_result)}건 "
             f"(첫 5개: {orphan_result[:5]})"
         )
+    if orphan_use:
+        warnings.warn(
+            f"{path.name}: orphan tool_use {len(orphan_use)}건 skip "
+            f"(§29.1 session-abort recovery, 첫 5개: {orphan_use[:5]})",
+            stacklevel=2,
+        )
+        for tid in orphan_use:
+            tool_uses.pop(tid, None)
 
     # Create spans
     root_span_id = f"root-{session_id}"
@@ -285,9 +299,21 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
             )
         )
 
-    # Synthetic CHAIN root (precedent at otel_json.py:278)
-    root_start = min(s.start_time for s in tool_spans)
-    root_end = max(s.end_time for s in tool_spans)
+    # Root timing: prefer tool_span range; else fall back to entry timestamps (§29.1 no-tool-use recovery).
+    if tool_spans:
+        root_start = min(s.start_time for s in tool_spans)
+        root_end = max(s.end_time for s in tool_spans)
+    else:
+        warnings.warn(
+            f"{path.name}: no tool spans (0 paired tool_use/tool_result) — "
+            f"returning root-only Trace (§29.1 no-tool-use recovery)",
+            stacklevel=2,
+        )
+        entry_ts = [_parse_ts(e["timestamp"]) for e in entries if e.get("timestamp")]
+        if not entry_ts:
+            raise ValueError(f"{path}: no timestamps found in entries")
+        root_start = min(entry_ts)
+        root_end = max(entry_ts)
     root_span = Span(
         trace_id=session_id,
         span_id=root_span_id,
@@ -312,5 +338,6 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
             "cc_turn_index": cc_turn_index,
             "cc_usage_pair": cc_usage_pair,
             "cc_total_turns": cc_total_turns,
+            "error_span_ids": error_span_ids,
         },
     )
