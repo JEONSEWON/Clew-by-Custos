@@ -3,9 +3,11 @@
 **Find where your coding agent wastes work — which file, which turn, why.**
 
 ```bash
-pip install "clew-custos[detect]"
+pip install "clew-custos[detect]"   # published as clew-custos, not clew
 python -m clew analyze ~/.claude/projects/<slug>/<uuid>.jsonl --out report.md
 ```
+
+> Package name is **`clew-custos`** (the bare name `clew` on PyPI is an unrelated placeholder). The module still imports as `clew`.
 
 Real excerpt from a public Claude Code session (`09d9abe9`, 258 turns; local path abbreviated, numbers unchanged):
 
