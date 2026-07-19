@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from clew.cost.amplification import AmplificationEstimate
 from clew.detect.cascade import CascadeResult
 from clew.model import Trace
 from clew.report._model import WasteDetail
@@ -22,6 +23,7 @@ def render_markdown(
     *,
     no_snippets: bool = False,
     snippet_len: int = _SNIPPET_LEN,
+    amplification: AmplificationEstimate | None = None,
 ) -> str:
     """CascadeResult + WasteDetail list -> markdown string.
 
@@ -46,7 +48,11 @@ def render_markdown(
         "(phi=0.514345, N=2); real-trace evaluation is ongoing, but "
         "parameters have not been recalibrated. Borderline matches "
         "(cosine near phi) deserve human review — this applies to "
-        "non-tool spans; tool spans use exact sha256 identity._"
+        "non-tool spans; tool spans use exact sha256 identity._\n\n"
+        "_Cost is estimated saving potential, not measured — assumes the "
+        "wasted output is re-consumed each subsequent turn (structural "
+        "assumption). Range spans cache-hit (lower) to cache-miss (upper). "
+        "Attribution assumes Sonnet pricing._"
     )
 
     if not cr.wasteful:
@@ -67,6 +73,32 @@ def render_markdown(
     lines.append(f"- **wasted spans**: {len(cr.waste_span_ids)}")
     lines.append(f"- **estimated wasted tokens**: {tok_str}")
     lines.append(f"- **estimated wasted cost**: {cost_str}")
+
+    if amplification is not None and amplification.n_events > 0:
+        lo = amplification.lower_usd
+        up = amplification.upper_usd
+        approx_note = " (some events use char/1.3 approximation)" if amplification.any_approx else ""
+        lines.append(
+            f"- **estimated amplification cost**: "
+            f"${lo:.6f} ~ ${up:.6f} "
+            f"(cache-hit to cache-miss bounds, estimated){approx_note}"
+        )
+        lines.append(
+            f"- **amplification events**: {amplification.n_events} "
+            f"(skipped {amplification.n_skipped_prev_eq_next} prev==next, "
+            f"{amplification.n_skipped_no_metadata} no-metadata; "
+            f"total amp tokens = {amplification.total_amp_tokens})"
+        )
+    elif amplification is not None:
+        lines.append(
+            f"- **estimated amplification cost**: unknown "
+            f"(no eligible events after skip: "
+            f"{amplification.n_skipped_prev_eq_next} prev==next, "
+            f"{amplification.n_skipped_no_metadata} no-metadata)"
+        )
+    else:
+        lines.append("- **estimated amplification cost**: unknown (adapter metadata unavailable)")
+
     lines.append("")
 
     lines.append("## Wasted Span Details")
