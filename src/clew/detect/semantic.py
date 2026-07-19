@@ -1,12 +1,12 @@
-"""의미 중복 확인 (SPEC §8 2.2).
+"""Semantic duplicate check (SPEC §8 2.2).
 
-로컬 다국어 임베딩 모델 1개 + 결정론 + 캐시.
+One local multilingual embedding model + determinism + cache.
 
-- 모델명 + revision (commit sha) 필수 인자: 빠뜨리면 TypeError 즉시 raise → 동결 강제.
-- 캐시 키: sha256(model_name + revision + text). 같은 모델/리비전에서 같은 텍스트 → 같은 벡터.
-- 모델 로딩은 lazy(첫 embed 호출 시). 테스트는 _compute 를 monkeypatch.
+- model_name + revision (commit sha) are required arguments: omitting raises TypeError immediately -> enforces frozen state.
+- Cache key: sha256(model_name + revision + text). Same text under same model/revision -> same vector.
+- Model loading is lazy (on first embed call). Tests monkeypatch _compute.
 
-라벨 미참조. 평가/dev 디렉터리 어느 쪽도 읽지 않는다.
+No label references. Neither the evaluation nor dev directory is read.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ class Embedder:
     def _compute(self, text: str) -> list[float]:
         if self._model is None:
             self._load_model()
-        # normalize_embeddings=True → fp32, l2-normalized → 결정론 + 코사인=내적
+        # normalize_embeddings=True -> fp32, l2-normalized -> determinism + cosine=dot product
         vec = self._model.encode(text, normalize_embeddings=True, convert_to_numpy=True)
         return [float(x) for x in vec.tolist()]
 
@@ -100,5 +100,5 @@ def cosine(a: list[float], b: list[float]) -> float:
 
 
 def is_semantic_duplicate(origin_text: str, candidate_text: str, embedder: Embedder, phi: float) -> bool:
-    """origin·candidate 출력의 코사인 ≥ φ 이면 의미 중복."""
+    """Semantic duplicate if cosine of origin/candidate outputs >= phi."""
     return cosine(embedder.embed(origin_text), embedder.embed(candidate_text)) >= phi

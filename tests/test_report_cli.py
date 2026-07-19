@@ -1,10 +1,10 @@
-"""tests/test_report_cli.py — 3단계 리포트 & CLI 회귀 테스트 (D1~D3).
+"""tests/test_report_cli.py — Stage-3 report & CLI regression tests (D1–D3).
 
-D1: 낭비 픽스처 → 리포트 내용 단언 (노드명, cosine, 스니펫 ≤80, 1:1 dedupe)
-D2: 깨끗 픽스처 → 미탐지 문구
-D3: save_trace → load_trace 후 cascade 결과 동일
+D1: waste fixture → assertions on report content (node name, cosine, snippet ≤80, 1:1 dedupe)
+D2: clean fixture → not-detected wording
+D3: save_trace → load_trace, cascade results identical
 
-API 키 불요 — FakeListLLM 픽스처 자급.
+No API key required — self-contained via FakeListLLM fixture.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 REV = "e8f8c211226b894fcb81acc59f3b34ba3efd5f42"
 CACHE = Path(".cache/embeddings")
 
-# ── Paraphrase pair (test_field_regressions.py 동일 텍스트) ───────────────
+# ── Paraphrase pair (same text as test_field_regressions.py) ─────────────
 _R1 = (
     "멀티에이전트 AI에서 토큰 낭비 주요 원인: "
     "(1) 동일 정보 재조회 — 에이전트가 이미 확보한 정보를 같은 도구로 다시 요청한다. "
@@ -59,7 +59,7 @@ _R2 = (
 )
 
 
-# ── 공통 헬퍼 ──────────────────────────────────────────────────────────────
+# ── Shared helpers ────────────────────────────────────────────────────────
 
 class _State(TypedDict):
     topic: str
@@ -98,7 +98,7 @@ def _capture_spans(responses: list[str], loop_limit: int) -> list:
 
 
 def _build_details(trace, cr, emb) -> list[WasteDetail]:
-    """candidate 기준 최고 cosine 쌍 1개 유지 (dedupe)."""
+    """Keep 1 pair with the highest cosine per candidate (dedupe)."""
     waste_id_set = set(cr.waste_span_ids)
     pairs = find_candidates(trace, N)
     best: dict[str, tuple] = {}
@@ -119,7 +119,7 @@ def embedder():
     return Embedder(model_name=MODEL, revision=REV, cache_dir=CACHE)
 
 
-# ── D1: 낭비 픽스처 → 리포트 내용 단언 ───────────────────────────────────
+# ── D1: waste fixture → assert report content ────────────────────────────
 
 def test_d1_waste_report_contains_key_fields(embedder, tmp_path):
     spans = _capture_spans([_R1, _R2], loop_limit=2)
@@ -129,25 +129,25 @@ def test_d1_waste_report_contains_key_fields(embedder, tmp_path):
 
     details = _build_details(trace, cr, embedder)
 
-    # candidate 기준 1:1 dedupe
+    # 1:1 dedupe per candidate
     assert len(details) == len(cr.waste_span_ids)
 
-    # 마크다운
+    # Markdown
     md = render_markdown(trace, cr, details)
-    assert "researcher" in md        # 낭비 노드 이름
-    assert "0." in md                # cosine 값 (0.xxxx 형태)
+    assert "researcher" in md        # waste node name
+    assert "0." in md                # cosine value (0.xxxx form)
 
     # JSON
     j = json.loads(render_json(trace, cr, details))
     assert j["wasteful"] is True
     assert len(j["waste_details"]) > 0
-    # 스니펫 ≤80자 (기본 절단 검증)
+    # snippet ≤80 chars (default truncation check)
     for wd in j["waste_details"]:
         if "snippet" in wd:
             assert len(wd["snippet"]) <= 80
 
 
-# ── D2: 깨끗 픽스처 → 미탐지 문구 ────────────────────────────────────────
+# ── D2: clean fixture → not-detected wording ─────────────────────────────
 
 def test_d2_clean_report_no_waste(embedder):
     spans = _capture_spans(
@@ -162,7 +162,7 @@ def test_d2_clean_report_no_waste(embedder):
     assert "no waste detected" in md.lower()
 
 
-# ── D3: 직렬화 왕복 후 cascade 결과 동일 ─────────────────────────────────
+# ── D3: cascade results identical after serialization round-trip ─────────
 
 def test_d3_serialization_roundtrip(embedder, tmp_path):
     spans = _capture_spans([_R1, _R2], loop_limit=2)

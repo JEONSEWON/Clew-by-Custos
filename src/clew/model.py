@@ -1,12 +1,12 @@
-"""Canonical span tree model — Clew 1단계 정규 데이터 모델.
+"""Canonical span tree model - Clew Stage 1 canonical data model.
 
-SPEC.md §8 1.1 의 모든 필드 + 검증 규약을 강제한다.
+Enforces every field and validation convention from SPEC.md §8 1.1.
 
-- Span: 단일 OTel/OpenInference 정렬 스팬.
-- Trace: trace_id 하나에 묶인 스팬 리스트(루트 정확히 1개, 사이클 없음, 고아 없음).
-- SpanNode: parent->children 트리 (Trace.build_tree() 결과).
+- Span: a single OTel/OpenInference-aligned span.
+- Trace: list of spans bound under one trace_id (exactly one root, no cycles, no orphans).
+- SpanNode: parent->children tree (result of Trace.build_tree()).
 
-output_text는 필수 + non-empty (strip 후 길이>0). 2단계 의미 비교의 입력.
+output_text is required and non-empty (length > 0 after strip). Input to Stage 2 semantic comparison.
 """
 
 from __future__ import annotations

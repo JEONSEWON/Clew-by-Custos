@@ -1,11 +1,11 @@
-"""tests/test_cascade.py — 구조 AND 의미 결합 + 비용 산출.
+"""tests/test_cascade.py — structure AND semantics conjunction + cost accounting.
 
-(i)   구조만 (반복) + 의미 미달 → 깨끗
-(ii)  구조 + 의미 모두 충족 → 낭비, candidate 토큰/비용 누적
-(iii) 깨끗한 트레이스 → wasteful=False
-(iv)  같은 candidate 중복 등록 방지
-(v)   라벨 인자 시그니처에 없음 (사이드채널 차단)
-(vi)  본문에 'labels' 문자열 0개
+(i)   structure only (repeat) + semantics below threshold -> clean
+(ii)  structure + semantics both satisfied -> waste, accumulate candidate tokens/cost
+(iii) clean trace -> wasteful=False
+(iv)  prevent duplicate registration of the same candidate
+(v)   label argument not in signature (side-channel blocked)
+(vi)  zero occurrences of the string 'labels' in the body
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ def embedder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Embedder:
 
 
 def test_structure_only_no_semantic_duplicate_is_clean(embedder: Embedder):
-    """반복은 있지만 출력이 서로 달라 cos<φ → 낭비 아님."""
+    """Repetition exists but outputs differ -> cos<phi -> not waste."""
     spans = [
         _span("s1", None, "run", 0, "root"),
         _span("s2", "s1", "analyze", 1, "alpha"),
@@ -73,7 +73,7 @@ def test_structure_only_no_semantic_duplicate_is_clean(embedder: Embedder):
 
 
 def test_structure_and_semantic_marks_wasteful(embedder: Embedder):
-    """반복 + 같은 출력 → cos=1.0 → 낭비. candidate 토큰만 누적."""
+    """Repetition + identical output -> cos=1.0 -> waste. Only candidate tokens accumulate."""
     spans = [
         _span("s1", None, "run", 0, "root"),
         _span("s2", "s1", "analyze", 1, "same payload", tokens=20),
@@ -124,10 +124,10 @@ def test_cascade_source_does_not_reference_labels():
 
 
 def test_c2_requery_known_positive_is_flagged(embedder: Embedder):
-    """CRITERIA C2: requery_known positive (동일 input 재조회) → cascade flag.
+    """CRITERIA C2: requery_known positive (re-lookup with identical input) -> cascade flag.
 
-    positive 의 두 lookup 출력은 byte-identical → fake _compute(sha256) 에서 cos=1.0
-    → φ=0.5 통과 → wasteful=True. recall 회귀 방지.
+    Positive's two lookup outputs are byte-identical -> under fake _compute(sha256), cos=1.0
+    -> passes phi=0.5 -> wasteful=True. Guards recall regression.
     """
     from eval.generators.patterns.requery_known import make_positive
 
@@ -135,11 +135,11 @@ def test_c2_requery_known_positive_is_flagged(embedder: Embedder):
     res = cascade(gen.trace, embedder, n=2, phi=0.5)
     assert res.wasteful is True
     assert res.waste_span_ids != []
-    # positive 의 2회차 lookup span_id 가 낭비로 라벨됨
+    # positive's 2nd lookup span_id is labeled as waste
     assert set(res.waste_span_ids) == set(gen.waste_span_ids)
 
 
-# ─── §22.11.2 compact 창문 게이트 ────────────────────────────────────────────
+# ─── §22.11.2 compact window gate ────────────────────────────────────────────
 
 def _tool_span(sid: str, parent: str, agent: str, t: int, inp: str, out: str, tokens: int = 10) -> Span:
     return Span(
@@ -159,14 +159,14 @@ def _tool_span(sid: str, parent: str, agent: str, t: int, inp: str, out: str, to
 
 
 def test_tool_sha256_equal_is_wasteful_without_compact(embedder: Embedder):
-    """§22.11.2 대조군: compact 경계 없을 때 sha256 동일 재조회는 잡힌다."""
+    """§22.11.2 control: without a compact boundary, sha256-identical re-lookup is caught."""
     root = _span("root", None, "run", 0, "root")
     spans = [
         root,
         _tool_span("s2", "root", "Read", 1, '{"file_path":"/tmp/a"}', "same output"),
         _tool_span("s3", "root", "Read", 5, '{"file_path":"/tmp/a"}', "same output", tokens=25),
     ]
-    trace = Trace(trace_id="t", spans=spans)  # metadata 없음 (다른 로더 상황)
+    trace = Trace(trace_id="t", spans=spans)  # no metadata (other-loader case)
     res = cascade(trace, embedder, n=2, phi=0.99)
     assert res.wasteful is True
     assert res.waste_span_ids == ["s3"]
@@ -174,7 +174,7 @@ def test_tool_sha256_equal_is_wasteful_without_compact(embedder: Embedder):
 
 
 def test_tool_sha256_equal_excluded_when_compact_between(embedder: Embedder):
-    """§22.11.2: origin↔cand 창문 안에 compact 경계 있으면 waste 에서 제외."""
+    """§22.11.2: if a compact boundary is within the origin<->cand window, exclude from waste."""
     root = _span("root", None, "run", 0, "root")
     spans = [
         root,
@@ -191,7 +191,7 @@ def test_tool_sha256_equal_excluded_when_compact_between(embedder: Embedder):
 
 
 def test_compact_boundary_before_origin_does_not_exclude(embedder: Embedder):
-    """§22.11.2: 경계가 origin 이전에 있으면 창문 안 아님 → 제외 안 함."""
+    """§22.11.2: boundary before origin is outside the window -> do not exclude."""
     root = _span("root", None, "run", 0, "root")
     spans = [
         root,
@@ -200,7 +200,7 @@ def test_compact_boundary_before_origin_does_not_exclude(embedder: Embedder):
     ]
     trace = Trace(
         trace_id="t", spans=spans,
-        metadata={"compact_boundaries": [_ts(2)]},  # origin(5) 이전
+        metadata={"compact_boundaries": [_ts(2)]},  # before origin(5)
     )
     res = cascade(trace, embedder, n=2, phi=0.99)
     assert res.wasteful is True
@@ -208,7 +208,7 @@ def test_compact_boundary_before_origin_does_not_exclude(embedder: Embedder):
 
 
 def test_compact_boundary_after_candidate_does_not_exclude(embedder: Embedder):
-    """§22.11.2: 경계가 cand 이후면 창문 안 아님 → 제외 안 함."""
+    """§22.11.2: boundary after cand is outside the window -> do not exclude."""
     root = _span("root", None, "run", 0, "root")
     spans = [
         root,
@@ -217,7 +217,7 @@ def test_compact_boundary_after_candidate_does_not_exclude(embedder: Embedder):
     ]
     trace = Trace(
         trace_id="t", spans=spans,
-        metadata={"compact_boundaries": [_ts(10)]},  # cand(5) 이후
+        metadata={"compact_boundaries": [_ts(10)]},  # after cand(5)
     )
     res = cascade(trace, embedder, n=2, phi=0.99)
     assert res.wasteful is True
@@ -225,7 +225,7 @@ def test_compact_boundary_after_candidate_does_not_exclude(embedder: Embedder):
 
 
 def test_compact_gate_no_op_when_metadata_missing(embedder: Embedder):
-    """§22.11.2: Trace.metadata 에 키 없으면 no-op — 다른 로더에서 영향 없음."""
+    """§22.11.2: no-op when the key is missing from Trace.metadata — no impact on other loaders."""
     root = _span("root", None, "run", 0, "root")
     spans = [
         root,
@@ -239,7 +239,7 @@ def test_compact_gate_no_op_when_metadata_missing(embedder: Embedder):
 
 
 def test_compact_gate_does_not_affect_llm_kind(embedder: Embedder):
-    """§22.11.2: 게이트는 tool kind 만 대상. llm 경로는 compact 있어도 φ 판정 그대로."""
+    """§22.11.2: gate targets tool kind only. llm path keeps phi judgment even with compact present."""
     spans = [
         _span("s1", None, "run", 0, "root"),
         _span("s2", "s1", "analyze", 1, "same payload", tokens=20),
@@ -247,7 +247,7 @@ def test_compact_gate_does_not_affect_llm_kind(embedder: Embedder):
     ]
     trace = Trace(
         trace_id="t", spans=spans,
-        metadata={"compact_boundaries": [_ts(3)]},  # llm 경로에는 무영향
+        metadata={"compact_boundaries": [_ts(3)]},  # no effect on llm path
     )
     res = cascade(trace, embedder, n=2, phi=0.99)
     assert res.wasteful is True

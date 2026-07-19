@@ -1,9 +1,9 @@
-"""python -m clew — CLI 진입점.
+"""python -m clew - CLI entry point.
 
-사용:
+Usage:
     python -m clew analyze <trace.json> [--out report.md] [--json out.json] [--no-snippets]
 
-종료코드: 낭비 탐지·미탐지 모두 0. 파일 없음·스키마 오류·기타 예외는 1.
+Exit code: 0 for both waste-detected and no-waste. 1 for missing file, schema error, or other exceptions.
 """
 
 from __future__ import annotations
@@ -15,22 +15,22 @@ from pathlib import Path
 
 
 def _load_trace_auto(path: Path) -> "Trace":
-    """파일 형식 자동 감지 후 Trace 반환.
+    """Auto-detect file format and return a Trace.
 
-    지원:
-      - Clew Trace JSON (최상위 dict에 "trace_id" 키)     → load_trace()
-      - OTel SDK JSON 배열 (최상위 list, "context" 키)     → ingest_from_otel_json()
-      - Claude Code JSONL (.jsonl, 첫 줄 "sessionId")       → ingest_claude_code_jsonl()
-      - Toolathlon JSONL (.jsonl, 첫 줄 "modelname_run")    → ingest_toolathlon_jsonl()
+    Supported:
+      - Clew Trace JSON (top-level dict with "trace_id" key)   -> load_trace()
+      - OTel SDK JSON array (top-level list, "context" key)    -> ingest_from_otel_json()
+      - Claude Code JSONL (.jsonl, first line has "sessionId") -> ingest_claude_code_jsonl()
+      - Toolathlon JSONL (.jsonl, first line has "modelname_run") -> ingest_toolathlon_jsonl()
 
-    명확한 에러:
-      - resource_spans/resourceSpans 키 → Format B 미지원, 변환 방법 안내
-      - .jsonl 이지만 어느 마커도 없음 → 최상위 키 로그 + 에러
+    Explicit errors:
+      - resource_spans/resourceSpans key -> Format B unsupported, provides conversion instructions
+      - .jsonl but no marker matches -> log top-level keys + error
     """
     from clew.model import Trace  # noqa: F401 (type-only import avoidance)
 
     if path.suffix == ".jsonl":
-        # 첫 파싱 가능 라인만 peek → 마커로 어댑터 선택 (§23.4)
+        # Peek only the first parsable line -> pick adapter by marker (§23.4)
         first_obj: dict | None = None
         with path.open(encoding="utf-8") as f:
             for raw in f:
@@ -47,7 +47,7 @@ def _load_trace_auto(path: Path) -> "Trace":
         if first_obj is None:
             raise ValueError(f"{path}: 빈 JSONL 또는 첫 라인이 dict 아님")
 
-        # 마커 검사 — 두 셋은 겹치지 않음 확인됨 (§23.4)
+        # Marker check - confirmed the two sets do not overlap (§23.4)
         cc_marker = "sessionId" in first_obj
         toolathlon_marker = (
             "modelname_run" in first_obj
@@ -87,7 +87,7 @@ def _load_trace_auto(path: Path) -> "Trace":
                 "      json.dumps([json.loads(s.to_json()) for s in spans])\n"
                 "  )"
             )
-        # RedundancyBench 마커 (§24.2): 최상위 dict 에 tasks + simulations
+        # RedundancyBench marker (§24.2): top-level dict has tasks + simulations
         if "tasks" in obj and "simulations" in obj:
             from clew.ingest.redundancy_bench import ingest_redundancy_bench_json
             return ingest_redundancy_bench_json(path)
@@ -95,10 +95,10 @@ def _load_trace_auto(path: Path) -> "Trace":
             spans_list = obj.get("spans", [])
             first_span = spans_list[0] if spans_list and isinstance(spans_list[0], dict) else {}
             if "span_attributes" in first_span or "child_spans" in first_span:
-                # Format C: OpenInference nested dict (TRAIL 등)
+                # Format C: OpenInference nested dict (TRAIL, etc.)
                 from clew.ingest.otel_json import ingest_from_openinference_json
                 return ingest_from_openinference_json(path)
-            # Clew 직렬화 Trace JSON
+            # Clew serialized Trace JSON
             from clew.io import load_trace
             return load_trace(path)
         raise ValueError(
@@ -107,11 +107,11 @@ def _load_trace_auto(path: Path) -> "Trace":
 
     if isinstance(obj, list):
         if obj and isinstance(obj[0], dict) and "context" in obj[0]:
-            # Format A: OTel SDK JSON 배열
+            # Format A: OTel SDK JSON array
             from clew.ingest.otel_json import ingest_from_otel_json
             return ingest_from_otel_json(path)
         if obj and isinstance(obj[0], dict) and "span_id" in obj[0]:
-            # Format C flat: OpenInference flat 배열
+            # Format C flat: OpenInference flat array
             from clew.ingest.otel_json import ingest_from_openinference_json
             return ingest_from_openinference_json(path)
         raise ValueError(
@@ -153,7 +153,7 @@ def _analyze(args: argparse.Namespace) -> int:
     trace_path = Path(args.trace_file)
     no_snippets: bool = args.no_snippets
 
-    # 파일 로드
+    # File load
     if not trace_path.exists():
         print(f"Error: {trace_path} not found", file=sys.stderr)
         return 1
@@ -166,7 +166,7 @@ def _analyze(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # 탐지기 초기화
+    # Detector initialization
     try:
         from clew.detect.cascade import cascade
         from clew.detect.semantic import Embedder
@@ -181,7 +181,7 @@ def _analyze(args: argparse.Namespace) -> int:
     cr = cascade(trace, embedder, n=_N, phi=_PHI)
     details = _build_details(trace, cr, embedder) if cr.wasteful else []
 
-    # 마크다운 리포트
+    # Markdown report
     from clew.report.markdown import render_markdown
     md = render_markdown(trace, cr, details, no_snippets=no_snippets)
 
@@ -192,7 +192,7 @@ def _analyze(args: argparse.Namespace) -> int:
     else:
         print(md)
 
-    # JSON 리포트 (선택)
+    # JSON report (optional)
     if args.json_out:
         from clew.report.json_report import render_json
         jstr = render_json(trace, cr, details, no_snippets=no_snippets)

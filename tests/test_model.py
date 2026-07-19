@@ -1,4 +1,4 @@
-"""tests/test_model.py — 정규 스팬 모델 스키마 검증."""
+"""tests/test_model.py — Canonical span model schema validation."""
 
 from __future__ import annotations
 
@@ -161,7 +161,7 @@ def test_valid_trace_builds_tree():
         agent_or_node_id="A.x",
     )
 
-    trace = Trace(trace_id="t-1", spans=[c2, root, g1, c1])  # 순서 섞어서 입력
+    trace = Trace(trace_id="t-1", spans=[c2, root, g1, c1])  # input order shuffled
     tree = trace.build_tree()
 
     assert tree.span.span_id == "s-0"

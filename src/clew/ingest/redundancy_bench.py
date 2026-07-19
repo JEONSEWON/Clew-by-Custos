@@ -1,23 +1,23 @@
-"""src/clew/ingest/redundancy_bench.py — RedundancyBench final_traces.json → Trace.
+"""src/clew/ingest/redundancy_bench.py - RedundancyBench final_traces.json -> Trace.
 
-매핑 규약: docs/REDUNDANCY_BENCH.md §24 (사전등록, PR 승인 후 확정).
+Mapping convention: docs/REDUNDANCY_BENCH.md §24 (pre-registered, finalized after PR approval).
 
-입력: `data/redundancy_bench/data/domain/<domain>/final_traces.json`
-     최상위 dict `{"tasks": [...], "simulations": [...]}`  (JSON, JSONL 아님)
-출력: 각 simulation 을 하나의 Clew 정규 Trace 로.
+Input: `data/redundancy_bench/data/domain/<domain>/final_traces.json`
+     Top-level dict `{"tasks": [...], "simulations": [...]}`  (JSON, not JSONL)
+Output: each simulation as a single Clew canonical Trace.
 
-핵심 결정 (§24.2):
-- Span 은 `role=='assistant'` 의 tool_calls 만. `role=='user'` + tool_calls (telecom
-  사용자 시뮬레이션, requestor='user') 는 span 제외.
-- 조인 키는 `tool.id` (Toolathlon 의 `tool_call_id` 필드명과 다름 — RB 는 flat).
-- `arguments` 는 이미 dict (Toolathlon 은 JSON 문자열, 여기는 dict) → sort_keys 재직렬화만.
-- `Trace.metadata["rb_span_to_turn_pair"][span_id] = (call_idx, result_idx)` 로
-  §24.3 규약 A (pair expansion) 실행 가능하게 보존.
-- 병렬 tool_calls 없음 확인 (recon Q3b). sub_idx 필요 없음.
+Key decisions (§24.2):
+- Spans come from `role=='assistant'` tool_calls only. `role=='user'` + tool_calls
+  (telecom user simulation, requestor='user') are excluded from spans.
+- Join key is `tool.id` (differs from Toolathlon's `tool_call_id` field name - RB is flat).
+- `arguments` is already a dict (Toolathlon uses JSON strings; here it's a dict) -> only sort_keys re-serialization.
+- Preserved via `Trace.metadata["rb_span_to_turn_pair"][span_id] = (call_idx, result_idx)`
+  so §24.3 convention A (pair expansion) is executable.
+- Confirmed no parallel tool_calls (recon Q3b). sub_idx not needed.
 
-계약:
-- ingest_redundancy_bench_json(path) → Trace (첫 simulation 만; CLI 호환)
-- iter_redundancy_bench_traces(path) → Iterator[Trace] (전량 스캔용)
+Contract:
+- ingest_redundancy_bench_json(path) -> Trace (first simulation only; CLI-compatible)
+- iter_redundancy_bench_traces(path) -> Iterator[Trace] (for full scans)
 """
 from __future__ import annotations
 
@@ -34,11 +34,11 @@ _TS_BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 def _parse_timestamp(raw: Any) -> datetime | None:
-    """RB messages[i].timestamp — ISO datetime str. 실패 시 None (fallback synthetic)."""
+    """RB messages[i].timestamp - ISO datetime str. None on failure (fallback synthetic)."""
     if not isinstance(raw, str) or not raw:
         return None
     try:
-        # ISO 8601 지원 (Z 접미사 포함)
+        # ISO 8601 support (including Z suffix)
         s = raw.replace("Z", "+00:00")
         dt = datetime.fromisoformat(s)
         if dt.tzinfo is None:
@@ -49,16 +49,16 @@ def _parse_timestamp(raw: Any) -> datetime | None:
 
 
 def _synth_ts(turn_idx: int) -> datetime:
-    """fallback synthetic timestamp — turn_idx 기반, 단조 증가."""
+    """fallback synthetic timestamp - turn_idx based, monotonically increasing."""
     return _TS_BASE + timedelta(seconds=turn_idx)
 
 
 def _normalize_arguments(raw: Any) -> str:
-    """§24.2: RB arguments 는 dict. sort_keys 재직렬화로 sha256 안정.
+    """§24.2: RB arguments is a dict. sort_keys re-serialization stabilizes sha256.
 
-    - dict/list → 그대로 재직렬화.
-    - str → JSON 파싱 후 재직렬화 (안전장치, 실제로는 dict 로 옴).
-    - None → "{}" (빈 인자).
+    - dict/list -> re-serialize as-is.
+    - str -> JSON parse then re-serialize (safety net; actually comes as dict).
+    - None -> "{}" (empty args).
     """
     if isinstance(raw, (dict, list)):
         obj = raw
@@ -83,7 +83,7 @@ def _normalize_arguments(raw: Any) -> str:
 
 
 def _render_content(content: Any) -> str:
-    """tool 메시지 content → 문자열. RB 는 flat str 확인."""
+    """tool message content -> string. RB confirmed to be flat str."""
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -110,7 +110,7 @@ def _render_content(content: Any) -> str:
 
 
 def _build_trace_from_sim(sim: dict, domain: str | None) -> Trace:
-    """simulation 하나를 Trace 로. requestor='user' tool 은 제외 (§24.2)."""
+    """Convert one simulation into a Trace. Exclude requestor='user' tools (§24.2)."""
     sim_id = sim.get("id")
     if not isinstance(sim_id, str) or not sim_id:
         raise ValueError(f"RedundancyBench: simulation.id 없음/비어있음 (task={sim.get('task_id')!r})")
@@ -121,15 +121,15 @@ def _build_trace_from_sim(sim: dict, domain: str | None) -> Trace:
 
     task_id = sim.get("task_id")
 
-    # RB 는 같은 sim 내 tool_call.id 를 재사용 (같은 툴 재호출 시). recon 확정:
-    #   airline 20/40, retail 22/48, telecom 45/112 sim 에서 재사용 발생.
-    # → tid 단위 FIFO 로 call↔result 매칭. span_id = f"{tid}#{call_idx}" 로 unique.
+    # RB reuses tool_call.id within the same sim (when the same tool is re-invoked). Recon confirms:
+    #   reuse occurs in airline 20/40, retail 22/48, telecom 45/112 sims.
+    # -> match call<->result via per-tid FIFO. span_id = f"{tid}#{call_idx}" for uniqueness.
     #
-    # 데이터 구조:
+    # Data structures:
     #   pending_calls_by_tid[tid] = deque([(tc_dict, call_turn_idx, occurrence_idx), ...])
-    #     — 아직 매치 안된 assistant call (FIFO)
+    #     - assistant calls not yet matched (FIFO)
     #   matched_pairs = [(tc_dict, call_idx, result_idx, content, tid, occ), ...]
-    #     — 조인 완료한 pair (스팬 생성 재료), 순서 = call_idx 순
+    #     - joined pairs (span creation material), ordered by call_idx
     from collections import deque
     pending_calls_by_tid: dict[str, deque] = {}
     tid_occurrence_counter: dict[str, int] = {}
@@ -166,7 +166,7 @@ def _build_trace_from_sim(sim: dict, domain: str | None) -> Trace:
                     f"RedundancyBench sim={sim_id} msg[{turn_idx}]: role='tool' 인데 id 없음"
                 )
             if requestor == "user":
-                # §24.2 정책: user-발행 tool 은 span 제외.
+                # §24.2 policy: user-issued tools are excluded from spans.
                 user_tool_idx.append(turn_idx)
                 continue
             queue = pending_calls_by_tid.get(tid)
@@ -182,7 +182,7 @@ def _build_trace_from_sim(sim: dict, domain: str | None) -> Trace:
             f"RedundancyBench sim={sim_id}: assistant 발행 tool_calls 하나도 없음"
         )
 
-    # 조인 검사 (§21.4). 아직 매치 안된 call / result 확인.
+    # Join check (§21.4). Verify not-yet-matched calls / results.
     orphan_calls = [
         (tid, ci, occ)
         for tid, q in pending_calls_by_tid.items()
@@ -195,7 +195,7 @@ def _build_trace_from_sim(sim: dict, domain: str | None) -> Trace:
             f"(첫 5개: {unmatched_results[:5]})"
         )
 
-    # Span 생성. call_idx 순 (temporal). span_id = f"{tid}#{call_idx}" (unique).
+    # Create spans. Ordered by call_idx (temporal). span_id = f"{tid}#{call_idx}" (unique).
     root_span_id = f"root-{sim_id}"
     tool_spans: list[Span] = []
     span_to_turn_pair: dict[str, list[int]] = {}
@@ -279,7 +279,7 @@ def _load_top_level(path: Path) -> dict:
 
 
 def _infer_domain(path: Path) -> str | None:
-    """경로에서 domain 이름 추정. data/domain/<name>/final_traces.json 관례."""
+    """Infer domain name from path. Convention: data/domain/<name>/final_traces.json."""
     parts = path.parts
     for name in ("airline", "retail", "telecom"):
         if name in parts:
@@ -288,7 +288,7 @@ def _infer_domain(path: Path) -> str | None:
 
 
 def ingest_redundancy_bench_json(path: Path) -> Trace:
-    """첫 simulation 만 반환 (CC/Toolathlon 계약 동일). 전량은 iter_ 를 써라."""
+    """Return the first simulation only (same contract as CC/Toolathlon). Use iter_ for the whole set."""
     obj = _load_top_level(path)
     sims = obj["simulations"]
     if not isinstance(sims, list) or not sims:
@@ -298,9 +298,9 @@ def ingest_redundancy_bench_json(path: Path) -> Trace:
 
 
 def iter_redundancy_bench_traces(path: Path) -> Iterator[Trace]:
-    """파일 내 모든 simulation 을 yield.
+    """Yield every simulation in the file.
 
-    개별 sim 파싱 실패는 조용히 skip 하지 않고 raise — 호출측(스캔/평가) 이 결정한다.
+    Individual sim parse failures raise rather than silently skip - the caller (scan/eval) decides.
     """
     obj = _load_top_level(path)
     sims = obj["simulations"]

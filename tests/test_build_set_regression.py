@@ -1,7 +1,7 @@
-"""tests/test_build_set_regression.py — seed=42 manifest sha256 동결값 회귀 보호.
+"""tests/test_build_set_regression.py — seed=42 manifest sha256 frozen-value regression guard.
 
-stage1-freeze 시점 박힌 manifest sha256가 2단계 변경으로 흔들리면 즉시 fail.
-build_set 자체에는 손대지 않지만, 우발적 회귀(필드 순서·기본값·생성 순서)를 잡는다.
+If the manifest sha256 pinned at stage1-freeze shifts due to a stage 2 change, fail immediately.
+Does not touch build_set itself, but catches accidental regressions (field order, defaults, generation order).
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ def _frozen_manifest_sha() -> str:
     return m.group(1)
 
 
-# stage2 eval baseline — requery_known 생성기 수정 반영, stage1-freeze와 별개
+# stage2 eval baseline — reflects the requery_known generator fix, separate from stage1-freeze
 def test_seed42_manifest_sha_matches_frozen(tmp_path: Path):
     info = build_set(seed=42, pairs_per_pattern=10, out_dir=tmp_path)
     actual = hashlib.sha256(info["manifest_path"].read_bytes()).hexdigest()

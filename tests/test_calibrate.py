@@ -1,6 +1,6 @@
-"""tests/test_calibrate.py — 분포 분리 기반 calibrate 단위 테스트.
+"""tests/test_calibrate.py — distribution-separation-based calibrate unit tests.
 
-라벨/모델 불요. 합성 코사인 분포와 합성 트레이스로 핵심 로직을 검증한다.
+No labels/model required. Verifies core logic with synthetic cosine distributions and synthetic traces.
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ def test_phi_is_midpoint_of_p10_dup_and_p90_prog():
     phi = choose_phi(dup, prog)
     expected = (_percentile(dup, 10) + _percentile(prog, 90)) / 2.0
     assert phi == pytest.approx(expected)
-    assert 0.46 < phi < 0.82  # 두 분포 사이
+    assert 0.46 < phi < 0.82  # between the two distributions
 
 
 def test_separation_clean_split_passes_guards():
@@ -83,7 +83,7 @@ def test_separation_clean_split_passes_guards():
 
 
 def test_separation_overlapping_distributions_gap_negative():
-    # 분포가 겹침: dup 의 P10 < prog 의 P90
+    # distributions overlap: P10(dup) < P90(prog)
     dup = [0.50 + 0.01 * i for i in range(10)]   # ~0.50..0.59
     prog = [0.55 + 0.01 * i for i in range(10)]  # ~0.55..0.64
     phi = choose_phi(dup, prog)
@@ -93,15 +93,15 @@ def test_separation_overlapping_distributions_gap_negative():
 
 def test_dev_fpr_estimate_counts_prog_above_phi():
     dup = [0.90] * 10
-    prog = [0.30] * 8 + [0.95] * 2  # 20% 가 φ 위로 새어나옴
+    prog = [0.30] * 8 + [0.95] * 2  # 20% leaks above phi
     phi = choose_phi(dup, prog)
     sep = separation_metrics(dup, prog, phi)
-    # P90(prog) 가 0.95 근처, P10(dup)=0.90 → phi 가 분포 안쪽 → fpr 추정 큼
+    # P90(prog) near 0.95, P10(dup)=0.90 -> phi lands inside distributions -> large fpr estimate
     assert sep["dev_fpr_estimate"] > 0
 
 
 # ----------------------------------------------------------------------
-# choose_n — dev positive trace 구조 통계 (라벨만, 코사인 미사용)
+# choose_n — dev positive trace structural statistics (labels only, no cosine)
 # ----------------------------------------------------------------------
 
 def _ts(o: int) -> datetime:
@@ -119,12 +119,12 @@ def _span(sid: str, parent: str | None, agent: str, t: int, out: str = "x") -> S
 
 
 def test_choose_n_returns_2_when_waste_on_first_repeat():
-    """모든 positive trace 에서 낭비가 2회차에 일어나면 mode=2."""
+    """If waste occurs on the 2nd occurrence for every positive trace, mode=2."""
     traces = [
         Trace(trace_id="t1", spans=[
             _span("s1", None, "run", 0),
             _span("s2", "s1", "analyze", 1),
-            _span("s3", "s1", "analyze", 2),  # 2회차 = 낭비
+            _span("s3", "s1", "analyze", 2),  # 2nd occurrence = waste
         ]),
     ]
     labels = {"t1": {"class": "positive", "waste_span_ids": ["s3"]}}
@@ -142,7 +142,7 @@ def test_choose_n_returns_3_when_waste_on_third_occurrence():
     for s in spans[1:]:
         pass
     traces = [Trace(trace_id="t1", spans=spans)]
-    labels = {"t1": {"class": "positive", "waste_span_ids": ["s4"]}}  # 3회차만 낭비
+    labels = {"t1": {"class": "positive", "waste_span_ids": ["s4"]}}  # only 3rd occurrence is waste
     assert choose_n(traces, labels) == 3
 
 
@@ -161,7 +161,7 @@ def test_choose_n_ignores_negative_traces():
     labels = {
         "t1": {"class": "positive", "waste_span_ids": ["s3"]},
     }
-    # negative trace 없어 mode=2
+    # no negative trace -> mode=2
     assert choose_n([traces[0]], labels) == 2
 
 
@@ -175,18 +175,18 @@ def test_choose_n_raises_when_no_positive_with_waste():
 
 
 # ----------------------------------------------------------------------
-# 전체 calibrate — 결정론 fake embedder 로 분리 검증
+# full calibrate — separation verification with deterministic fake embedder
 # ----------------------------------------------------------------------
 
 def _fake_compute_clean_split(self: Embedder, text: str) -> list[float]:
-    """sha256 기반 결정론 벡터 — 같은 텍스트는 같은 벡터, 다른 텍스트는 분명히 다른 벡터."""
+    """sha256-based deterministic vector — same text gets same vector, different text gets clearly different vector."""
     h = hashlib.sha256(text.encode("utf-8")).digest()[:16]
     return [b / 255.0 for b in h]
 
 
 def test_calibrate_with_clean_split_passes(tmp_path, monkeypatch):
     monkeypatch.setattr(Embedder, "_compute", _fake_compute_clean_split)
-    # dev set 합성: 4 traces — 2 positive (반복 + 동일 출력), 2 negative (반복 + 다른 출력)
+    # synthesize dev set: 4 traces — 2 positive (repeat + identical output), 2 negative (repeat + different output)
     import json
 
     dev_trace_dir = tmp_path / "traces"
@@ -245,7 +245,7 @@ def test_calibrate_with_clean_split_passes(tmp_path, monkeypatch):
 
 
 # ----------------------------------------------------------------------
-# 가드: dev fpr estimate 임계 / cohen's d 임계가 합리적 값
+# guards: dev fpr estimate threshold / cohen's d threshold are reasonable values
 # ----------------------------------------------------------------------
 
 def test_guards_are_documented_constants():

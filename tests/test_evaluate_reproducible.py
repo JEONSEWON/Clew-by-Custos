@@ -1,8 +1,8 @@
-"""tests/test_evaluate_reproducible.py — evaluate 결정론 + 동결 게이트.
+"""tests/test_evaluate_reproducible.py — evaluate determinism + frozen gate.
 
-(i)   동결 미완료 CRITERIA → evaluate 호출 시 RuntimeError, 평가 set 미접근
-(ii)  GREY 행 3 초과 → 4번째 호출 차단
-(iii) 동일 입력으로 2회 호출 → F1·FPR 비트 동일
+(i)   unfrozen CRITERIA -> RuntimeError on evaluate call, eval set not accessed
+(ii)  GREY rows > 3 -> 4th call blocked
+(iii) two calls with identical input -> bit-identical F1/FPR
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ def _trace_json(trace_id: str, agent_sequence: list[tuple[str, str]]) -> dict:
 
 
 def _write_mini_set(root: Path) -> tuple[Path, Path]:
-    """positive(반복+동일출력) 2개 + negative(다양한출력) 2개."""
+    """2 positive (repeat + identical output) + 2 negative (varied output)."""
     trace_dir = root / "traces"
     trace_dir.mkdir(parents=True)
     fixtures = [
@@ -109,14 +109,14 @@ def _factory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 def test_unfrozen_criteria_blocks_eval_set_access(tmp_path: Path):
-    """동결 안 된 CRITERIA → evaluate 호출 시 raise. 평가 set 미접근."""
+    """Unfrozen CRITERIA -> evaluate call raises. Eval set not accessed."""
     _unfrozen_criteria(tmp_path / "criteria.md")
     with pytest.raises(RuntimeError, match="not frozen"):
         _load_frozen_params(tmp_path / "criteria.md")
 
 
 def test_evaluate_twice_same_metrics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """동일 입력 → evaluate 두 번 호출 → F1/FPR 비트 동일."""
+    """Identical input -> two evaluate calls -> bit-identical F1/FPR."""
     trace_dir, labels_path = _write_mini_set(tmp_path)
     criteria_path = tmp_path / "criteria.md"
     runs_path = tmp_path / "runs.md"
@@ -139,7 +139,7 @@ def test_evaluate_twice_same_metrics(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 
 def test_grey_budget_blocks_fourth_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """이미 3 GREY 행이 기록되어 있으면 4번째 evaluate 호출 즉시 raise."""
+    """If 3 GREY rows are already recorded, the 4th evaluate call raises immediately."""
     trace_dir, labels_path = _write_mini_set(tmp_path)
     criteria_path = tmp_path / "criteria.md"
     runs_path = tmp_path / "runs.md"
@@ -162,7 +162,7 @@ def test_grey_budget_blocks_fourth_run(tmp_path: Path, monkeypatch: pytest.Monke
 
 
 def test_evaluate_positive_dominated_fixture_yields_perfect_f1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """mini fixture 는 합성이라 동일 출력 페어가 명확 → F1=1.0, FPR=0.0."""
+    """The mini fixture is synthetic so identical-output pairs are clear -> F1=1.0, FPR=0.0."""
     trace_dir, labels_path = _write_mini_set(tmp_path)
     criteria_path = tmp_path / "criteria.md"
     runs_path = tmp_path / "runs.md"
@@ -179,7 +179,7 @@ def test_evaluate_positive_dominated_fixture_yields_perfect_f1(tmp_path: Path, m
 
 
 def test_per_pattern_keys_and_values(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """per_pattern 키 존재 + repeat_node tpr=1.0 + _control fpr=0.0."""
+    """per_pattern keys exist + repeat_node tpr=1.0 + _control fpr=0.0."""
     trace_dir, labels_path = _write_mini_set(tmp_path)
     criteria_path = tmp_path / "criteria.md"
     runs_path = tmp_path / "runs.md"
@@ -198,10 +198,10 @@ def test_per_pattern_keys_and_values(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 
 def test_per_pattern_dev_direct(tmp_path: Path):
-    """dev(seed=7) 트레이스·라벨로 _per_pattern_metrics 직접 검증.
+    """Verify _per_pattern_metrics directly with dev(seed=7) traces and labels.
 
-    evaluate() 경유 금지 — _append_run / EVAL_RUNS.md 기록 회피.
-    cascade + _per_pattern_metrics + _trace_level_metrics 직접 조합.
+    Do not go through evaluate() — avoids _append_run / EVAL_RUNS.md recording.
+    Compose cascade + _per_pattern_metrics + _trace_level_metrics directly.
     """
     from clew.detect.cascade import cascade
     from clew.detect.semantic import Embedder

@@ -1,7 +1,7 @@
-"""tests/test_claude_code_ingest.py — CC JSONL 어댑터 검증.
+"""tests/test_claude_code_ingest.py — CC JSONL adapter verification.
 
-- transcript 커밋 금지 (§22): fixture 는 tmp_path 에 문자열로 작성.
-- 검증 항목: §22.3, §22.4 사전등록 규약.
+- Do not commit transcripts (§22): fixtures are written as strings to tmp_path.
+- Verification items: §22.3, §22.4 pre-registered contract.
 """
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def _user(uuid: str, parent: str | None, ts: str, blocks: list[dict], sid: str =
 
 
 def test_thinking_and_text_do_not_create_spans(tmp_path: Path) -> None:
-    """§22.3: thinking / assistant text / user text 는 스팬 만들지 않는다."""
+    """§22.3: thinking / assistant text / user text do not create spans."""
     entries = [
         _asst("a1", None, "2026-07-17T10:00:00Z", [
             {"type": "thinking", "thinking": "", "signature": "sig1"},
@@ -67,7 +67,7 @@ def test_thinking_and_text_do_not_create_spans(tmp_path: Path) -> None:
     ]
     p = _write_jsonl(tmp_path, entries)
     trace = ingest_claude_code_jsonl(p)
-    # 2 tool 스팬 + 1 synthetic root = 3
+    # 2 tool spans + 1 synthetic root = 3
     assert len(trace.spans) == 3
     tool_spans = [s for s in trace.spans if s.span_kind == "tool"]
     assert len(tool_spans) == 2
@@ -76,7 +76,7 @@ def test_thinking_and_text_do_not_create_spans(tmp_path: Path) -> None:
 
 
 def test_input_text_sort_keys_determinism(tmp_path: Path) -> None:
-    """§22.2: 키 순서 다른 동일 입력 → 같은 input_text 문자열."""
+    """§22.2: identical inputs with different key order -> same input_text string."""
     entries = [
         _asst("a1", None, "2026-07-17T10:00:00Z", [
             {"type": "tool_use", "id": "tu1", "name": "Read",
@@ -103,7 +103,7 @@ def test_input_text_sort_keys_determinism(tmp_path: Path) -> None:
 
 
 def test_end_time_is_tool_result_timestamp(tmp_path: Path) -> None:
-    """§22.1: end_time = tool_result 라인의 timestamp (근사 아님)."""
+    """§22.1: end_time = timestamp of the tool_result line (not an approximation)."""
     entries = [
         _asst("a1", None, "2026-07-17T10:00:00Z", [
             {"type": "tool_use", "id": "tu1", "name": "Read", "input": {"file_path": "/x"}},
@@ -120,12 +120,12 @@ def test_end_time_is_tool_result_timestamp(tmp_path: Path) -> None:
 
 
 def test_orphan_tool_use_raises(tmp_path: Path) -> None:
-    """§22.4 중단 조건 2: 고아 tool_use → 명시적 에러."""
+    """§22.4 stop condition 2: orphan tool_use -> explicit error."""
     entries = [
         _asst("a1", None, "2026-07-17T10:00:00Z", [
             {"type": "tool_use", "id": "tu1", "name": "Read", "input": {"file_path": "/x"}},
         ]),
-        # tool_result 없음
+        # no tool_result
     ]
     p = _write_jsonl(tmp_path, entries)
     with pytest.raises(ValueError, match="조인 실패"):
@@ -133,7 +133,7 @@ def test_orphan_tool_use_raises(tmp_path: Path) -> None:
 
 
 def test_orphan_tool_result_raises(tmp_path: Path) -> None:
-    """§22.4: 고아 tool_result → 명시적 에러."""
+    """§22.4: orphan tool_result -> explicit error."""
     entries = [
         _user("u1", None, "2026-07-17T10:00:05Z", [
             {"type": "tool_result", "tool_use_id": "tu-missing", "content": "orphan"},
@@ -151,7 +151,7 @@ def test_orphan_tool_result_raises(tmp_path: Path) -> None:
 
 
 def test_empty_tool_result_content_raises(tmp_path: Path) -> None:
-    """§22.4 중단 조건 1: 빈 output_text → Pydantic validator 가 raise (placeholder 금지)."""
+    """§22.4 stop condition 1: empty output_text -> Pydantic validator raises (no placeholder allowed)."""
     entries = [
         _asst("a1", None, "2026-07-17T10:00:00Z", [
             {"type": "tool_use", "id": "tu1", "name": "Bash", "input": {"cmd": "true"}},
@@ -166,7 +166,7 @@ def test_empty_tool_result_content_raises(tmp_path: Path) -> None:
 
 
 def test_tool_result_list_content(tmp_path: Path) -> None:
-    """§22.5: content 가 list-of-blocks 이고 모두 text 일 때 '\\n' 결합."""
+    """§22.5: when content is a list-of-blocks and all are text, join with '\\n'."""
     entries = [
         _asst("a1", None, "2026-07-17T10:00:00Z", [
             {"type": "tool_use", "id": "tu1", "name": "Read", "input": {"file_path": "/x"}},
@@ -186,7 +186,7 @@ def test_tool_result_list_content(tmp_path: Path) -> None:
 
 
 def test_tool_result_non_text_block_serialized(tmp_path: Path) -> None:
-    """§22.5: 비-text 블록 (tool_reference 등) 은 json.dumps 로 직렬화 + warn."""
+    """§22.5: non-text blocks (e.g. tool_reference) are serialized via json.dumps + warn."""
     import warnings as _w
     entries = [
         _asst("a1", None, "2026-07-17T10:00:00Z", [
@@ -206,18 +206,18 @@ def test_tool_result_non_text_block_serialized(tmp_path: Path) -> None:
         _w.simplefilter("always")
         trace = ingest_claude_code_jsonl(p)
     span = next(s for s in trace.spans if s.span_kind == "tool")
-    # 결정론 확인: sort_keys 로 tool_name 이 type 앞에 옴
+    # determinism check: with sort_keys, tool_name comes before type
     assert span.output_text == (
         '{"tool_name": "TaskCreate", "type": "tool_reference"}\n'
         '{"tool_name": "TaskList", "type": "tool_reference"}'
     )
-    # 신호 유지 확인: 각 블록마다 경고
+    # signal-preservation check: warning per block
     tref_warnings = [w for w in caught if "tool_reference" in str(w.message)]
     assert len(tref_warnings) == 2
 
 
 def test_tool_result_mixed_text_and_nontext(tmp_path: Path) -> None:
-    """§22.5: text + 비-text 혼합 시 순서 유지 + '\\n' 결합."""
+    """§22.5: on mixed text + non-text, preserve order + join with '\\n'."""
     entries = [
         _asst("a1", None, "2026-07-17T10:00:00Z", [
             {"type": "tool_use", "id": "tu1", "name": "X", "input": {}},
@@ -238,7 +238,7 @@ def test_tool_result_mixed_text_and_nontext(tmp_path: Path) -> None:
 
 
 def test_duplicate_tool_use_id_raises(tmp_path: Path) -> None:
-    """동일 tool_use.id 재사용 → 명시적 에러."""
+    """Reusing the same tool_use.id -> explicit error."""
     entries = [
         _asst("a1", None, "2026-07-17T10:00:00Z", [
             {"type": "tool_use", "id": "tu1", "name": "Read", "input": {"file_path": "/x"}},

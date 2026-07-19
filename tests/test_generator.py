@@ -1,4 +1,4 @@
-"""tests/test_generator.py — 패턴 생성기 4종 + paired structural matching 검증."""
+"""tests/test_generator.py — 4 pattern generators + paired structural matching verification."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def test_positive_waste_ids_subset_of_span_ids(pattern):
     gen = pos_fn(trace_id=f"t-pos-{pattern}", seed=42)
     all_ids = {s.span_id for s in gen.trace.spans}
     assert set(gen.waste_span_ids) <= all_ids
-    assert len(gen.waste_span_ids) > 0  # positive는 반드시 라벨된 낭비가 1+
+    assert len(gen.waste_span_ids) > 0  # positive must have 1+ labeled waste
 
 
 @pytest.mark.parametrize("pattern", PATTERN_NAMES)
@@ -49,23 +49,23 @@ def test_clean_has_no_waste_label(pattern):
 
 @pytest.mark.parametrize("pattern", PATTERN_NAMES)
 def test_structural_pairing(pattern):
-    """★ positive와 clean 트윈의 *구조 토폴로지*가 정확히 동일.
+    """positive and clean twins have exactly identical *structural topology*.
 
-    agent_or_node_id 시퀀스, span_kind 시퀀스, parent-edge 시퀀스가 같아야
-    "구조 단독 탐지기"가 패턴을 못 외운다. (v1 자기기만 재발 방지.)
+    The agent_or_node_id sequence, span_kind sequence, and parent-edge sequence must match
+    so a "structure-only detector" cannot memorize the pattern. (Prevents v1 self-deception recurrence.)
     """
     pos_fn, clean_fn = PATTERNS[pattern]
     pos = pos_fn(trace_id=f"t-pos-{pattern}", seed=42)
     clean = clean_fn(trace_id=f"t-clean-{pattern}", seed=42)
     assert topology_signature(pos.trace) == topology_signature(clean.trace), (
-        f"pattern {pattern!r}: positive/clean topology MUST match — clean이 더 "
-        "평평하면 구조 단독 탐지기가 GO를 띄움 (v1 재발)"
+        f"pattern {pattern!r}: positive/clean topology MUST match — if clean is "
+        "flatter, a structure-only detector fires GO (v1 recurrence)"
     )
 
 
 @pytest.mark.parametrize("pattern", PATTERN_NAMES)
 def test_no_hint_words_in_trace_body(pattern):
-    """라벨 hint 단어가 트레이스 본문 어디에도 등장하지 않음."""
+    """No label hint word appears anywhere in the trace body."""
     pos_fn, clean_fn = PATTERNS[pattern]
     for fn, label in ((pos_fn, "positive"), (clean_fn, "clean")):
         gen = fn(trace_id=f"t-{label}-{pattern}", seed=42)
@@ -83,7 +83,7 @@ def test_no_hint_words_in_trace_body(pattern):
 
 @pytest.mark.parametrize("pattern", PATTERN_NAMES)
 def test_seed_determinism(pattern):
-    """같은 seed → 바이트 단위 동일 트레이스."""
+    """Same seed -> byte-identical trace."""
     pos_fn, _ = PATTERNS[pattern]
     a = pos_fn(trace_id="t-det", seed=42)
     b = pos_fn(trace_id="t-det", seed=42)
@@ -93,7 +93,7 @@ def test_seed_determinism(pattern):
 
 @pytest.mark.parametrize("pattern", PATTERN_NAMES)
 def test_positive_clean_same_length(pattern):
-    """길이 매칭(스팬 수 동일) — 길이 편향 차단."""
+    """Length matching (identical span count) — blocks length bias."""
     pos_fn, clean_fn = PATTERNS[pattern]
     pos = pos_fn(trace_id=f"t-pos-{pattern}", seed=42)
     clean = clean_fn(trace_id=f"t-clean-{pattern}", seed=42)
@@ -102,21 +102,22 @@ def test_positive_clean_same_length(pattern):
 
 @pytest.mark.parametrize("pattern", ["repeat_node", "regen_handoff", "pingpong_aba"])
 def test_waste_output_differs_from_origin_by_bytes(pattern):
-    """현실성 가드: LLM 재생성/반복 패턴 3종(repeat_node·regen_handoff·pingpong_aba)에서
-    낭비-라벨된 스팬은 그 *원본* 스팬과 바이트 단위로 동일하지 않아야 한다.
+    """Realism guard: for the 3 LLM regen/repeat patterns (repeat_node, regen_handoff, pingpong_aba),
+    waste-labeled spans must NOT be byte-identical to their *origin* span.
 
-    의미는 같지만 표면 표현은 달라야 LLM 재호출의 현실(같은 작업, 다른 표현)을 재현.
-    바이트 동일은 비현실적이고 'string equality 탐지기'가 GO 띄우는 자기기만 통로.
+    Same meaning but different surface form is needed to reproduce the reality of LLM re-invocation
+    (same task, different expression). Byte-identical is unrealistic and opens a self-deception path
+    for a 'string equality detector' to fire GO.
 
-    `requery_known`은 예외 — 동일 키 재조회는 동일 출력이 정상이며, 출력 바이트 동일
-    자체가 낭비 신호이므로 이 가드에서 제외.
+    `requery_known` is the exception — identical re-lookup with the same key normally returns
+    identical output, and byte-identical output itself is the waste signal, so it is excluded here.
     """
     pos_fn, _ = PATTERNS[pattern]
     gen = pos_fn(trace_id=f"t-pos-{pattern}", seed=42)
     by_id = {s.span_id: s for s in gen.trace.spans}
     assert gen.near_duplicate_of, (
         f"{pattern}: positive must declare near_duplicate_of mapping "
-        "(낭비 스팬 → 원본 스팬) for realism guard"
+        "(waste span -> origin span) for realism guard"
     )
     for waste_id, origin_id in gen.near_duplicate_of.items():
         wo = by_id[waste_id].output_text
@@ -129,11 +130,11 @@ def test_waste_output_differs_from_origin_by_bytes(pattern):
 
 
 def test_requery_known_declares_no_near_duplicate_pairs():
-    """requery_known의 positive는 near_duplicate_of를 비워둔다 — 같은 키 재조회는
-    동일 출력이 정상 신호이므로 위 현실성 가드 대상이 아님을 명시.
+    """requery_known's positive leaves near_duplicate_of empty — re-lookup with the same key
+    normally returns identical output, so this is explicitly out of scope of the realism guard above.
     """
     pos = PATTERNS["requery_known"][0](trace_id="t-r", seed=42)
     assert pos.near_duplicate_of == {}, (
-        "requery_known: positive는 byte-identical 재조회가 정상 신호 — "
-        "near_duplicate_of를 의도적으로 비워둘 것"
+        "requery_known: for positive, byte-identical re-lookup is the normal signal — "
+        "leave near_duplicate_of intentionally empty"
     )

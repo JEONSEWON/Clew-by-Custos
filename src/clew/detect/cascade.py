@@ -1,20 +1,20 @@
-"""캐스케이드 결합 + 낭비 비용 (SPEC §8 2.3, §22.10.2, §22.11.2).
+"""Cascade combination + waste cost (SPEC §8 2.3, §22.10.2, §22.11.2).
 
-낭비 판정:
-- span_kind == "tool"   → 구조 후보 AND (창문 안 compact 경계 없음)
+Waste determination:
+- span_kind == "tool"   -> structural candidate AND (no compact boundary in window)
                           AND sha256(origin.output) == sha256(cand.output).
-                          φ 를 호출하지 않는다. 도구 출력은 패러프레이즈 없음.
-- span_kind != "tool"   → 구조 후보 AND cos(origin, cand) ≥ φ (기존 경로).
+                          Does not invoke phi. Tool outputs have no paraphrase.
+- span_kind != "tool"   -> structural candidate AND cos(origin, cand) >= phi (existing path).
 
-compact 창문 게이트 (§22.11.2):
-- Trace.metadata["compact_boundaries"] 에 timestamp 리스트가 있으면
-  origin.start_time < b < candidate.start_time 인 b 가 존재할 때 waste 에서 제외.
-- 이 키가 없으면 (OTel/OpenInference 등 non-CC 로더) 게이트 no-op.
+compact window gate (§22.11.2):
+- If Trace.metadata["compact_boundaries"] has a timestamp list,
+  exclude from waste when a b exists such that origin.start_time < b < candidate.start_time.
+- If this key is absent (non-CC loaders like OTel/OpenInference), the gate is a no-op.
 
-낭비 스팬 = candidate 측 (origin은 첫 등장이므로 정상으로 본다).
-비용 = sum(token_count × cost_rate) over candidate 스팬.
+Waste span = candidate side (origin is treated as normal since it is the first occurrence).
+Cost = sum(token_count * cost_rate) over candidate spans.
 
-라벨 인자 없음. evaluate.py 만이 결과를 라벨과 비교한다.
+No label arguments. Only evaluate.py performs the comparison.
 """
 
 from __future__ import annotations

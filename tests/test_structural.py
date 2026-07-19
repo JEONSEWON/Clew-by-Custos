@@ -1,9 +1,9 @@
-"""tests/test_structural.py — 구조 후보 탐지 단위 테스트.
+"""tests/test_structural.py — Structural candidate detection unit tests.
 
-(i) 반복 노드 N=2: 같은 agent_or_node_id가 2회 → 1쌍
-(ii) 핑퐁:        A→B→A→B → 2쌍
-(iii) 깨끗한 트레이스: 빈 리스트
-(iv) 라벨 미참조: 본문에 'labels' 문자열 0개
+(i) Repeated node N=2: same agent_or_node_id appears twice → 1 pair
+(ii) Ping-pong:        A→B→A→B → 2 pairs
+(iii) Clean trace: empty list
+(iv) No label reference: 0 occurrences of the 'labels' string in the source
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ def test_repeat_candidates_n2_finds_pair():
 
 
 def test_repeat_candidates_threshold_blocks_single_occurrence():
-    """단일 등장은 N=2 임계로 후보가 아님."""
+    """A single occurrence is not a candidate under the N=2 threshold."""
     spans = [
         _span("t", "s1", None, "run", 0),
         _span("t", "s2", "s1", "analyze", 1),
@@ -92,7 +92,7 @@ def test_pingpong_emits_two_pairs():
 
 
 def test_pingpong_requires_alternation():
-    """A→A→A는 핑퐁이 아님 (반복 노드로만 잡힘)."""
+    """A→A→A is not ping-pong (caught only as repeated node)."""
     spans = [
         _span("t", "s1", None, "run", 0),
         _span("t", "s2", "s1", "A", 1),
@@ -114,7 +114,7 @@ def test_clean_trace_no_candidates():
 
 
 def test_find_candidates_dedupes_repeat_and_pingpong_overlap():
-    """반복 후보와 핑퐁 후보가 같은 쌍을 만들면 한 번만 반환."""
+    """When repeat and ping-pong candidates produce the same pair, return it only once."""
     spans = [
         _span("t", "s1", None, "run", 0),
         _span("t", "s2", "s1", "A", 1),
@@ -137,14 +137,14 @@ def test_invalid_n_raises():
 
 
 def test_structural_source_does_not_reference_labels():
-    """structural.py 본문에 'labels' 문자열 0개 (누수 가드 보조)."""
+    """0 occurrences of the 'labels' string in structural.py source (leakage guard auxiliary)."""
     src = Path(__file__).parent.parent / "src" / "clew" / "detect" / "structural.py"
     text = src.read_text(encoding="utf-8")
     assert "labels" not in text
     assert "eval/" not in text
 
 
-# ─── SPEC §8 2.1: span_kind 인지 입력 게이트 (tool kind 만 적용) ────────────────
+# ─── SPEC §8 2.1: span_kind-aware input gate (applies to tool kind only) ────────
 
 
 def _tool_span(sid: str, parent: str, agent: str, t: int, input_text: str, out: str = "x") -> Span:
@@ -182,7 +182,7 @@ def _llm_span(sid: str, parent: str, agent: str, t: int, input_text: str, out: s
 
 
 def test_tool_input_gate_blocks_different_inputs():
-    """tool kind 반복 + input 다름 → 후보 아님 (정당한 무관 조회)."""
+    """tool kind repeat + different input → not a candidate (legitimate unrelated lookup)."""
     spans = [
         _span("t", "s1", None, "run", 0),
         _tool_span("s2", "s1", "lookup", 1, input_text="customer_id=12345"),
@@ -192,7 +192,7 @@ def test_tool_input_gate_blocks_different_inputs():
 
 
 def test_tool_input_gate_passes_identical_inputs():
-    """tool kind 반복 + input 동일 → 후보 박힘 (재조회 낭비 후보)."""
+    """tool kind repeat + identical input → candidate emitted (re-lookup waste candidate)."""
     spans = [
         _span("t", "s1", None, "run", 0),
         _tool_span("s2", "s1", "lookup", 1, input_text="customer_id=12345"),
@@ -203,7 +203,7 @@ def test_tool_input_gate_passes_identical_inputs():
 
 
 def test_tool_input_gate_normalizes_whitespace_and_case():
-    """SPEC §8 2.1 normalized-equal = strip()+casefold(). 공백/대소문자 동등."""
+    """SPEC §8 2.1 normalized-equal = strip()+casefold(). Equivalent under whitespace/case."""
     spans = [
         _span("t", "s1", None, "run", 0),
         _tool_span("s2", "s1", "lookup", 1, input_text="customer_id=12345"),
@@ -214,7 +214,7 @@ def test_tool_input_gate_normalizes_whitespace_and_case():
 
 
 def test_llm_kind_repeat_ignores_input_gate():
-    """span_kind=='llm' 반복은 input 차이 무관 — 후보 박힘 (회귀 보호: 다른 3패턴)."""
+    """span_kind=='llm' repeat is input-difference-agnostic — candidate emitted (regression guard: other 3 patterns)."""
     spans = [
         _span("t", "s1", None, "run", 0),
         _llm_span("s2", "s1", "analyze", 1, input_text="prompt_v1", out="r1"),
@@ -225,8 +225,8 @@ def test_llm_kind_repeat_ignores_input_gate():
 
 
 def test_tool_gate_origin_basis_recovers_aba_repeat():
-    """[A(k), B(k'), A(k)] tool 시퀀스: 중간 cand 가 origin과 input 다르면 skip,
-    이후 같은 input 재등장은 다시 후보 — origin 기준 게이트 일관성."""
+    """[A(k), B(k'), A(k)] tool sequence: skip if the middle cand has input different from origin,
+    a later re-occurrence with the same input is a candidate again — origin-based gate consistency."""
     spans = [
         _span("t", "s1", None, "run", 0),
         _tool_span("s2", "s1", "lookup", 1, input_text="key=A"),
@@ -238,7 +238,7 @@ def test_tool_gate_origin_basis_recovers_aba_repeat():
 
 
 def test_repeat_same_agent_parent_fires():
-    """I3: 같은 부모 AGENT 아래 두 CHAIN 스팬 — 게이트 통과, 진짜 repeat 후보."""
+    """I3: two CHAIN spans under the same parent AGENT — pass the gate, genuine repeat candidate."""
     agent = Span(
         trace_id="t", span_id="agent1", parent_span_id=None,
         agent_or_node_id="MyAgent", span_kind="agent",
@@ -262,12 +262,12 @@ def test_repeat_same_agent_parent_fires():
 
 
 def test_repeat_different_agent_parent_blocked():
-    """E3 회귀 방지: 다른 부모 AGENT 아래 같은 이름 CHAIN 스팬 → 게이트로 필터.
+    """E3 regression prevention: same-named CHAIN spans under different parent AGENTs → filtered by the gate.
 
-    E3 실측 케이스: CodeAgent.run/Step 1 vs ToolCallingAgent.run/Step 1.
-    같은 주제 어휘 → cosine > φ 이지만 역할이 다른 정당한 단계 → 후보 아님.
-    구조: root(CHAIN) → agent1(AGENT) → s1(CHAIN, "Step 1")
-                      → agent2(AGENT) → s2(CHAIN, "Step 1")
+    E3 real-trace case: CodeAgent.run/Step 1 vs ToolCallingAgent.run/Step 1.
+    Same topical vocabulary → cosine > φ, but different roles are legitimate steps → not a candidate.
+    Structure: root(CHAIN) → agent1(AGENT) → s1(CHAIN, "Step 1")
+                           → agent2(AGENT) → s2(CHAIN, "Step 1")
     """
     root = Span(
         trace_id="t", span_id="root", parent_span_id=None,
@@ -306,10 +306,10 @@ def test_repeat_different_agent_parent_blocked():
 
 
 def test_repeat_mixed_depth_blocked():
-    """None/ID_X: 최상위 스팬(AGENT 조상=None) vs sub-agent 자식(AGENT 조상=agent1) → FILTER.
+    """None/ID_X: top-level span (AGENT ancestor=None) vs sub-agent child (AGENT ancestor=agent1) → FILTER.
 
-    혼합 트레이스에서 구조 층위가 다른 스팬은 repeat 후보가 아님.
-    대안(None → PASS)은 최상위↔sub-agent 매칭으로 새 오탐을 만들 수 있어 기각.
+    In a mixed trace, spans at different structural layers are not repeat candidates.
+    The alternative (None → PASS) is rejected because top-level ↔ sub-agent matching can produce new false positives.
     """
     root = Span(
         trace_id="t", span_id="root", parent_span_id=None,
@@ -342,10 +342,10 @@ def test_repeat_mixed_depth_blocked():
 
 
 def test_c1_requery_known_hard_clean_yields_no_candidates():
-    """CRITERIA C1: requery_known clean 의 hard 분기 인스턴스 → 구조 후보 0개.
+    """CRITERIA C1: hard-branch instances of requery_known clean → 0 structural candidates.
 
-    hard 분기 식별: 두 lookup input 모두 'customer_id=' 시작 + 값 다름.
-    50회 중 ~25개 가 hard 에 떨어질 것으로 기대.
+    Hard-branch identification: both lookup inputs start with 'customer_id=' + have different values.
+    Expect roughly ~25 out of 50 to fall into the hard branch.
     """
     from eval.generators.patterns.requery_known import make_clean
 
@@ -365,6 +365,6 @@ def test_c1_requery_known_hard_clean_yields_no_candidates():
         if is_hard:
             hard_count += 1
             assert find_candidates(gen.trace, n=2) == [], (
-                f"seed={seed}: hard 인스턴스에서 후보 발생 — 입력 게이트 실패"
+                f"seed={seed}: candidate emitted on hard instance — input gate failed"
             )
-    assert hard_count >= 10, f"hard 분기에 떨어진 인스턴스가 너무 적음: {hard_count}/50"
+    assert hard_count >= 10, f"too few instances fell into hard branch: {hard_count}/50"

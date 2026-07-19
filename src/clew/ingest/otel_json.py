@@ -1,18 +1,18 @@
-"""src/clew/ingest/otel_json.py — OTel JSON 파일 → Trace.
+"""src/clew/ingest/otel_json.py - OTel JSON file -> Trace.
 
-지원 형식:
-  Format A (OTel SDK JSON 배열):
-    OTel SDK InMemorySpanExporter → span.to_json() 직렬화 결과 배열.
-    최상위: list, 각 원소에 "context" 키.
+Supported formats:
+  Format A (OTel SDK JSON array):
+    Array of OTel SDK InMemorySpanExporter -> span.to_json() serialization results.
+    Top-level: list, each element has a "context" key.
 
   Format C (OpenInference nested dict):
-    {"trace_id": "hex", "spans": [루트 스팬, child_spans 중첩]}
-    PatronusAI/TRAIL, Phoenix/OpenInference exporter 출력 형식.
+    {"trace_id": "hex", "spans": [root span, nested child_spans]}
+    Output format of PatronusAI/TRAIL, Phoenix/OpenInference exporter.
 
-미지원 형식:
-  - OTLP proto-JSON ("resource_spans" 키): 명확한 ValueError 반환.
+Unsupported formats:
+  - OTLP proto-JSON ("resource_spans" key): returns explicit ValueError.
 
-기존 otel_spans_to_trace / ingest_otel_spans 시그니처·동작 불변.
+Existing otel_spans_to_trace / ingest_otel_spans signatures and behavior unchanged.
 """
 from __future__ import annotations
 
@@ -43,15 +43,15 @@ class _Parent:
 
 
 def _iso_to_ns(ts: str) -> int:
-    """ISO datetime string → 나노초 int (ReadableSpan.start_time 호환)."""
+    """ISO datetime string -> nanoseconds int (compatible with ReadableSpan.start_time)."""
     dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
     return int(dt.timestamp() * 1e9)
 
 
 class _SdkJsonSpan:
-    """span.to_json() dict를 ReadableSpan 인터페이스로 감싸는 경량 shim.
+    """Lightweight shim wrapping the span.to_json() dict with a ReadableSpan interface.
 
-    otel_spans_to_trace()가 접근하는 필드만 구현:
+    Implements only the fields otel_spans_to_trace() accesses:
       .context.trace_id / .context.span_id (int)
       .parent  (.span_id int) or None
       .name (str)
@@ -76,7 +76,7 @@ class _SdkJsonSpan:
 
 
 def _parse_sdk_json(text: str) -> list[_SdkJsonSpan]:
-    """Format A JSON text → _SdkJsonSpan 리스트."""
+    """Format A JSON text -> list of _SdkJsonSpan."""
     try:
         obj = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -112,16 +112,16 @@ def ingest_from_otel_json(
     *,
     cost_table: dict[str, float] | None = None,
 ) -> Trace:
-    """OTel SDK span.to_json() 배열 파일(Format A) → 정규 Trace.
+    """OTel SDK span.to_json() array file (Format A) -> canonical Trace.
 
-    내부적으로 ingest_otel_spans()를 호출해 preprocess_trace가 정확히 1회 실행됨.
+    Internally calls ingest_otel_spans() so preprocess_trace runs exactly once.
 
     Args:
-        path: Format A JSON 파일 경로.
-        cost_table: 모델명 → 토큰당 비용 (optional).
+        path: Format A JSON file path.
+        cost_table: model name -> cost-per-token (optional).
 
     Raises:
-        ValueError: 빈 파일, 형식 오류, output.value 없는 스팬.
+        ValueError: empty file, format error, span without output.value.
     """
     text = path.read_text(encoding="utf-8").strip()
     if not text:
@@ -132,15 +132,15 @@ def ingest_from_otel_json(
 
 
 # ---------------------------------------------------------------------------
-# Format C — OpenInference nested dict (PatronusAI/TRAIL 등)
+# Format C - OpenInference nested dict (PatronusAI/TRAIL, etc.)
 # ---------------------------------------------------------------------------
 
 _DURATION_RE = re.compile(r"^PT(?:(\d+)H)?(?:(\d+)M)?(?:([\d.]+)S)?$")
-_SYN_XOR = 0xFEEDFEEDFEEDFEED  # synthetic root span_id용 XOR 마스크
+_SYN_XOR = 0xFEEDFEEDFEEDFEED  # XOR mask for synthetic root span_id
 
 
 def _iso_duration_to_ns(dur: str) -> int:
-    """ISO 8601 duration 'PTxHxMxS' → 나노초."""
+    """ISO 8601 duration 'PTxHxMxS' -> nanoseconds."""
     m = _DURATION_RE.match(dur)
     if not m:
         raise ValueError(f"ISO 8601 duration 파싱 실패: {dur!r}")
@@ -151,14 +151,14 @@ def _iso_duration_to_ns(dur: str) -> int:
 
 
 class _OISpan:
-    """OpenInference nested dict 스팬 → ReadableSpan 인터페이스 shim.
+    """OpenInference nested dict span -> ReadableSpan interface shim.
 
-    otel_spans_to_trace()가 접근하는 필드만 구현:
+    Implements only the fields otel_spans_to_trace() accesses:
       .context.trace_id / .context.span_id (int)
       .parent (.span_id int) or None
       .name (str)
       .start_time / .end_time (int nanoseconds)
-      .attributes (dict) — span_attributes 그대로 (token_count는 _token_count_of가 int 변환)
+      .attributes (dict) - span_attributes as-is (token_count is int-converted by _token_count_of)
     """
 
     __slots__ = ("context", "parent", "name", "start_time", "end_time", "attributes")
@@ -177,7 +177,7 @@ class _OISpan:
 
 
 def _flatten_oi(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """child_spans 재귀 평탄화 (DFS 순서)."""
+    """Recursively flatten child_spans (DFS order)."""
     result: list[dict[str, Any]] = []
     for s in spans:
         result.append(s)
@@ -190,19 +190,19 @@ def ingest_from_openinference_json(
     *,
     cost_table: dict[str, float] | None = None,
 ) -> Trace:
-    """OpenInference nested dict 파일(Format C) → 정규 Trace.
+    """OpenInference nested dict file (Format C) -> canonical Trace.
 
-    지원 구조:
-      {"trace_id": "hex32", "spans": [루트 스팬, child_spans 중첩]}
-      1 파일 = 1 트레이스.
+    Supported structure:
+      {"trace_id": "hex32", "spans": [root span, nested child_spans]}
+      1 file = 1 trace.
 
-    처리 흐름:
-      child_spans 재귀 평탄화 → openinference.span.kind 있는 OI 스팬만 추출
-      → dangling parent 처리 (다중 루트 시 synthetic CHAIN 루트 삽입 + WARNING)
-      → ingest_otel_spans(shims) 경유 → preprocess_trace 정확히 1회
+    Processing flow:
+      recursively flatten child_spans -> extract only OI spans with openinference.span.kind
+      -> handle dangling parents (insert synthetic CHAIN root + WARNING on multi-root)
+      -> go through ingest_otel_spans(shims) -> preprocess_trace exactly once
 
     Raises:
-        ValueError: 빈 파일, 형식 오류, OI 스팬 없음, output.value 없는 스팬.
+        ValueError: empty file, format error, no OI spans, span without output.value.
     """
     text = path.read_text(encoding="utf-8").strip()
     if not text:
@@ -224,7 +224,7 @@ def ingest_from_openinference_json(
     if not all_raws:
         raise ValueError(f"{path}: spans 배열이 비어 있음")
 
-    # openinference.span.kind 있는 스팬만 — Patronus 래퍼 스팬 제거
+    # Keep only spans with openinference.span.kind - remove Patronus wrapper spans
     oi_raws = [
         r for r in all_raws
         if "openinference.span.kind" in r.get("span_attributes", {})
@@ -235,7 +235,7 @@ def ingest_from_openinference_json(
             f"전체 {len(all_raws)}개 스팬 모두 미계측"
         )
 
-    # output.value 없는 OI 스팬 — TRAIL 실데이터에 존재; WARNING 후 건너뜀
+    # OI spans without output.value - present in TRAIL real data; skip with WARNING
     no_output = [
         r for r in oi_raws
         if not (r.get("span_attributes", {}).get("output.value") or "").strip()
@@ -255,12 +255,12 @@ def ingest_from_openinference_json(
 
     oi_ids: set[str] = {r["span_id"] for r in oi_raws}
 
-    # OI set 밖의 parent를 가진 스팬 = dangling (Patronus 래퍼 parent)
+    # Spans whose parent is outside the OI set = dangling (Patronus wrapper parent)
     dangling = [r for r in oi_raws if r.get("parent_span_id") not in oi_ids]
 
     if len(dangling) > 1:
-        # 다중 dangling (다중 에이전트 — 예: CodeAgent + sibling LLM)
-        # → synthetic CHAIN 루트를 삽입해 단일 루트 보장
+        # Multiple dangling (multi-agent - e.g., CodeAgent + sibling LLM)
+        # -> insert a synthetic CHAIN root to guarantee a single root
         warnings.warn(
             f"Format C ({path.name}): {len(dangling)}개 dangling OI 루트 발견 "
             f"({[r['span_name'] for r in dangling]}). "
@@ -288,7 +288,7 @@ def ingest_from_openinference_json(
                 p_int = int(r["parent_span_id"], 16)
             shims.append(_OISpan(r, parent_int=p_int))
     else:
-        # 0 or 1 dangling: dangling → parent=None (root), 나머지는 그대로
+        # 0 or 1 dangling: dangling -> parent=None (root), others as-is
         shims = [
             _OISpan(
                 r,

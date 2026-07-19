@@ -1,4 +1,4 @@
-"""src/clew/report/json_report.py — 기계용 JSON 리포트 렌더러."""
+"""src/clew/report/json_report.py - machine-oriented JSON report renderer."""
 
 from __future__ import annotations
 
@@ -24,10 +24,10 @@ def render_json(
     no_snippets: bool = False,
     snippet_len: int = _SNIPPET_LEN,
 ) -> str:
-    """CascadeResult + WasteDetail 목록 → JSON 문자열 (indent=2).
+    """CascadeResult + WasteDetail list -> JSON string (indent=2).
 
-    스니펫: output_text[:snippet_len] 기본 (no_snippets=True면 키 자체 제외).
-    리포트 머리에 동결 파라미터(φ, N, 모델) 포함.
+    Snippet: output_text[:snippet_len] by default (excludes the key entirely if no_snippets=True).
+    Includes frozen parameters (phi, N, model) at the report header.
     """
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 

@@ -1,7 +1,7 @@
-"""tests/test_toolathlon_ingest.py — Toolathlon JSONL 어댑터 검증 (§23).
+"""tests/test_toolathlon_ingest.py — Toolathlon JSONL adapter verification (§23).
 
-- 데이터 파일 커밋 금지 (docs/TOOLATHLON.md §23): fixture 는 tmp_path 에 작성.
-- 검증 항목: §23.1 매핑, §23.2 synthetic ts, §23.3 역직렬화, §23.4 감지 분기.
+- Data files must not be committed (docs/TOOLATHLON.md §23): fixtures are written under tmp_path.
+- Verification items: §23.1 mapping, §23.2 synthetic ts, §23.3 deserialization, §23.4 detection routing.
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def _trace_entry(
     messages: list[dict] | None = None,
     task_status: dict | None = None,
 ) -> dict:
-    """README 규약: 값이 전부 JSON 문자열."""
+    """Per README convention: all values are JSON strings."""
     return {
         "modelname_run": model,
         "task_name": task_name,
@@ -67,10 +67,10 @@ def _user(text: str = "hi") -> dict:
     return {"role": "user", "content": text}
 
 
-# ─── §23.1 매핑 ───────────────────────────────────────────────────────────
+# ─── §23.1 mapping ───────────────────────────────────────────────────────
 
 def test_basic_two_calls_serial(tmp_path: Path) -> None:
-    """assistant → tool → assistant → tool : span 2개 생성, sha256 게이트로 갈 재료."""
+    """assistant → tool → assistant → tool : creates 2 spans, material to feed the sha256 gate."""
     messages = [
         _user("query"),
         _asst_calls([_tool_call("t1", "read_file", {"path": "/a"})]),
@@ -96,7 +96,7 @@ def test_basic_two_calls_serial(tmp_path: Path) -> None:
 
 
 def test_arguments_normalized_sort_keys(tmp_path: Path) -> None:
-    """§23.1: arguments 재직렬화 sort_keys — 다른 key 순서로 온 인자가 정규화된다."""
+    """§23.1: arguments re-serialized with sort_keys — arguments arriving in different key order are normalized."""
     messages = [
         _asst_calls([_tool_call("t1", "read_file", '{"z": 1, "a": 2}')]),
         _tool_result("t1", "ok"),
@@ -105,12 +105,12 @@ def test_arguments_normalized_sort_keys(tmp_path: Path) -> None:
     path = _write_jsonl(tmp_path, [entry])
     trace = ingest_toolathlon_jsonl(path)
     ts = next(s for s in trace.spans if s.span_kind == "tool")
-    # sort_keys=True → "a" 가 먼저
+    # sort_keys=True → "a" comes first
     assert ts.input_text == '{"a": 2, "z": 1}'
 
 
 def test_arguments_parse_failure_raises(tmp_path: Path) -> None:
-    """§23.3: arguments 파싱 실패 → 명시적 에러 (조용히 원문 사용 금지)."""
+    """§23.3: arguments parse failure → explicit error (do not silently fall back to the raw string)."""
     messages = [
         _asst_calls([_tool_call("t1", "read_file", "not valid json!!")]),
         _tool_result("t1", "ok"),
@@ -124,15 +124,15 @@ def test_arguments_parse_failure_raises(tmp_path: Path) -> None:
 # ─── §23.2 synthetic timestamp ────────────────────────────────────────────
 
 def test_synthetic_ts_preserves_msg_and_sub_order(tmp_path: Path) -> None:
-    """§23.2 recon Q4: msg_idx*1000 + sub_idx 로 병렬도 순서 보존."""
+    """§23.2 recon Q4: msg_idx*1000 + sub_idx preserves order even for parallel calls."""
     messages = [
         _asst_calls([
             _tool_call("t_a", "read_file", {"n": 1}),
-            _tool_call("t_b", "read_file", {"n": 2}),  # 병렬
+            _tool_call("t_b", "read_file", {"n": 2}),  # parallel
         ]),
         _tool_result("t_a", "R-a"),
         _tool_result("t_b", "R-b"),
-        _asst_calls([_tool_call("t_c", "read_file", {"n": 3})]),  # 이후
+        _asst_calls([_tool_call("t_c", "read_file", {"n": 3})]),  # later
         _tool_result("t_c", "R-c"),
     ]
     entry = _trace_entry(messages=messages)
@@ -142,7 +142,7 @@ def test_synthetic_ts_preserves_msg_and_sub_order(tmp_path: Path) -> None:
         (s for s in trace.spans if s.span_kind == "tool"),
         key=lambda s: s.start_time,
     )
-    # 병렬 t_a(msg=0,sub=0), t_b(msg=0,sub=1), 그 후 t_c(msg=3,sub=0)  — msg_idx 0-based (§23.2)
+    # Parallel t_a(msg=0,sub=0), t_b(msg=0,sub=1), then t_c(msg=3,sub=0) — msg_idx 0-based (§23.2)
     assert [s.span_id for s in tool_spans] == ["t_a", "t_b", "t_c"]
     assert tool_spans[0].start_time == _synth_ts(0, 0)
     assert tool_spans[1].start_time == _synth_ts(0, 1)
@@ -152,13 +152,13 @@ def test_synthetic_ts_preserves_msg_and_sub_order(tmp_path: Path) -> None:
         assert s.end_time == s.start_time
 
 
-# ─── §23.3 조인 검사 ─────────────────────────────────────────────────────
+# ─── §23.3 join checks ───────────────────────────────────────────────────
 
 def test_orphan_call_raises(tmp_path: Path) -> None:
     messages = [
         _asst_calls([_tool_call("t1", "read_file", {}), _tool_call("t2", "read_file", {})]),
         _tool_result("t1", "R-1"),
-        # t2 결과 누락
+        # t2 result missing
     ]
     entry = _trace_entry(messages=messages)
     path = _write_jsonl(tmp_path, [entry])
@@ -203,12 +203,12 @@ def test_metadata_carries_task_name_and_status(tmp_path: Path) -> None:
     assert md["source"] == "toolathlon_jsonl"
     assert md["task_name"] == "k8s-upgrade"
     assert md["task_status"]["evaluation"] == "False"
-    # §23.2 compact 게이트 no-op: compact_boundaries 키 부재
+    # §23.2 compact gate no-op: compact_boundaries key absent
     assert "compact_boundaries" not in md
 
 
 def test_iter_multiple_traces(tmp_path: Path) -> None:
-    """§23.4: 한 파일 = 여러 트레이스. iter_toolathlon_traces 로 각 라인 순회."""
+    """§23.4: one file = multiple traces. Iterate each line via iter_toolathlon_traces."""
     e1 = _trace_entry(request_id="req-1", messages=[
         _asst_calls([_tool_call("a1", "r", {})]),
         _tool_result("a1", "ok"),
@@ -222,7 +222,7 @@ def test_iter_multiple_traces(tmp_path: Path) -> None:
     assert [t.trace_id for t in traces] == ["req-1", "req-2"]
 
 
-# ─── §23.4 감지 분기 (CLI auto-load) ─────────────────────────────────────
+# ─── §23.4 detection routing (CLI auto-load) ────────────────────────────
 
 def test_auto_dispatch_toolathlon(tmp_path: Path) -> None:
     from clew.__main__ import _load_trace_auto
@@ -238,7 +238,7 @@ def test_auto_dispatch_toolathlon(tmp_path: Path) -> None:
 
 
 def test_auto_dispatch_cc_still_works(tmp_path: Path) -> None:
-    """중단조건 2: 감지 분기 변경이 CC 경로를 안 깬다."""
+    """Stop-condition 2: detection-routing changes do not break the CC path."""
     from clew.__main__ import _load_trace_auto
     p = tmp_path / "cc.jsonl"
     p.write_text(

@@ -1,6 +1,6 @@
-"""tests/test_langgraph_adapter.py — LangGraph 어댑터 라운드트립.
+"""tests/test_langgraph_adapter.py — LangGraph adapter round-trip.
 
-LLM API 키 없이 결정론적으로 동작 (FakeListChatModel).
+Operates deterministically without an LLM API key (FakeListChatModel).
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ def _build_demo_graph():
 
 @pytest.fixture
 def captured_spans():
-    """작은 LangGraph 실행을 계측해 OTel 스팬 리스트 반환."""
+    """Instrument a small LangGraph execution and return the list of OTel spans."""
     provider = TracerProvider()
     exporter = InMemorySpanExporter()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
@@ -95,7 +95,7 @@ def test_adapter_parent_child_preserved(captured_spans):
 def test_adapter_llm_spans_have_output_text(captured_spans):
     trace = otel_spans_to_trace(captured_spans)
     llm_spans = [s for s in trace.spans if s.span_kind == "llm"]
-    assert len(llm_spans) >= 2  # node_a / node_b 각 1개씩 LLM 호출
+    assert len(llm_spans) >= 2  # node_a / node_b each make one LLM call
     for s in llm_spans:
         assert s.output_text.strip() != ""
 
@@ -109,8 +109,8 @@ def test_adapter_chain_spans_have_output_text(captured_spans):
 
 
 def test_adapter_cost_rate_via_cost_table(captured_spans):
-    # FakeListChatModel은 model_name이 아니라 llm.provider="fakelistchatmodel"을 발행.
-    # _model_of 가 provider 폴백을 보므로 model="fakelistchatmodel".
+    # FakeListChatModel emits llm.provider="fakelistchatmodel" instead of model_name.
+    # _model_of falls back to provider, so model="fakelistchatmodel".
     table = {"fakelistchatmodel": 1.5e-6}
     trace = otel_spans_to_trace(captured_spans, cost_table=table)
     llm_with_rate = [

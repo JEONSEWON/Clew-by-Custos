@@ -1,12 +1,12 @@
 """src/clew/ingest/preprocess.py
 
-인제스트 전처리 파이프라인 — otel_spans_to_trace() 후처리 단계.
+Ingest preprocessing pipeline - post-processing stage of otel_spans_to_trace().
 
-세 가지 변환:
-  1. extract_output_text  — JSON 상태딕 스캐폴드 제거
-  2. mark_worker_span_ids — llm/tool 자손을 가진 span_id 집합 계산 (라우터 판별)
-  3. collapse_llm_spans   — llm sub-span 제거 + token rollup + ReAct re-parent
-  4. filter_router_spans  — 라우터 chain span 제거
+Three transforms:
+  1. extract_output_text  - remove JSON state-dict scaffolding
+  2. mark_worker_span_ids - compute set of span_ids that have llm/tool descendants (router discrimination)
+  3. collapse_llm_spans   - remove llm sub-spans + token rollup + ReAct re-parent
+  4. filter_router_spans  - remove router chain spans
 """
 
 from __future__ import annotations
@@ -17,17 +17,17 @@ from typing import Any
 from clew.model import Span, Trace
 
 
-# ── 1. JSON 추출 ────────────────────────────────────────────────────────────
+# -- 1. JSON extraction --------------------------------------------------------
 
 def extract_output_text(raw: str) -> str:
-    """JSON dict/list를 재귀 순회해 모든 문자열 leaf 중 가장 긴 것 반환.
+    """Recursively traverse a JSON dict/list and return the longest string leaf.
 
-    규칙:
-    - json.loads 성공 → dict/list를 재귀 탐색 → str leaf 수집
-      → 가장 긴 non-empty 문자열 반환 (동률이면 순회 첫 번째)
-    - json.loads 실패 또는 str leaf 없으면 raw 원문 반환
+    Rules:
+    - json.loads success -> recursively explore dict/list -> collect str leaves
+      -> return the longest non-empty string (first in traversal order on ties)
+    - json.loads failure or no str leaves -> return raw text
 
-    키 순서에 의존하지 않아 status 같은 짧은 필드를 오선택하지 않음.
+    Independent of key order, so does not mis-select short fields like status.
     """
     try:
         obj = json.loads(raw)
@@ -53,13 +53,13 @@ def _collect_str_leaves(obj: Any, out: list[str]) -> None:
             _collect_str_leaves(item, out)
 
 
-# ── 2. Worker span 집합 계산 ────────────────────────────────────────────────
+# -- 2. Compute worker span set ------------------------------------------------
 
 def mark_worker_span_ids(spans: list[Span]) -> set[str]:
-    """llm/tool 자손(transitive)을 가진 span_id 집합 반환.
+    """Return the set of span_ids that have (transitive) llm/tool descendants.
 
-    직계 자식이 아닌 자손 기준 — llm/tool 호출이 손자 깊이에 있는 chain 노드를
-    라우터로 오인해 제거하는 것을 방지한다.
+    Uses descendants rather than direct children - prevents mistakenly removing a
+    chain node whose llm/tool call is at grandchild depth as a router.
     """
     children_map: dict[str, list[str]] = {s.span_id: [] for s in spans}
     kinds: dict[str, str] = {s.span_id: s.span_kind for s in spans}
@@ -79,7 +79,7 @@ def _has_llm_or_tool_descendant(
     children_map: dict[str, list[str]],
     kinds: dict[str, str],
 ) -> bool:
-    """span_id의 모든 자손 중 llm/tool이 하나라도 있으면 True (BFS)."""
+    """True if any descendant of span_id has kind llm/tool (BFS)."""
     queue = list(children_map.get(span_id, []))
     while queue:
         child_id = queue.pop()
@@ -89,31 +89,31 @@ def _has_llm_or_tool_descendant(
     return False
 
 
-# ── 3. LLM span collapse + ReAct re-parent ──────────────────────────────────
+# -- 3. LLM span collapse + ReAct re-parent -----------------------------------
 
 def collapse_llm_spans(
     spans: list[Span],
     worker_ids: set[str],
 ) -> tuple[list[Span], int]:
-    """llm sub-span 제거 + token_count/cost_rate를 부모 chain으로 rollup.
+    """Remove llm sub-spans + roll up token_count/cost_rate into the parent chain.
 
-    ReAct 고아 처리:
-        제거되는 llm span의 자식(tool 등)은 해당 llm의 parent_span_id로 re-parent.
-        이렇게 하면 tool span이 worker chain 바로 아래로 올라와 댕글링이 없다.
+    ReAct orphan handling:
+        Children (tool, etc.) of a removed llm span are re-parented to that llm's parent_span_id.
+        This lifts tool spans directly under the worker chain with no dangling.
 
     token_count rollup:
-        제거된 llm span의 token_count를 부모 chain에 누적.
-        부모에 이미 token_count가 있으면 합산, 없으면 설정.
+        Accumulate the removed llm span's token_count into the parent chain.
+        If parent already has token_count, sum; otherwise set.
     """
     llm_ids = {s.span_id for s in spans if s.span_kind == "llm"}
 
-    # llm span별 (token_count, parent_span_id) 수집
+    # Collect (token_count, parent_span_id) per llm span
     llm_info: dict[str, tuple[int | None, str | None]] = {
         s.span_id: (s.token_count, s.parent_span_id)
         for s in spans if s.span_kind == "llm"
     }
 
-    # 부모별 token_count 누적
+    # Accumulate token_count per parent
     parent_token_delta: dict[str, int] = {}
     for llm_id, (tc, parent_id) in llm_info.items():
         if parent_id is not None and tc is not None:
@@ -122,12 +122,12 @@ def collapse_llm_spans(
     kept: list[Span] = []
     for s in spans:
         if s.span_kind == "llm":
-            continue  # 제거
+            continue  # remove
 
-        # ReAct re-parent: 부모가 llm span이면 llm의 부모로 올림
+        # ReAct re-parent: if parent is an llm span, lift to the llm's parent
         new_parent = s.parent_span_id
         if new_parent in llm_ids:
-            new_parent = llm_info[new_parent][1]  # llm의 parent_span_id
+            new_parent = llm_info[new_parent][1]  # llm's parent_span_id
 
         # token_count rollup
         new_token_count = s.token_count
@@ -146,14 +146,14 @@ def collapse_llm_spans(
     return kept, len(llm_ids)
 
 
-# ── 4. 라우터 span 필터 ─────────────────────────────────────────────────────
+# -- 4. Router span filter ----------------------------------------------------
 
 def filter_router_spans(spans: list[Span], worker_ids: set[str]) -> list[Span]:
-    """worker_ids에 없는 non-root chain/agent span 제거.
+    """Remove non-root chain/agent spans not in worker_ids.
 
-    조건: span_kind in (chain, agent) AND parent_span_id is not None AND
+    Condition: span_kind in (chain, agent) AND parent_span_id is not None AND
           span_id not in worker_ids
-    root span(parent_span_id=None)은 항상 보존.
+    Root span (parent_span_id=None) is always preserved.
     """
     return [
         s for s in spans
@@ -165,19 +165,19 @@ def filter_router_spans(spans: list[Span], worker_ids: set[str]) -> list[Span]:
     ]
 
 
-# ── 파이프라인 진입점 ────────────────────────────────────────────────────────
+# -- Pipeline entry point ------------------------------------------------------
 
 def preprocess_trace(trace: Trace) -> Trace:
-    """인제스트 전처리 4단계 파이프라인.
+    """Ingest preprocessing 4-stage pipeline.
 
-    ① extract_output_text  — 각 span의 output_text에서 JSON 스캐폴드 제거
-    ② mark_worker_span_ids — collapse 전 원본 트리에서 worker 집합 계산
-    ③ collapse_llm_spans   — llm 제거 + token rollup + ReAct re-parent
-    ④ filter_router_spans  — 라우터 chain span 제거
+    (1) extract_output_text  - remove JSON scaffolding from each span's output_text
+    (2) mark_worker_span_ids - compute worker set from original tree before collapse
+    (3) collapse_llm_spans   - remove llm + token rollup + ReAct re-parent
+    (4) filter_router_spans  - remove router chain spans
 
-    순서 보장: ②는 ③ 전(collapse 후 llm span 사라짐), ③은 ④ 전.
+    Order guarantee: (2) is before (3) (llm spans disappear after collapse); (3) is before (4).
     """
-    # ① JSON 추출 — Span.output_text 갱신
+    # (1) JSON extraction - update Span.output_text
     spans: list[Span] = []
     for s in trace.spans:
         extracted = extract_output_text(s.output_text)
@@ -185,13 +185,13 @@ def preprocess_trace(trace: Trace) -> Trace:
             s = s.model_copy(update={"output_text": extracted})
         spans.append(s)
 
-    # ② worker 집합 계산 (collapse 전 위상 기반)
+    # (2) Compute worker set (based on topology before collapse)
     worker_ids = mark_worker_span_ids(spans)
 
-    # ③ collapse
+    # (3) collapse
     spans, removed_count = collapse_llm_spans(spans, worker_ids)
 
-    # ④ 라우터 필터
+    # (4) Router filter
     spans = filter_router_spans(spans, worker_ids)
 
     new_meta = {

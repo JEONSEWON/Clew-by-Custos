@@ -1,12 +1,12 @@
-"""tests/test_field_regressions.py — 인제스트 필드-하드닝 회귀 테스트 (R1~R5).
+"""tests/test_field_regressions.py — ingest field-hardening regression tests (R1~R5).
 
-R1: 깨끗한 trace → FP=0
-R2: repeat_node 패턴 → TP
-R3: 라우터 적대 그래프 → 라우터 제거 + FP=0
-R4: JSON 추출 후 cosine 하락 (마진 0.05)
-R5: ReAct 고아 처리 단위 테스트 (llm→tool re-parent)
+R1: clean trace -> FP=0
+R2: repeat_node pattern -> TP
+R3: router adversarial graph -> router removed + FP=0
+R4: cosine drops after JSON extraction (margin 0.05)
+R5: ReAct orphan handling unit test (llm->tool re-parent)
 
-API 키 불요 — FakeListLLM + 합성 Span 픽스처 자급.
+No API key required — self-contained via FakeListLLM + synthetic Span fixtures.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 REV = "e8f8c211226b894fcb81acc59f3b34ba3efd5f42"
 CACHE = Path(".cache/embeddings")
 
-# ── Paraphrase pair (run_field_test_waste.py 동일 텍스트) ─────────────────
+# ── Paraphrase pair (identical text to run_field_test_waste.py) ───────────
 _R1_TEXT = (
     "멀티에이전트 AI에서 토큰 낭비 주요 원인: "
     "(1) 동일 정보 재조회 — 에이전트가 이미 확보한 정보를 같은 도구로 다시 요청한다. "
@@ -62,7 +62,7 @@ _R2_TEXT = (
 )
 
 
-# ── 공통 헬퍼 ──────────────────────────────────────────────────────────────
+# ── Common helpers ─────────────────────────────────────────────────────────
 
 class _State(TypedDict):
     topic: str
@@ -71,9 +71,9 @@ class _State(TypedDict):
 
 
 def _capture_spans(responses: list[str], loop_limit: int) -> list:
-    """FakeListLLM loopback 그래프 실행 → raw OTel spans.
+    """Run FakeListLLM loopback graph -> raw OTel spans.
 
-    loop_limit: loop_count < loop_limit 이면 loopback, 아니면 END.
+    loop_limit: loopback if loop_count < loop_limit, else END.
     """
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
@@ -109,10 +109,10 @@ def embedder():
     return Embedder(model_name=MODEL, revision=REV, cache_dir=CACHE)
 
 
-# ── R1: 깨끗한 trace — FP=0 ───────────────────────────────────────────────
+# ── R1: clean trace — FP=0 ────────────────────────────────────────────────
 
 def test_r1_clean_no_false_fire(embedder):
-    """서로 다른 도메인 출력 2개 → 전처리 후 cascade wasteful=False."""
+    """Two outputs from different domains -> after preprocessing, cascade wasteful=False."""
     spans = _capture_spans(
         ["기후 변화의 원인과 영향에 대한 분석 결과.", "경제 성장 지표와 GDP 변동 패턴 검토."],
         loop_limit=2,
@@ -126,21 +126,21 @@ def test_r1_clean_no_false_fire(embedder):
 # ── R2: repeat_node — TP ──────────────────────────────────────────────────
 
 def test_r2_repeat_node_true_positive(embedder):
-    """패러프레이즈 쌍 → 전처리 후 cascade wasteful=True."""
+    """Paraphrase pair -> after preprocessing, cascade wasteful=True."""
     spans = _capture_spans([_R1_TEXT, _R2_TEXT], loop_limit=2)
     raw_trace = otel_spans_to_trace(spans)
     trace = preprocess_trace(raw_trace)
     cr = cascade(trace, embedder, n=N, phi=PHI)
     assert cr.wasteful
-    # 코사인 앵커 검증
+    # cosine anchor verification
     assert cosine(embedder.embed(_R1_TEXT), embedder.embed(_R2_TEXT)) > PHI
 
 
-# ── R3: 라우터 적대 — FP 소거 ─────────────────────────────────────────────
+# ── R3: router adversarial — FP elimination ──────────────────────────────
 
 def test_r3_router_adversarial_no_false_fire(embedder):
-    """should_loop가 'researcher'를 2회 반환하는 3-loop 그래프.
-    전처리 후 should_loop span이 제거되고 cascade wasteful=False."""
+    """3-loop graph where should_loop returns 'researcher' twice.
+    After preprocessing, should_loop span is removed and cascade wasteful=False."""
     spans = _capture_spans(
         [
             "첫 번째: 멀티에이전트 루프 종료 조건 분석.",
@@ -157,11 +157,11 @@ def test_r3_router_adversarial_no_false_fire(embedder):
     assert not cr.wasteful
 
 
-# ── R4: JSON 추출 후 cosine 하락 ──────────────────────────────────────────
+# ── R4: cosine drop after JSON extraction ────────────────────────────────
 
 def test_r4_json_extraction_reduces_cosine(embedder):
-    """JSON 상태딕 전문 cosine > 추출 후 cosine, 마진 > 0.05.
-    (실측: c_raw≈0.777, c_ext≈0.567, Δ≈0.21)"""
+    """cosine over full JSON state-dict > cosine after extraction, margin > 0.05.
+    (measured: c_raw~=0.777, c_ext~=0.567, delta~=0.21)"""
     raw_1 = '{"research": "첫 번째 조사 결과: 멀티에이전트 낭비의 기술적 원인 분석.", "loop_count": 1}'
     raw_2 = '{"research": "두 번째 조사 결과: 비용 구조와 토큰 소비 패턴 검토.", "loop_count": 2}'
     ext_1 = extract_output_text(raw_1)
@@ -171,7 +171,7 @@ def test_r4_json_extraction_reduces_cosine(embedder):
     assert c_raw - c_ext > 0.05
 
 
-# ── R5: ReAct 고아 처리 단위 테스트 ──────────────────────────────────────
+# ── R5: ReAct orphan handling unit test ──────────────────────────────────
 
 _NOW = datetime(2026, 1, 1, tzinfo=timezone.utc)
 _LATER = datetime(2026, 1, 1, 1, tzinfo=timezone.utc)
@@ -191,15 +191,15 @@ def _make_span(span_id: str, parent_id: str | None, kind: str) -> Span:
     )
 
 
-# ── R6: ingest_otel_spans 파이프라인 핀 고정 ──────────────────────────────
+# ── R6: pin ingest_otel_spans pipeline ────────────────────────────────────
 
 def test_r6_ingest_otel_spans_applies_preprocessing():
-    """ingest_otel_spans()가 전처리를 실제로 적용함을 핀 고정.
+    """Pin that ingest_otel_spans() actually applies preprocessing.
 
-    라우터 적대 스팬(3-loop) → 반환 Trace에서:
-    - should_loop span 없음
-    - llm span 0개
-    - 모든 output_text에 JSON 스캐폴드 키 패턴('{"') 없음
+    Router-adversarial spans (3-loop) -> in the returned Trace:
+    - no should_loop span
+    - zero llm spans
+    - no JSON scaffold key pattern ('{"') in any output_text
     """
     spans = _capture_spans(
         [
@@ -212,21 +212,21 @@ def test_r6_ingest_otel_spans_applies_preprocessing():
     trace = ingest_otel_spans(spans)
 
     node_ids = {sp.agent_or_node_id for sp in trace.spans}
-    assert "should_loop" not in node_ids, "라우터 span이 제거되지 않음"
+    assert "should_loop" not in node_ids, "router span not removed"
 
     llm_spans = [sp for sp in trace.spans if sp.span_kind == "llm"]
-    assert len(llm_spans) == 0, f"llm span {len(llm_spans)}개 잔존"
+    assert len(llm_spans) == 0, f"{len(llm_spans)} llm span(s) remaining"
 
     for sp in trace.spans:
         assert '{"' not in sp.output_text, (
-            f"JSON 스캐폴드 키 패턴이 {sp.agent_or_node_id!r} output_text에 잔존: "
+            f"JSON scaffold key pattern remains in {sp.agent_or_node_id!r} output_text: "
             f"{sp.output_text[:80]!r}"
         )
 
 
 def test_r5_react_tool_reparented_after_llm_collapse():
-    """합성 트리: root(chain) → worker(chain) → llm → tool
-    collapse 후 tool이 worker로 re-parent되어 생존."""
+    """Synthetic tree: root(chain) -> worker(chain) -> llm -> tool
+    After collapse, tool is re-parented to worker and survives."""
     root   = _make_span("root",   None,     "chain")
     worker = _make_span("worker", "root",   "chain")
     llm    = _make_span("llm",    "worker", "llm")
@@ -234,13 +234,13 @@ def test_r5_react_tool_reparented_after_llm_collapse():
     spans = [root, worker, llm, tool]
 
     worker_ids = mark_worker_span_ids(spans)
-    assert "worker" in worker_ids  # worker는 llm 자손 보유
+    assert "worker" in worker_ids  # worker has an llm descendant
 
     kept, removed_count = collapse_llm_spans(spans, worker_ids)
     kept_ids = {s.span_id for s in kept}
 
     assert removed_count == 1
-    assert "llm"  not in kept_ids           # llm 제거됨
-    assert "tool" in kept_ids               # tool 생존
+    assert "llm"  not in kept_ids           # llm removed
+    assert "tool" in kept_ids               # tool survives
     tool_span = next(s for s in kept if s.span_id == "tool")
-    assert tool_span.parent_span_id == "worker"  # worker로 re-parent
+    assert tool_span.parent_span_id == "worker"  # re-parented to worker
