@@ -1,17 +1,21 @@
-"""requery_known 패턴.
+"""requery_known pattern.
 
-구조: root → start → lookup(tool) → process(chain) → lookup(tool) → finalize
-positive: 2회차 lookup이 1회차와 동일 키 → 이미 가진 정보를 재조회.
-clean   : 2회차 lookup이 다른 키 → 정상적인 2회 조회.
+Structure: root → start → lookup(tool) → process(chain) → lookup(tool) → finalize
+positive: the 2nd lookup uses the same key as the 1st → refetching known info.
+clean   : the 2nd lookup uses a different key → a normal 2-step lookup.
 
-토폴로지는 positive/clean 동일(같은 노드 시퀀스·span_kind).
-낭비 라벨: positive의 2회차 lookup.
+Topology is identical between positive and clean (same node sequence and
+span_kind).
+Waste label: the 2nd lookup in the positive trace.
 
-clean 풀 설계:
-- 두 lookup이 서로 다른 도메인·형식·내용을 갖도록 분리된 풀(A·B)에서 각각 선택.
-- 정형 스키마 표면이 두 lookup 사이에서 지배하지 않도록 KV·자연어·혼합 형식 섞음.
-  (calibrate 진단에서 'name=…, plan=…, MRR=$…' 정형 표면이 임베딩에서 의미 유사도로
-  오인되어 진전 쌍 코사인이 φ를 넘는 침투가 확인됨 — 그 결함을 차단.)
+Clean-pool design:
+- Two lookups draw from separate pools (A / B) so they cover different
+  domains, formats, and contents.
+- KV, natural-language, and mixed forms are shuffled together so that
+  structured-schema surface form does not dominate between the two lookups.
+  (The calibrate diagnostic found intrusions where 'name=…, plan=…, MRR=$…'
+  structured surface was mistaken for semantic similarity by the embedder,
+  pushing progression-pair cosines over φ — this blocks that defect.)
 """
 
 from __future__ import annotations
@@ -23,9 +27,10 @@ from .base import GeneratedTrace, make_context, make_trace, span
 PATTERN = "requery_known"
 
 
-# HARD 풀(SPEC §8 2.1 + CRITERIA C1): 두 lookup 모두 'customer_id=…' 형식·
-# 값/응답 다름. structural.py 의 입력 게이트(원본과 정규화-동일)가 작동하면
-# 후보 0 — 게이트 작동 증명용. (in1, out1, in2, out2)
+# HARD pool (SPEC §8 2.1 + CRITERIA C1): both lookups use the
+# 'customer_id=…' form with different values/responses. If structural.py's
+# input gate (normalized-identical to the original) is working, this
+# produces 0 candidates — the gate-behavior proof. (in1, out1, in2, out2)
 _CLEAN_POOL_HARD: list[tuple[str, str, str, str]] = [
     ("customer_id=12345", "name=Alice, plan=Pro, MRR=$59",
      "customer_id=67890", "name=Bob, plan=Free, MRR=$0"),
@@ -39,7 +44,8 @@ _CLEAN_POOL_HARD: list[tuple[str, str, str, str]] = [
      "customer_id=92222", "name=Judy, plan=Pro, MRR=$129"),
 ]
 
-# MIXED A: 1회차 풀 — KV·자연어·혼합 섞음. user/order/billing/config 도메인.
+# MIXED A: 1st-lookup pool — KV, natural language, and mixed forms.
+# Domains: user / order / billing / config.
 _CLEAN_POOL_MIXED_A: list[tuple[str, str]] = [
     ("order_id=7821", "주문 7821 — 키보드 1개, 2026-01-12 배송 완료, 결제액 8.4만원"),
     ("invoice=INV-2026-031", "청구서 INV-2026-031 상태 paid, 금액 1,240,000원, 결제일 1월 18일"),
@@ -50,7 +56,8 @@ _CLEAN_POOL_MIXED_A: list[tuple[str, str]] = [
     ("session=s_77ab", "세션 s_77ab는 23분간 유효, 브라우저 Safari, 위치 서울"),
 ]
 
-# MIXED B: 2회차 풀 — 운영/인프라/계약 도메인. A와 도메인·표현 분리.
+# MIXED B: 2nd-lookup pool — ops / infra / contract domains.
+# Domain and phrasing are kept separate from pool A.
 _CLEAN_POOL_MIXED_B: list[tuple[str, str]] = [
     ("incident_id=INC-44", "장애 INC-44는 EU 리전 한정으로 5분간 지속 후 자동 복구"),
     ("repo=core-svc", "core-svc 저장소 main 브랜치 — 어제 3 커밋, 빌드 통과"),
@@ -64,12 +71,13 @@ _CLEAN_POOL_MIXED_B: list[tuple[str, str]] = [
 
 
 def _pick_hard_pair(rng) -> tuple[str, str, str, str]:
-    """HARD 풀에서 한 쌍 선택 — 두 lookup 모두 customer_id=… (값·응답 다름)."""
+    """Pick one pair from the HARD pool — both lookups use `customer_id=…`
+    with different values/responses."""
     return rng.choice(_CLEAN_POOL_HARD)
 
 
 def _pick_mixed_pair(rng) -> tuple[str, str, str, str]:
-    """MIXED A·B 에서 각각 하나씩 — 두 lookup이 서로 다른 도메인."""
+    """One item each from MIXED A / B — the two lookups cover different domains."""
     in1, out1 = rng.choice(_CLEAN_POOL_MIXED_A)
     in2, out2 = rng.choice(_CLEAN_POOL_MIXED_B)
     return in1, out1, in2, out2
@@ -154,8 +162,9 @@ def _topology(
 
 def make_positive(*, trace_id: str, seed: int) -> GeneratedTrace:
     ctx = make_context(seed=seed, trace_id=trace_id)
-    # positive 의도: 동일 키 재조회 → byte-identical 출력 (이게 정상 신호).
-    # 따라서 풀 사용 없이 고정 — 인스턴스 간 dup 코사인이 1.0 클러스터로 모이는 게 정상.
+    # Positive intent: same-key re-lookup → byte-identical output (this is
+    # the normal signal). Therefore fixed, no pool — dup cosines across
+    # instances clustering at 1.0 is the expected outcome.
     trace, l2_id = _topology(
         ctx,
         lookup1_input="customer_id=12345",

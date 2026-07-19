@@ -1,19 +1,23 @@
-"""eval/calibrate.py — dev set(seed=7) 전용 파라미터 결정 (분포 분리 기반).
+"""eval/calibrate.py — dev-set (seed=7) parameter selection via distribution separation.
 
-규율:
-- dev set만 읽는다. 평가 set(seed=42) 경로 리터럴은 본문에 등장 금지(가드로 강제).
-- φ 는 dev 라벨로 F1 을 *최대화* 하지 않는다. 두 분포의 *갭 중점* 으로 박는다.
-  → dev 라벨에 직접 튜닝되는 과적합 차단.
-- N 은 dev positive 트레이스에서 "낭비 candidate 가 같은 agent 의 몇 번째 등장이었나" 의 mode.
-  → 라벨의 *구조 통계*만 사용(코사인·F1 무관).
-- 결정값을 stdout + CALIBRATION_LOG.md 에 기록한다. 운영자가 그 값을
-  CRITERIA_FROZEN.md "탐지 파라미터" 섹션에 *수동* 박고 커밋한 뒤에야 evaluate 가
-  평가 set 을 처음 로딩한다.
+Discipline:
+- Only reads the dev set. Eval-set (seed=42) path literals must not appear
+  in this file (enforced by guard).
+- φ is not chosen to *maximize* F1 on dev labels. It is pinned to the *midpoint*
+  of the gap between the two distributions.
+  → Prevents overfitting directly to dev labels.
+- N is the mode of "which occurrence-index of the same agent held the waste
+  candidate" across dev-positive traces.
+  → Uses only the *structural statistics* of labels (no cosine, no F1).
+- Chosen values are written to stdout + CALIBRATION_LOG.md. Only after the
+  operator manually pins those values into the "Detection parameters" section
+  of CRITERIA_FROZEN.md and commits does `evaluate` first load the eval set.
 
-분리 가드(평가 전에 raise 가능):
-- gap_p10p90 = P10(중복 코사인) - P90(진전 코사인) > 0 (음수면 두 분포 겹침)
-- Cohen's d (중복 vs 진전) ≥ 0.5
-- dev_fpr_estimate (진전 쌍 중 cos ≥ φ 비율) ≤ 0.15 (CRITERIA GO_FPR=0.10 + 여유)
+Separation guards (may raise before evaluation):
+- gap_p10p90 = P10(dup cosine) - P90(prog cosine) > 0 (negative means overlap)
+- Cohen's d (dup vs prog) ≥ 0.5
+- dev_fpr_estimate (share of prog pairs with cos ≥ φ) ≤ 0.15
+  (CRITERIA GO_FPR=0.10 + slack)
 """
 
 from __future__ import annotations
@@ -35,11 +39,12 @@ DEV_LABELS_PATH = Path("eval/dev/seed-7/labels.jsonl")
 
 PRIMARY_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
-# 분리 가드 임계 (CRITERIA GO_FPR=0.10 + dev 추정 여유)
+# Separation-guard thresholds (CRITERIA GO_FPR=0.10 + dev-estimate slack).
 DEV_FPR_GUARD = 0.15
 COHENS_D_GUARD = 0.5
 
-# 후보 수집용 N — 가능한 모든 재등장을 다 쌍으로 만든다 (의미 분리 검증용)
+# N for candidate collection — pair every possible re-appearance
+# (used for semantic-separation validation).
 N_FOR_PAIR_COLLECTION = 2
 
 
@@ -67,7 +72,7 @@ def _load_dev_labels() -> dict[str, dict]:
 
 
 def _percentile(values: list[float], p: float) -> float:
-    """선형보간 percentile (stdlib only). p ∈ [0, 100]."""
+    """Linearly-interpolated percentile (stdlib only). p ∈ [0, 100]."""
     if not values:
         raise ValueError("cannot compute percentile of empty sequence")
     s = sorted(values)
@@ -81,7 +86,7 @@ def _percentile(values: list[float], p: float) -> float:
 
 
 def _cohens_d(a: list[float], b: list[float]) -> float:
-    """Cohen's d — (mean_a - mean_b) / sqrt((var_a + var_b)/2). 표본 분산."""
+    """Cohen's d — (mean_a - mean_b) / sqrt((var_a + var_b)/2). Sample variance."""
     if len(a) < 2 or len(b) < 2:
         return 0.0
     var_a = statistics.variance(a)
@@ -105,10 +110,12 @@ def _summary(values: list[float]) -> dict:
 def collect_pair_cosines(
     traces: list[Trace], labels: dict[str, dict], embedder: Embedder
 ) -> tuple[list[float], list[float]]:
-    """모든 dev 후보 쌍의 코사인을 (중복, 진전) 두 분포로 분류해 반환.
+    """Return the cosine of every dev candidate pair, split into two distributions
+    (duplicate vs progression).
 
-    - 중복(dup): trace.class == "positive" AND candidate.span_id ∈ waste_span_ids
-    - 진전(prog): 그 외 모든 후보 쌍 (negative trace 전체 + positive trace 의 비-낭비 candidate)
+    - dup: trace.class == "positive" AND candidate.span_id ∈ waste_span_ids
+    - prog: every other candidate pair (all negative traces + non-waste
+      candidates in positive traces)
     """
     dup_cos: list[float] = []
     prog_cos: list[float] = []
@@ -129,7 +136,7 @@ def collect_pair_cosines(
 
 
 def choose_phi(dup: list[float], prog: list[float]) -> float:
-    """φ = (P10(중복) + P90(진전)) / 2 — 두 분포 갭의 중점."""
+    """φ = (P10(dup) + P90(prog)) / 2 — the midpoint of the gap between the two distributions."""
     return (_percentile(dup, 10) + _percentile(prog, 90)) / 2.0
 
 
@@ -157,10 +164,12 @@ def trace_level_cascade_fpr(
     n: int,
     phi: float,
 ) -> float:
-    """CRITERIA C4 (보고만): dev 의 negative trace 중 cascade 가 wasteful=True 비율.
+    """CRITERIA C4 (report-only): share of dev negative traces where cascade
+    returns wasteful=True.
 
-    낭비 쌍 ≥1 이면 trace flag (cascade.py 의 trace 판정 그대로).
-    분모: dev negative trace 총수. 분자: cascade(...).wasteful=True 개수.
+    A trace is flagged if it has ≥1 waste pair (using cascade.py's trace-level
+    verdict as-is). Denominator: total dev negative traces. Numerator: count
+    of cascade(...).wasteful=True.
     """
     negatives = [t for t in traces if labels[t.trace_id]["class"] == "negative"]
     if not negatives:
@@ -172,7 +181,8 @@ def trace_level_cascade_fpr(
 
 
 def choose_n(traces: list[Trace], labels: dict[str, dict]) -> int:
-    """positive trace 에서 낭비 candidate 가 같은 agent 의 몇 번째 등장이었나의 mode."""
+    """Mode of the same-agent occurrence-index at which a waste candidate
+    appeared, across positive traces."""
     occurrences_at_waste: list[int] = []
     for trace in traces:
         lbl = labels[trace.trace_id]
@@ -192,10 +202,11 @@ def choose_n(traces: list[Trace], labels: dict[str, dict]) -> int:
 
 
 def calibrate(embedder: Embedder) -> dict:
-    """φ·N·분리 지표 + 가드 통과 여부를 결과 dict 로 반환 (raise 하지 않음).
+    """Return φ, N, separation metrics, and guard status as a dict (never raises).
 
-    가드 위반 시에도 진단을 박을 수 있도록, raise 대신 result['guards_passed']/
-    result['failures'] 로 신호한다. 운영자(main)가 동결 여부를 결정한다.
+    On guard violation we still return a full diagnostic — the signal is
+    result['guards_passed'] / result['failures'] rather than an exception.
+    The operator (main) decides whether to freeze.
     """
     traces = _load_dev_traces()
     labels = _load_dev_labels()
@@ -253,17 +264,17 @@ def _write_log(result: dict, log_path: Path) -> None:
         "",
         f"- gap (P10 dup − P90 prog): **{sep['gap_p10p90']}**  (must be > 0)",
         f"- Cohen's d: **{sep['cohens_d']}**  (must be ≥ {COHENS_D_GUARD})",
-        f"- pair-level dev_fpr_estimate (진전 쌍 중 cos ≥ φ 비율): **{sep['dev_fpr_estimate']}**  (must be ≤ {DEV_FPR_GUARD})",
-        f"- trace-level cascade FPR (C4, 보고만): **{result['trace_level_fpr']}**  (사전등록 목표 ≤ 0.10)",
+        f"- pair-level dev_fpr_estimate (share of progression pairs with cos ≥ φ): **{sep['dev_fpr_estimate']}**  (must be ≤ {DEV_FPR_GUARD})",
+        f"- trace-level cascade FPR (C4, reporting only): **{result['trace_level_fpr']}**  (pre-registered target ≤ 0.10)",
         "",
         "### cosine distributions on dev set",
         "",
-        "| 분포 | count | P10 | median | P90 | mean |",
+        "| distribution | count | P10 | median | P90 | mean |",
         "|---|---|---|---|---|---|",
-        f"| 중복(dup)  | {dup_s['count']}  | {dup_s['p10']}  | {dup_s['median']}  | {dup_s['p90']}  | {dup_s['mean']}  |",
-        f"| 진전(prog) | {prog_s['count']} | {prog_s['p10']} | {prog_s['median']} | {prog_s['p90']} | {prog_s['mean']} |",
+        f"| duplicate (dup)  | {dup_s['count']}  | {dup_s['p10']}  | {dup_s['median']}  | {dup_s['p90']}  | {dup_s['mean']}  |",
+        f"| progression (prog) | {prog_s['count']} | {prog_s['p10']} | {prog_s['median']} | {prog_s['p90']} | {prog_s['mean']} |",
         "",
-        "φ 는 P10(중복)과 P90(진전) 의 중점에 박혀, 두 분포가 P10/P90 으로 깨끗이 갈리면 dev_fpr_estimate ≈ 0 이 되어야 한다.",
+        "φ is pinned to the midpoint between P10(dup) and P90(prog); if the two distributions separate cleanly at P10/P90 then dev_fpr_estimate ≈ 0 should hold.",
         "",
     ]
     log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -287,11 +298,11 @@ def main(model_id: str = PRIMARY_MODEL) -> int:
     print(f"gap (P10−P90):     {sep['gap_p10p90']}")
     print(f"Cohen's d:         {sep['cohens_d']}")
     print(f"dev_fpr_estimate:  {sep['dev_fpr_estimate']}  (pair-level, C3)")
-    print(f"trace_level_fpr:   {result['trace_level_fpr']}  (cascade, C4 보고)")
+    print(f"trace_level_fpr:   {result['trace_level_fpr']}  (cascade, C4 report)")
     print("")
     print("cosine distributions on dev set:")
-    print(f"  중복(dup)  count={dup_s['count']:>3}  P10={dup_s['p10']}  median={dup_s['median']}  P90={dup_s['p90']}  mean={dup_s['mean']}")
-    print(f"  진전(prog) count={prog_s['count']:>3}  P10={prog_s['p10']}  median={prog_s['median']}  P90={prog_s['p90']}  mean={prog_s['mean']}")
+    print(f"  dup   count={dup_s['count']:>3}  P10={dup_s['p10']}  median={dup_s['median']}  P90={dup_s['p90']}  mean={dup_s['mean']}")
+    print(f"  prog  count={prog_s['count']:>3}  P10={prog_s['p10']}  median={prog_s['median']}  P90={prog_s['p90']}  mean={prog_s['mean']}")
     print("")
     print(f"guards: {'PASS' if result['guards_passed'] else 'FAIL'}")
     for f in result["failures"]:
@@ -300,8 +311,9 @@ def main(model_id: str = PRIMARY_MODEL) -> int:
     if not result["guards_passed"]:
         return 1
     print("")
-    print("다음 단계: validation/CRITERIA_FROZEN.md '탐지 파라미터' 섹션에 위 φ/N/모델 값을")
-    print("수동으로 박고 git commit + 'git tag stage2-params-freeze' 하세요.")
+    print("Next step: manually pin the φ / N / model values above into the")
+    print("'Detection parameters' section of validation/CRITERIA_FROZEN.md,")
+    print("then git commit and `git tag stage2-params-freeze`.")
     return 0
 
 

@@ -1,13 +1,16 @@
-"""1회용 진단: dev set 진전(prog) 쌍 중 코사인 최상위 8개.
+"""One-shot diagnostic: top-8 cosine progression (prog) pairs on the dev set.
 
-목적(2단계 동결 보류 진단):
-- calibrate 가드 FAIL 원인이 (a) 특정 패턴에 침투가 몰리는가, (b) clean 트윈이 너무 비슷한가
-  를 가르기 위해 진전 쌍을 코사인 내림차순으로 펼친다.
-- 모델·생성기 수정 없음. 표만 출력하고 종료.
+Purpose (used when the stage-2 freeze was on hold):
+- To separate two possible causes of a calibrate guard FAIL —
+  (a) intrusions cluster on a specific pattern, vs
+  (b) clean twins are too similar overall —
+  spread the prog pairs in descending cosine order.
+- No changes to the model or generators. Prints a table and exits.
 
-규율:
-- 평가 set(seed=42) 경로 절대 미참조 — dev set(seed=7)만 사용.
-- 라벨은 _분류_ 용으로만 (dup vs prog 구분), 탐지·임계 결정에 사용하지 않음.
+Discipline:
+- Never references the eval-set (seed=42) paths — only dev set (seed=7).
+- Labels are used only for *classification* (dup vs prog); not used for
+  detection or threshold decisions.
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ DEV_LABELS_PATH = Path("eval/dev/seed-7/labels.jsonl")
 DEV_MANIFEST_PATH = Path("eval/dev/seed-7/set_manifest.json")
 
 PRIMARY_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-N_FOR_PAIR_COLLECTION = 2  # calibrate.py 와 동일
+N_FOR_PAIR_COLLECTION = 2  # same as calibrate.py
 TOP_K = 8
 
 
@@ -45,7 +48,7 @@ def _load_dev() -> tuple[list[Trace], dict[str, dict], dict[str, str]]:
             row = json.loads(line)
             labels[row["trace_id"]] = row
     manifest = json.loads(DEV_MANIFEST_PATH.read_text(encoding="utf-8"))
-    # negative trace_id -> 짝지어진 pattern (manifest pairs 의 pattern 필드)
+    # negative trace_id -> its paired pattern (from the pairs' `pattern` field in the manifest)
     neg_to_pattern: dict[str, str] = {}
     for pair in manifest["pairs"]:
         neg_to_pattern[pair["negative_trace_id"]] = pair["pattern"]
@@ -59,12 +62,12 @@ def main() -> int:
     )
     traces, labels, neg_to_pattern = _load_dev()
 
-    prog_rows: list[dict] = []  # 각: {pattern, cos, origin_text, cand_text, trace_id, source}
+    prog_rows: list[dict] = []  # each: {pattern, cos, origin_text, cand_text, trace_id, source}
     for trace in traces:
         lbl = labels[trace.trace_id]
         waste_ids = set(lbl["waste_span_ids"])
         is_positive = lbl["class"] == "positive"
-        # 이 trace 의 쌍이 '어느 패턴의 clean 인지'
+        # Which pattern's clean twin does this trace belong to?
         if is_positive:
             pattern = lbl["pattern"]
             source = "positive(non-waste)"
@@ -95,9 +98,9 @@ def main() -> int:
     prog_rows.sort(key=lambda r: r["cos"], reverse=True)
     top = prog_rows[:TOP_K]
 
-    print(f"# dev set 진전(prog) 쌍 코사인 상위 {TOP_K}")
+    print(f"# top-{TOP_K} progression (prog) pair cosines on dev set")
     print(f"- model: {PRIMARY_MODEL} @ {revision}")
-    print(f"- prog 쌍 총개수: {len(prog_rows)}")
+    print(f"- total prog pairs: {len(prog_rows)}")
     print()
     for i, r in enumerate(top, 1):
         print(f"## [{i}] cos = {r['cos']:.4f}")
@@ -107,11 +110,11 @@ def main() -> int:
         print(f"- candidate: {r['cand_text']!r}")
         print()
 
-    # 침투(코사인 ≥ φ=0.6515) 분포: 패턴별 카운트
+    # Intrusions (cos ≥ φ=0.6515) — per-pattern count.
     PHI = 0.651453
     intruders = [r for r in prog_rows if r["cos"] >= PHI]
-    print(f"# 침투(cos ≥ φ={PHI}) 분포 — 진전 쌍 중")
-    print(f"- 침투 총개수: {len(intruders)} / {len(prog_rows)} ({len(intruders)/len(prog_rows)*100:.1f}%)")
+    print(f"# intrusions (cos ≥ φ={PHI}) among progression pairs")
+    print(f"- total intrusions: {len(intruders)} / {len(prog_rows)} ({len(intruders)/len(prog_rows)*100:.1f}%)")
     from collections import Counter
 
     by_pattern = Counter((r["pattern"], r["source"]) for r in intruders)

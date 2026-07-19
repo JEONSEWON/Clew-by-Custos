@@ -1,15 +1,16 @@
-"""build_set.py — paired 검증 라벨셋 빌더 (CLI).
+"""build_set.py — paired validation labeled-set builder (CLI).
 
-각 패턴마다 `pairs_per_pattern` 쌍을 생성:
-  - positive 트레이스 1개 + 길이·토폴로지 매칭 clean(negative) 트레이스 1개.
+For each pattern, generates `pairs_per_pattern` pairs:
+  - 1 positive trace + 1 length- and topology-matched clean (negative) trace.
 
-산출:
-  eval/traces/<trace_id>.json   — 트레이스 본문 (라벨 hint 일절 없음)
-  eval/labels.jsonl             — 한 줄 한 라벨 (trace_id로 join)
-  eval/set_manifest.json        — seed/카운트/페어 목록/길이 분포
+Outputs:
+  eval/traces/<trace_id>.json   — trace body (no label hints)
+  eval/labels.jsonl             — one label per line (joined by trace_id)
+  eval/set_manifest.json        — seed / counts / pair list / length distribution
 
-결정론: 같은 seed → 바이트 단위 동일한 산출물. manifest sha256은 CRITERIA_FROZEN.md에
-박혀, 동결 시점 라벨셋과 평가 시점 라벨셋의 일치를 보장한다.
+Determinism: the same seed → byte-identical outputs. The manifest sha256 is
+pinned in CRITERIA_FROZEN.md, guaranteeing that the labeled set at freeze
+time matches the labeled set at evaluation time.
 """
 
 from __future__ import annotations
@@ -111,7 +112,7 @@ def build_set(*, seed: int, pairs_per_pattern: int, out_dir: Path) -> dict[str, 
 
     labels_path.write_text("\n".join(labels_lines) + "\n", encoding="utf-8", newline="\n")
 
-    # 산출물 sha — 트레이스 본문 변경이 manifest sha에 반영되도록.
+    # Artifact sha — trace-body changes must be reflected in the manifest sha.
     labels_sha = hashlib.sha256(labels_path.read_bytes()).hexdigest()
     combined = hashlib.sha256()
     for fname in sorted(written_trace_files):

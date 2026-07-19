@@ -1,11 +1,14 @@
-"""패턴 생성기 공통 헬퍼.
+"""Common helpers for pattern generators.
 
-전략: positive/clean 트윈은 *동일한 구조 토폴로지*(span_kind/agent_or_node_id/parent-child
-시퀀스)를 갖고, **출력 텍스트의 의미적 진전 유무만** 차이를 갖는다. 그래야 구조 단독
-탐지기가 패턴을 못 외워 자기기만(v1 재발)이 차단된다.
+Strategy: positive/clean twins share an *identical structural topology*
+(span_kind / agent_or_node_id / parent-child sequence) and differ **only**
+in whether the output text carries semantic progression. That way a
+structural-only detector cannot memorize the pattern — the v1
+self-deception failure mode is blocked.
 
-직접 합성 — 실제 LangGraph 실행이 아니라 정규 Trace 모델로 합성한다. 결정론·정확한
-ground-truth·토폴로지 통제를 위해. (어댑터 자체는 단계 4에서 별도 검증됨.)
+Direct synthesis — we build canonical Trace models rather than actually
+running LangGraph. For determinism, exact ground-truth, and topology
+control. (The adapter itself is validated separately in stage 4.)
 """
 
 from __future__ import annotations
@@ -17,7 +20,8 @@ from typing import Literal
 
 from clew.model import Span, SpanKind, Trace
 
-# 라벨 hint 금지 단어. 트레이스 본문에 들어가면 누수 — 테스트로 강제.
+# Forbidden label-hint words. If any appears in a trace body it's a leak —
+# enforced by test.
 FORBIDDEN_HINTS = (
     "waste",
     "duplicate",
@@ -36,7 +40,7 @@ T0 = datetime(2026, 1, 1, tzinfo=UTC)
 
 @dataclass
 class GenContext:
-    """결정론적 생성 컨텍스트."""
+    """Deterministic generation context."""
 
     rng: random.Random
     trace_id: str
@@ -57,9 +61,10 @@ class GeneratedTrace:
     waste_span_ids: list[str]
     pattern: str
     class_: Literal["positive", "negative"]
-    # 낭비-라벨된 스팬 → 그 스팬의 *의미적 원본* 스팬 (현실성 가드 입력).
-    # 예: repeat_node의 2회차 analyze는 1회차 analyze가 원본.
-    # 비어있는 경우 가드 면제(requery_known은 byte-identical 재조회가 정상 신호).
+    # Waste-labeled span → its *semantic origin* span (input to the realism guard).
+    # e.g. in repeat_node, the 2nd analyze's origin is the 1st analyze.
+    # Empty means the guard is skipped (requery_known's byte-identical
+    # re-lookup is the normal signal).
     near_duplicate_of: dict[str, str] = field(default_factory=dict)
 
 
@@ -99,7 +104,7 @@ def span(
 
 
 def make_trace(ctx: GenContext, spans: list[Span]) -> Trace:
-    """트레이스 본문에 패턴/라벨 hint 정보를 절대 넣지 않는다."""
+    """Never put pattern/label-hint info into the trace body."""
     return Trace(
         trace_id=ctx.trace_id,
         spans=spans,
@@ -108,10 +113,11 @@ def make_trace(ctx: GenContext, spans: list[Span]) -> Trace:
 
 
 def topology_signature(trace: Trace) -> list[tuple[str, str, str]]:
-    """트레이스의 구조 토폴로지 시그니처.
+    """Structural topology signature of a trace.
 
-    start_time 정렬 후, 각 스팬을 (agent_or_node_id, span_kind, parent_agent_or_node_id)
-    튜플로 표현. positive와 clean 트윈이 *정확히 같은 시그니처*를 가져야 한다.
+    After ordering by start_time, each span is represented as a
+    (agent_or_node_id, span_kind, parent_agent_or_node_id) tuple. The
+    positive and clean twins must have *exactly the same signature*.
     """
     by_id = {s.span_id: s for s in trace.spans}
     ordered = sorted(trace.spans, key=lambda s: s.start_time)

@@ -1,11 +1,12 @@
-"""pingpong_aba 패턴.
+"""pingpong_aba pattern.
 
-구조: root → start → A → B → A → B → finalize (A·B 각 2회씩 핑퐁)
-positive: 2회차 A,B가 1회차의 작업/결론을 반복.
-clean   : A·B의 매 방문이 의미적 진전(다음 라운드는 이전 결과 위에 쌓임).
+Structure: root → start → A → B → A → B → finalize (A and B ping-pong twice each).
+positive: the 2nd A and 2nd B repeat the work/conclusion of the 1st round.
+clean   : every visit to A/B makes semantic progress (each round builds on
+          the previous result).
 
-토폴로지는 positive/clean 동일.
-낭비 라벨: positive의 2회차 A, 2회차 B.
+Topology is identical between positive and clean.
+Waste label: the 2nd A and 2nd B in the positive trace.
 """
 
 from __future__ import annotations
@@ -92,14 +93,16 @@ def _topology(ctx, outs: dict[str, str]) -> tuple[Trace, dict[str, str]]:
             output_text="report ready",
         ),
     ]
-    # ids 매핑(역할명 → span_id) 반환 — 호출자가 near_duplicate_of 등 구성용.
+    # Return a role-name → span_id mapping so the caller can build
+    # e.g. near_duplicate_of.
     ids = {"a1": a1_id, "b1": b1_id, "a2": a2_id, "b2": b2_id}
     return make_trace(ctx, spans), ids
 
 
 def make_positive(*, trace_id: str, seed: int) -> GeneratedTrace:
     ctx = make_context(seed=seed, trace_id=trace_id)
-    # 2회차가 1회차의 같은 결론을 표면만 바꿔 다시 말함 (LLM 재호출의 전형적 형태).
+    # The 2nd round restates the same conclusion as the 1st in slightly
+    # different wording (the typical shape of an LLM re-invocation).
     outs = {
         "a1": "A 제안: 캠페인 X를 4분기 우선 항목으로 추진",
         "b1": "B 응답: 캠페인 X에 동의",
