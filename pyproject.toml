@@ -1,6 +1,6 @@
 [project]
 name = "clew-custos"
-version = "0.1.0"
+version = "0.2.0"
 description = "Detect wasteful cycles in multi-agent traces (Custos / Clew, S0 MVP)."
 authors = [{ name = "Custos" }]
 readme = "README.md"
@@ -39,6 +39,12 @@ adapter = [
     "opentelemetry-api>=1.25",
 ]
 detect = [
+    # 경량 탐지: tool 반복/재조회 (sha256 구조 게이트).
+    # structural.py / cascade.py 는 stdlib + base pydantic 만 사용 → 추가 패키지 0.
+    # extra 이름 유지 (v0.1.x 명명 일관성), 의미 재정의: 무거운 스택은 [semantic]로 이동.
+]
+semantic = [
+    # LLM/chain 노드 재작성 중복 (cos >= phi) — 의미 게이트 활성화 시에만 필요.
     # reproducibility freeze: SHA verified reproducible on this version set (stage18 release prep).
     "sentence-transformers==5.5.1",
     "transformers==5.0.0",
@@ -47,6 +53,9 @@ detect = [
 ]
 dev = [
     "pytest>=8.0",
+]
+all = [
+    "clew-custos[detect,semantic,adapter]",
 ]
 
 [project.urls]
