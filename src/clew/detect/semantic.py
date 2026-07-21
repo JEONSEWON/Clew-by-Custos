@@ -80,8 +80,17 @@ class Embedder:
         return [float(x) for x in vec.tolist()]
 
     def _load_model(self) -> None:
-        import torch  # type: ignore[import-not-found]
-        from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+        try:
+            import torch  # type: ignore[import-not-found]
+            from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+        except ImportError as e:
+            raise ImportError(
+                "The semantic gate (cos >= phi) requires the [semantic] extra:\n"
+                "  pip install 'clew-custos[semantic]'\n"
+                "On Linux, avoid pulling the CUDA torch stack by installing CPU-only torch first:\n"
+                "  pip install torch --index-url https://download.pytorch.org/whl/cpu\n"
+                f"cause: {e}"
+            ) from e
 
         torch.manual_seed(0)
         self._model = SentenceTransformer(self.model_name, revision=self.revision)
