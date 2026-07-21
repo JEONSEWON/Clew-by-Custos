@@ -92,7 +92,7 @@ Beyond labeled and real-user data, Clew ran unmodified over **Toolathlon** — 2
 
 ## Cost estimation
 
-Every wasted step in a Claude Code trace has a knock-on cost: the stale tool result stays in the trajectory and is **re-consumed as input on every subsequent turn**. Naive single-consumption math makes waste look trivial (~$0.001); the real number is the wasted output *times the remaining turns*.
+Every wasted step in a Claude Code trace has a knock-on cost: the stale tool result stays in the trajectory and is **re-consumed as input on every subsequent turn**. Naive single-consumption math makes waste look trivial (~$0.001); the real number is the wasted output *times the remaining turns*.[^cache]
 
 Formula per waste span:
 
@@ -110,6 +110,21 @@ Where `waste_tokens_i` comes directly from the vendor's `cache_creation_input_to
 - The range spans cache-hit (lower) to cache-miss (upper); the exact split is not observable from Anthropic usage.
 - **Claude Code sessions only.** Other adapters (OTel, OpenInference, Toolathlon) still detect waste, but do not populate the cache-token fields the amplification calculator needs. Those reports show waste-detected without a dollar figure.
 - Attribution assumes Sonnet 4.5 pricing.
+- Clew reports **detected waste**, not intervention. Independent research on removing
+  redundant trajectory content — e.g. AgentDiet[^agentdiet] — reports downstream
+  savings in a different setup (21.1–35.9% total cost, 39.9–59.7% input tokens on two
+  coding benchmarks); those are that paper's numbers, not Clew's, and are cited only
+  to flag the detection→intervention gap that Clew's report leaves for the user.
+
+[^cache]: Prompt-cache economics in long-horizon agent workloads — including the
+41–80% cost reduction range from strategic cache placement — are measured empirically
+in Lumer et al., *Don't Break the Cache*
+([arXiv:2601.06007](https://arxiv.org/abs/2601.06007)). Those numbers describe optimal
+caching, not Clew's estimator; Clew's `lower_i`–`upper_i` bracket assumes the wasted
+output is re-consumed and prices it under the observed cache-hit vs cache-miss split.
+
+[^agentdiet]: Xiao et al., *Reducing Cost of LLM Agents with Trajectory Reduction
+(AgentDiet)*, [arXiv:2509.23586](https://arxiv.org/abs/2509.23586).
 
 ---
 
@@ -152,6 +167,30 @@ This repo treats anti-self-deception as a working discipline, not a slogan:
 
 ```bash
 pip install "clew-custos[detect]"
+```
+
+**What `[detect]` covers vs. what `[semantic]` adds:**
+
+- **`[detect]`** (default, lightweight — no torch): tool-call repeat / requery
+  detection via the sha256 structural gate. Works on Claude Code JSONL, Toolathlon,
+  RedundancyBench, and any OTel/OpenInference trace whose duplicated work sits at the
+  tool layer. This is where every empirically validated detection so far comes from.
+- **`[semantic]`** (optional, ~2 GB with CUDA torch): adds the cosine gate for
+  non-tool spans (cos ≥ φ), required for LangGraph chain-node paraphrase duplication
+  (same node running twice with reworded but semantically overlapping output). The
+  pingpong code path also flows through this gate — see the honesty note above; it has
+  fired only on synthetic traces so far.
+
+```bash
+pip install "clew-custos[semantic]"
+```
+
+On Linux, PyPI's default torch wheel pulls the CUDA stack (~2 GB). To use CPU-only
+torch, install it first from the PyTorch CPU index:
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install "clew-custos[semantic]"
 ```
 
 Or from source:
