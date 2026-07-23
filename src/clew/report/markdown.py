@@ -42,6 +42,28 @@ _POSSIBLE_CAUSES = (
     "trace; treat those as *state change uncertain* rather than confirmed waste.\n"
 )
 
+_CATEGORY_CAUSES = (
+    "## What each category typically points to\n"
+    "\n"
+    "These are common origins — not diagnoses. Detection is unchanged.\n"
+    "\n"
+    "- **error_repeat** — the agent received the same error response twice. "
+    "Usually the tool arguments are wrong and the agent re-runs with the "
+    "same arguments without addressing the error message.\n"
+    "- **side_effect** — a state-changing tool was invoked twice with the "
+    "same arguments. Beyond wasted tokens, real side effects (duplicate "
+    "sends, duplicate creates, etc.) may have occurred. Confirm the "
+    "operation is safe to run more than once.\n"
+    "- **idempotent** — a read-only or declarative tool was called "
+    "repeatedly. This category assumes the tool has no side effect, based "
+    "on the tool name; whether that holds in your setup, and whether the "
+    "underlying state truly did not change between the two calls, needs "
+    "verification against your execution context.\n"
+    "- **unclassified** — the tool's effect depends on the arguments passed "
+    "(command text, code, query body), so the tool name alone cannot "
+    "classify it. Human review needed.\n"
+)
+
 _CATEGORY_NOTE = (
     "## About categories\n"
     "\n"
@@ -221,6 +243,7 @@ def render_markdown(
             lines.append("")
 
     lines.append(_POSSIBLE_CAUSES)
+    lines.append(_CATEGORY_CAUSES)
     lines.append(_CATEGORY_NOTE)
     lines.append(_FOOTER)
     return "\n".join(lines)
