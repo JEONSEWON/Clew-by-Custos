@@ -47,6 +47,17 @@ Frozen parameters (never hand-tuned): `phi = 0.514345`, `N = 2`, embedding model
 
 A report entry also carries a per-file state check — "no modification in between" vs "**File was modified in between** — may be a legitimate re-read" — so you can tell forced re-reads (waste) from legitimate ones. Tool-error responses (`is_error: true` in Anthropic tool_result) are excluded from waste with an explicit count in the report.
 
+### Waste categories
+
+Each waste pair also carries a report-only category label with a short note on what that category typically points to. The label does **not** affect detection — the cascade output is unchanged; the label is layered on top of it for the reader.
+
+- **`error_repeat`** — the response matches an error pattern (same call repeated after a failure). Usually the tool arguments are wrong and the agent re-runs with the same arguments without addressing the error message.
+- **`side_effect`** — a state-changing tool (`Edit`, `Write`, `github-create_pull_request`, …) was invoked twice with the same arguments. Beyond wasted tokens, real side effects may have occurred; the report flags this for review rather than confirming impact.
+- **`idempotent`** — a read-only or declarative tool (`Read`, `filesystem-list_directory`, …) was called repeatedly. This assumes the tool has no side effect **based on the tool name**, not a runtime guarantee. Whether that assumption holds in your setup — and whether state truly did not change between the two calls — needs verification against your execution context.
+- **`unclassified`** — the tool's effect depends on the payload (command text, code, query body). `Bash`, `PowerShell`, `local-python-execute`, `terminal-run_command`, and `bigquery_run_query` are kept here — the tool name alone cannot classify them, so we don't try. Human review needed.
+
+The mapping is by **exact tool name**, never inferred from name substrings.
+
 ---
 
 ## Where it stands
@@ -74,25 +85,29 @@ Public dataset ([trace-commons/agent-traces](https://huggingface.co/datasets/tra
 
 - **28 / 28** sessions processed, **0 crashes**.
 - **10 / 28** flagged as wasteful (34 waste spans in the cascade output; 32 kept after the tool-error gate).
-- Aggregate saving potential (across all wasteful sessions): **$1.01 ~ $10.12** (cache-hit lower to cache-miss upper).
-- Per-session range: $0 (no waste) up to $0.64 ~ $6.40 (one session, 18 waste spans).
+- Aggregate saving potential (across all wasteful sessions): **\$1.01 ~ \$10.12** (cache-hit lower to cache-miss upper).
+- Per-session range: \$0 (no waste) up to \$0.64 ~ \$6.40 (one session, 18 waste spans).
 
 **Honest scope:** trace-commons has **no step-level ground truth** — the 34 spans are cascade-flagged candidates plus a state-change check per file, not annotator-verified waste. Precision lives on RedundancyBench; scale on real data lives here.
 
-### Toolathlon — 7,116 trajectories, cross-model scale
+### Toolathlon — 6,780 trajectories, cross-model scale
 
-Beyond labeled and real-user data, Clew ran unmodified over **Toolathlon** — 22 frontier models × 3 runs ([arXiv:2510.25726](https://arxiv.org/abs/2510.25726), CC-BY-4.0):
+Beyond labeled and real-user data, Clew ran unmodified over **Toolathlon** — 22 frontier models × 3 runs ([arXiv:2510.25726](https://arxiv.org/abs/2510.25726), CC-BY-4.0). On 6,780 trajectories with 176,270 tool spans, Clew flagged **8,042 duplicate pairs**.
 
-- **8,042 waste candidates** flagged across 176,270 tool spans, in 32 seconds.
-- Candidate density varies **54× across models** (0.157 – 8.463 per trajectory).
+Breaking those pairs down by the report-only category labels above:
 
-**Honest scope:** Toolathlon ships only pass/fail labels, not step-level ground truth. These are **candidates**, not verified waste — "model X wastes 54× more than model Y" would over-claim (no labels; task-mix and success-rate confounds uncontrolled).
+- **47% are the `idempotent` grey area** — read-only or completion-declaration re-runs whose "is this really waste?" answer depends on whether the underlying state changed between calls. Excluding this grey area leaves **4,251 pairs (2.41% of tool spans)** — roughly **3× the rate seen on Claude Code sessions (0.80%)**.
+- **1,343 pairs are `side_effect` — state-changing tools re-invoked with the same arguments**, including **459 duplicate email-send pairs**. This is a detection of duplicate invocations with matching arguments; whether a real side effect actually occurred is not confirmed by the trace.
+
+Toolathlon is benchmark trajectories, not real user sessions. The Toolathlon adapter provides no token information, so no cost estimate is produced for these traces.
+
+**Honest scope:** Toolathlon ships only pass/fail labels, not step-level ground truth. Candidate density varies 54× across models (0.157 – 8.463 per trajectory), but "model X wastes 54× more than model Y" would over-claim — no labels; task-mix and success-rate confounds uncontrolled.
 
 ---
 
 ## Cost estimation
 
-Every wasted step in a Claude Code trace has a knock-on cost: the stale tool result stays in the trajectory and is **re-consumed as input on every subsequent turn**. Naive single-consumption math makes waste look trivial (~$0.001); the real number is the wasted output *times the remaining turns*.[^cache]
+Every wasted step in a Claude Code trace has a knock-on cost: the stale tool result stays in the trajectory and is **re-consumed as input on every subsequent turn**. Naive single-consumption math makes waste look trivial (~\$0.001); the real number is the wasted output *times the remaining turns*.[^cache]
 
 Formula per waste span:
 
