@@ -10,6 +10,7 @@ Extracts:
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,6 +19,203 @@ from clew.report._model import WasteDetail
 
 _EDIT_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 _FILE_KEYS = ("file_path", "path", "filename", "notebook_path")
+
+# ─────────────────────────────── Category classification ─────────────────────
+# Report-side waste labels. Detection is unchanged; this only annotates what
+# structural + cascade already picked. See field_test/diagnostics/phase3_classify_waste.py
+# for the empirical basis (Toolathlon 8,042 pairs). Categories:
+#   error_repeat  — output matches an error pattern
+#   side_effect   — a known state-changing tool re-executed
+#   idempotent    — a known read-only/declarative/idempotent tool re-executed
+#   unclassified  — tool name not in either mapping. Includes Bash/PowerShell,
+#                   local-python-execute, terminal-run_command, and
+#                   bigquery_run_query: their effect depends on the payload
+#                   (command / code / SQL text), never inferred from the name.
+
+_ERROR_RE = re.compile(
+    r"(?ix)"
+    r"(?:^|[^A-Za-z])error(?:\s|:|\b)|"
+    r"error\s+running\s+tool|"
+    r"missing\s+required\s+parameter|"
+    r"cannot\s+specify\s+both|"
+    r"no\s+such\s+file\s+or\s+directory|"
+    r"traceback\s*\(most\s+recent|"
+    r"exception\s*:|"
+    r"^failed\b|"
+    r"permission\s+denied|"
+    r"\"is_error\"\s*:\s*true|"
+    r"\"error\"\s*:\s*true|"
+    r"timed?\s*out|"
+    r"http\s*[45]\d\d|"
+    r"invalid[_ ]request|"
+    r"not\s+found\b|"
+    r"unauthorized|"
+    r"resource\s+not\s+found"
+)
+
+_IDEMPOTENT_TOOLS = frozenset({
+    # Claude Code (verified read-only)
+    "Read", "Grep", "Glob", "LS",
+    # Toolathlon — declarative
+    "local-claim_done",
+    # filesystem-create_directory: state-changing tool, but the second call makes
+    # no actual change (directory already exists) — sample [17] hit this 110×.
+    "filesystem-create_directory",
+    # Toolathlon — filesystem reads
+    "filesystem-read_file", "filesystem-list_directory", "filesystem-list_allowed_directories",
+    "filesystem-search_files", "filesystem-get_file_info", "filesystem-read_multiple_files",
+    # github reads
+    "github-get_file_contents", "github-list_commits", "github-get_issue", "github-get_commit",
+    "github-search_code", "github-search_issues", "github-search_repositories",
+    "github-list_files", "github-list_issues", "github-list_pull_requests",
+    "github-get_pull_request", "github-list_branches", "github-get_repository",
+    "github-get_pull_request_files", "github-get_pull_request_reviews",
+    "github-list_repositories", "github-list_organization_repositories",
+    # pdf reads
+    "pdf-tools-read_pdf_pages", "pdf-tools-get_pdf_info", "pdf-tools-search_pdf_content",
+    "pdf-tools-extract_tables", "pdf-tools-summarize_pdf",
+    # excel reads
+    "excel-read_data_from_excel", "excel-get_workbook_metadata", "excel-list_sheets",
+    # SQL reads
+    "snowflake-read_query",
+    # BigQuery reads (bigquery_run_query intentionally omitted — SQL can INSERT/UPDATE/DDL)
+    "google-cloud-bigquery_list_datasets",
+    "google-cloud-bigquery_get_dataset_info", "google-cloud-bigquery_list_tables",
+    "google-cloud-bigquery_get_table",
+    # google sheets reads
+    "google_sheet-get_sheet_data", "google_sheet-list_spreadsheets",
+    # k8s reads
+    "k8s-kubectl_get", "k8s-kubectl_describe", "k8s-kubectl_logs",
+    # yahoo finance (all reads)
+    "yahoo-finance-get_stock_price_by_date", "yahoo-finance-get_historical_stock_prices",
+    "yahoo-finance-get_holder_info", "yahoo-finance-get_stock_info",
+    "yahoo-finance-get_dividends", "yahoo-finance-get_financials",
+    "yahoo-finance-get_recommendations",
+    # canvas lists / gets
+    "canvas-canvas_list_account_users", "canvas-canvas_list_quizzes", "canvas-canvas_list_courses",
+    "canvas-canvas_list_assignments", "canvas-canvas_list_submissions",
+    "canvas-canvas_list_enrollments", "canvas-canvas_get_course", "canvas-canvas_get_assignment",
+    "canvas-canvas_get_submission", "canvas-canvas_get_user",
+    # local reads / search
+    "local-web_search", "local-search_overlong_tooloutput", "local-view_overlong_tooloutput",
+    "local-view_overlong_tooloutput_navigate",
+    # fetch
+    "fetch-fetch_html", "fetch-fetch_json", "fetch-fetch",
+    # emails reads
+    "emails-read_email", "emails-search_emails", "emails-list_emails",
+    # maps reads
+    "google_map-maps_geocode", "google_map-maps_search_places", "google_map-maps_directions",
+    "google_map-maps_reverse_geocode",
+    # playwright reads (snapshot / query)
+    "playwright_with_chunk-browser_snapshot",
+    "playwright_with_chunk-browser_snapshot_search",
+    "playwright_with_chunk-browser_snapshot_navigate_to_next_span",
+    "playwright_with_chunk-browser_snapshot_navigate_to_span",
+    "playwright_with_chunk-browser_wait_for",
+    # notion reads
+    "notion-API-post-search", "notion-API-get-database", "notion-API-get-page",
+    "notion-API-get-block-children", "notion-API-get-users",
+    "notion-API-retrieve-database", "notion-API-retrieve-page",
+    # wandb
+    "wandb-query_wandb_tool",
+    # woocommerce reads
+    "woocommerce-woo_products_list", "woocommerce-woo_orders_list",
+    # rail reads
+    "rail_12306-get-tickets", "rail_12306-get-stations", "rail_12306-get-station-info",
+    "rail_12306-station-by-code", "rail_12306-station-by-name",
+    # pptx reads
+    "pptx-extract_presentation_text", "pptx-get_presentation_info", "pptx-list_slides",
+    # word reads
+    "word-read_document", "word-get_document_info",
+})
+
+_SIDE_EFFECT_TOOLS = frozenset({
+    # Claude Code (verified state-changing)
+    "Write", "Edit", "MultiEdit", "NotebookEdit",
+    # Toolathlon — filesystem writes/moves/edits (create_directory belongs to idempotent above)
+    "filesystem-write_file", "filesystem-edit_file", "filesystem-move_file",
+    "filesystem-copy_file", "filesystem-delete_file",
+    # github state changes
+    "github-create_or_update_file", "github-delete_file", "github-create_issue",
+    "github-create_pull_request", "github-update_issue", "github-create_repository",
+    "github-add_labels", "github-create_comment", "github-merge_pull_request",
+    "github-update_pull_request", "github-create_branch", "github-close_issue",
+    "github-add_issue_comment", "github-push_files", "github-fork_repository",
+    # emails send
+    "emails-send_email", "emails-send", "emails-reply", "emails-forward",
+    # SQL write
+    "snowflake-write_query",
+    # excel writes
+    "excel-write_data_to_excel", "excel-add_sheet", "excel-format_cells",
+    "excel-delete_sheet", "excel-rename_sheet",
+    # word writes
+    "word-create_document", "word-add_paragraph", "word-format_text",
+    "word-add_heading", "word-add_table", "word-save_document",
+    # sheets writes
+    "google_sheet-update_cells", "google_sheet-append_values", "google_sheet-clear_range",
+    "google_sheet-create_spreadsheet", "google_sheet-add_sheet",
+    "google-cloud-logging_write_log",
+    # forms
+    "google_forms-create_form", "google_forms-add_question",
+    # notion writes
+    "notion-API-post-page", "notion-API-patch-page", "notion-API-patch-block-children",
+    "notion-API-post-database", "notion-API-post-page-property",
+    "notion-API-delete-block", "notion-API-post-database-query",
+    # woocommerce writes
+    "woocommerce-woo_products_update", "woocommerce-woo_products_create",
+    "woocommerce-woo_orders_update", "woocommerce-woo_orders_create",
+    # canvas state changes
+    "canvas-canvas_enroll_user", "canvas-canvas_unenroll_user",
+    "canvas-canvas_create_course", "canvas-canvas_update_course", "canvas-canvas_delete_course",
+    "canvas-canvas_create_announcement", "canvas-canvas_create_conversation",
+    "canvas-canvas_upload_file_from_path", "canvas-canvas_upload_file",
+    "canvas-canvas_create_assignment", "canvas-canvas_update_assignment",
+    "canvas-canvas_create_quiz", "canvas-canvas_update_quiz",
+    "canvas-canvas_create_module", "canvas-canvas_create_page",
+    # k8s state changes
+    "k8s-kubectl_create", "k8s-kubectl_apply", "k8s-kubectl_delete",
+    "k8s-kubectl_replace", "k8s-kubectl_patch", "k8s-kubectl_scale",
+    # playwright interactions (state changes)
+    "playwright_with_chunk-browser_click", "playwright_with_chunk-browser_type",
+    "playwright_with_chunk-browser_navigate", "playwright_with_chunk-browser_press_key",
+    "playwright_with_chunk-browser_close", "playwright_with_chunk-browser_scroll",
+    "playwright_with_chunk-browser_hover", "playwright_with_chunk-browser_select_option",
+    "playwright_with_chunk-browser_fill", "playwright_with_chunk-browser_upload_file",
+    "playwright_with_chunk-browser_drag", "playwright_with_chunk-browser_tab_new",
+    "playwright_with_chunk-browser_tab_close",
+    # rail booking
+    "rail_12306-buy-tickets", "rail_12306-book-tickets", "rail_12306-cancel-tickets",
+    # pptx writes
+    "pptx-open_presentation", "pptx-save_presentation", "pptx-add_slide",
+    "pptx-update_slide", "pptx-delete_slide",
+})
+
+
+def _output_head(text: str, limit: int = 400) -> str:
+    """Head of tool output. If JSON-wrapped, unwrap first `text` field (Toolathlon shape)."""
+    s = (text or "")[:limit + 200]
+    m = re.search(r'"text"\s*:\s*"([^"\\]{0,600}(?:\\.[^"\\]{0,600}){0,5})"', s)
+    if m:
+        return m.group(1)[:limit]
+    return s[:limit]
+
+
+def _classify_category(cand: Span) -> str:
+    """Report-side label. Order: error → idempotent → side-effect → unclassified.
+
+    Tool-name based only — never infer effect from name substrings (e.g. "put"
+    in "tooloutput" is not a write). Unknown tools and payload-dependent tools
+    (Bash, PowerShell, local-python-execute, terminal-run_command,
+    bigquery_run_query) stay unclassified.
+    """
+    if _ERROR_RE.search(_output_head(cand.output_text)):
+        return "error_repeat"
+    name = cand.agent_or_node_id
+    if name in _IDEMPOTENT_TOOLS:
+        return "idempotent"
+    if name in _SIDE_EFFECT_TOOLS:
+        return "side_effect"
+    return "unclassified"
 
 
 @dataclass
@@ -32,6 +230,7 @@ class EnrichedDetail:
     modified_in_between: bool
     state_change_uncertain: bool  # True when file_path unavailable (e.g. Bash)
     input_summary: str  # fallback display when neither file_path nor command
+    category: str  # error_repeat | side_effect | idempotent | unclassified
 
 
 @dataclass
@@ -124,5 +323,6 @@ def enrich(trace: Trace, details: list[WasteDetail]) -> EnrichmentResult:
             modified_in_between=modified,
             state_change_uncertain=uncertain,
             input_summary=summary,
+            category=_classify_category(c),
         ))
     return EnrichmentResult(enriched=out, n_skipped_error=n_skipped_error)

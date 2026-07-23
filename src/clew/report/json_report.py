@@ -56,6 +56,7 @@ def render_json(
             "total_turns": ed.total_turns,
             "modified_in_between": ed.modified_in_between,
             "state_change_uncertain": ed.state_change_uncertain,
+            "category": ed.category,
         }
         ev = ev_by_sid.get(wd.candidate.span_id)
         if ev is not None:
@@ -107,13 +108,19 @@ def render_json(
         "total_cost_wasted": round(total_cost, 8) if total_cost is not None else "unknown",
         "amplification": amp_block,
         "n_skipped_error_details": enrichment.n_skipped_error,
+        "category_counts": {
+            c: sum(1 for ed in enrichment.enriched if ed.category == c)
+            for c in ("error_repeat", "side_effect", "idempotent", "unclassified")
+        },
         "waste_details": waste_details_list,
         "note": (
             "Detection thresholds were calibrated on synthetic traces; "
             "real-trace calibration is in progress. Borderline matches "
             "(cosine near 0.51) deserve human review. Amplification cost "
             "is estimated saving potential (cache-hit lower to cache-miss upper), "
-            "not measured — assumes wasted output is re-consumed each subsequent turn."
+            "not measured — assumes wasted output is re-consumed each subsequent turn. "
+            "Category labels are report-only annotations; detection is unchanged. "
+            "Whether an idempotent re-run is truly waste depends on user context."
         ),
     }
 
