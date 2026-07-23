@@ -42,6 +42,25 @@ _POSSIBLE_CAUSES = (
     "trace; treat those as *state change uncertain* rather than confirmed waste.\n"
 )
 
+_CATEGORY_NOTE = (
+    "## About categories\n"
+    "\n"
+    "The `[category]` tag on each waste pair is a **report-only annotation** — "
+    "it does not affect what was flagged as waste. Detection is unchanged.\n"
+    "\n"
+    "- `error_repeat` — output matches an error pattern (same call repeated after failure)\n"
+    "- `side_effect` — tool with known state-changing effect "
+    "(e.g. `Edit`, `github-create_pull_request`)\n"
+    "- `idempotent` — tool is read-only or declarative "
+    "(e.g. `Read`, `filesystem-list_directory`); whether *this* re-run is actually "
+    "wasted depends on user context (was the state truly unchanged?)\n"
+    "- `unclassified` — tool name not in either mapping. Includes `Bash`, `PowerShell`, "
+    "`local-python-execute`, `terminal-run_command`, and `bigquery_run_query`: their "
+    "effect depends on the payload, not the tool name.\n"
+    "\n"
+    "The mapping is by tool name only — never inferred from name substrings.\n"
+)
+
 
 def _event_lookup(amp: AmplificationEstimate | None) -> dict[str, AmplificationEvent]:
     if amp is None:
@@ -78,7 +97,7 @@ def _render_pair(idx: int, ed: EnrichedDetail, ev: AmplificationEvent | None) ->
     else:
         modif_line = "No modification of this file in between — re-read output is unchanged."
 
-    lines.append(f"### {idx}. {label} — {tool} on {target}")
+    lines.append(f"### {idx}. [{ed.category}] {label} — {tool} on {target}")
     lines.append("")
     lines.append(f"- **turns**: {turn_phrase}")
     lines.append(f"- **cosine**: {ed.detail.cosine:.4f}")
@@ -134,6 +153,18 @@ def render_markdown(
     lines.append("")
     lines.append(f"- **wasted spans**: {len(cr.waste_span_ids)}")
 
+    # Enrich once — reused for category breakdown + per-pair rendering below.
+    enrichment = enrich(trace, details)
+    if enrichment.enriched:
+        cat_counts: dict[str, int] = {}
+        for ed in enrichment.enriched:
+            cat_counts[ed.category] = cat_counts.get(ed.category, 0) + 1
+        cat_line = ", ".join(
+            f"{cat_counts.get(c, 0)} {c}"
+            for c in ("error_repeat", "side_effect", "idempotent", "unclassified")
+        )
+        lines.append(f"- **category breakdown**: {cat_line}")
+
     if amplification is not None and amplification.n_events > 0:
         lo = amplification.lower_usd
         up = amplification.upper_usd
@@ -169,7 +200,6 @@ def render_markdown(
     lines.append("## Wasted Span Details")
     lines.append("")
 
-    enrichment = enrich(trace, details)
     if enrichment.n_skipped_error > 0:
         lines.append(
             f"_Skipped **{enrichment.n_skipped_error}** error-response span(s) "
@@ -191,5 +221,6 @@ def render_markdown(
             lines.append("")
 
     lines.append(_POSSIBLE_CAUSES)
+    lines.append(_CATEGORY_NOTE)
     lines.append(_FOOTER)
     return "\n".join(lines)
