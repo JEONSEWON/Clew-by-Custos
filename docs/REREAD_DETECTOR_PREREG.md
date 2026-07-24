@@ -305,3 +305,116 @@ Still open (do not block pre-registration merge):
 
 All four diagnostic scripts remain untracked under `field_test/diagnostics/`
 per `feedback_diagnostics_uncommitted`.
+
+## 11. Results (post-implementation measurement) — KILL verdict
+
+Post-registration measurement on branch `feat/reread-detector` (commits
+`6ddb3bf` `find_reread_candidates`, `a615bb1` cascade gates, `706e19b` unit
+tests). Branch never merged.
+
+### 11.1 K4 — precision on 30-pair random sample
+
+Reproduced 2026-07-24 via `field_test/diagnostics/phase2_k4_offset_limit_table.py`
+(untracked). Pool = 209 same-path Read pairs after compact + state-change +
+shell-conservative gates. Random seed = 42.
+
+| # | session | path | o.off/lim | c.off/lim | args= | out= |
+|---:|---|---|:---:|:---:|:---:|:---:|
+| 1 | 07b57159 | animation.c | -/100 | 100/100 | N | N |
+| 2 | 07b57159 | meme.py | 168/10 | 20/155 | N | N |
+| 3 | 07b57159 | cli.py | 50/20 | 140/30 | N | N |
+| 4 | 17c2cf98 | main.c | 163/100 | 260/40 | N | N |
+| 5 | 17c2cf98 | seed.c | 1/30 | 30/80 | N | N |
+| 6 | 17c2cf98 | js_runtime.c | -/80 | 80/150 | N | N |
+| 7 | 17c2cf98 | js_runtime.c | 80/150 | 230/100 | N | N |
+| 8 | 39082932 | parser.cpp | 165/45 | 211/25 | N | N |
+| 9 | 4222016d | character.odin | 68/10 | 190/50 | N | N |
+| 10 | 4222016d | creation.odin | 132/12 | 303/15 | N | N |
+| 11 | 4222016d | creation.odin | 220/6 | 303/15 | N | N |
+| 12 | 4222016d | main.odin | 330/50 | 18/15 | N | N |
+| 13 | 4222016d | title.odin | 118/30 | 148/20 | N | N |
+| 14 | 4222016d | creation.odin | 1/45 | 17/5 | N | N |
+| 15 | 7563bddf | [username].tsx | 130/30 | 156/105 | N | N |
+| 16 | 7563bddf | [username].tsx | 130/30 | 260/80 | N | N |
+| 17 | 7563bddf | [subreddit].tsx | 48/5 | 118/18 | N | N |
+| 18 | 860618e1 | index.css | 455/15 | 575/20 | N | N |
+| **19** | **860618e1** | **apple-style-guide.pdf** | **-/-** | **-/-** | **Y** | **Y** |
+| 20 | a20a4070 | main.odin | 860/60 | 940/120 | N | N |
+| 21 | a20a4070 | main.odin | 80/60 | 963/40 | N | N |
+| 22 | c99032e9 | solver.c | 54/8 | 80/10 | N | N |
+| 23 | c99032e9 | solver.c | 80/10 | 274/20 | N | N |
+| 24 | c99032e9 | builtins.c | 47/18 | 30/20 | N | N |
+| 25 | c99032e9 | parser.c | 135/40 | 63/30 | N | N |
+| 26 | d4c4d47d | style.css | 108/25 | 310/90 | N | N |
+| 27 | d4c4d47d | style.css | 108/25 | 440/120 | N | N |
+| 28 | d4c4d47d | index.html | 1/15 | 308/10 | N | N |
+| 29 | d4c4d47d | index.html | 290/15 | 308/10 | N | N |
+| 30 | d4c4d47d | style.css | 795/20 | 814/15 | N | N |
+
+Counts:
+- args_equal=Y AND out_equal=Y : **1** (pair 19)
+- args_equal=Y AND out_equal=N : 0
+- args_equal=N AND out_equal=Y : 0
+- args_equal=N AND out_equal=N : 29
+
+**Interpretation.** 29 of 30 sampled pairs have different `offset`/`limit`
+values — the agent was reading different slices of the same file (normal
+workflow, not waste). The one exception (pair 19) is `apple-style-guide.pdf`
+in session `860618e1`: both invocations pass no `offset`/`limit` (Claude
+Code's Read tool has no chunked-read semantics for PDF paths). Both outputs
+are byte-identical:
+
+    "PDF is password-protected. Please provide an unprotected version."
+
+This is the tool refusing a password-protected PDF, then the agent invoking
+Read again with the same arguments (a failed-tool retry), not a
+file-content re-read.
+
+**Precision under two annotation policies:**
+- Lenient (count pair 19 as a re-read): 1/30 = **3.3 %**
+- Strict (count pair 19 as failed-tool retry): 0/30 = **0 %**
+
+Both are far below the K4 threshold of 0.70. **K4 fails.**
+
+### 11.2 Verdict
+
+- **K4: FAILED.** Precision 0–3.3 % vs 70 % threshold.
+- **KILL triggered.** Detector descoped from v0.3.0.
+- `find_reread_candidates` removed from `src/clew/detect/structural.py`
+  before v0.3.0 release; verified by `ImportError` on import from `main`.
+- Branch `feat/reread-detector` retained for provenance but never merged.
+- S1/S2/S3/S4/S5/S6 not evaluated to completion — per §5 timing rule
+  K4 gates the merge and its failure aborted the remaining checks.
+
+### 11.3 Follow-up: would a narrower gate rescue the detector?
+
+Question after KILL: *"What if we require `args_equal` (exact `offset` +
+`limit` match) as an extra gate, since only pair 19 in the sample matched?"*
+
+Full-pool measurement (all 209 gated same-path Read pairs, not just the
+30-pair sample), reproduced 2026-07-24:
+
+- args_equal AND out_equal across 28 sessions: **6 pairs**
+  - `09d9abe9` `boot.ts` — a real wasteful re-read (this is the canonical
+    example the shipped v0.3.0 report format uses via the existing
+    `requery` label — see README).
+  - `479c5e9f` `database.hpp` — a real re-read of a C++ header.
+  - `7563bddf` `~routes.generated.ts` — a real re-read of a generated
+    routes file.
+  - `860618e1` `apple-style-guide.pdf` × 3 — the same password-protected
+    PDF retried three times in one session.
+
+Of the six, three are real file re-reads and three are the failed-tool
+retry (PDF password refusal). **The narrower gate does not add signal**
+for two reasons:
+
+1. The three real re-reads are already caught by the existing `requery`
+   route in `find_repeat_candidates` (identical `input_text`, identical
+   `sha256(output)`). A ship-blocked detector would only duplicate
+   already-shipped output.
+2. The three PDF-error pairs are not file-content re-reads at all — they
+   are the failed-tool-retry pattern deferred to a separate
+   pre-registration (§10, "abnormal retry").
+
+At args-equal precision on this dataset, the reread detector adds zero
+new waste findings. KILL stands; no narrower-gate rescue.
