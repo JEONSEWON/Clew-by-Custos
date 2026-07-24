@@ -9,10 +9,14 @@ python -m clew analyze ~/.claude/projects/<slug>/<uuid>.jsonl --out report.md
 
 > Package name is **`clew-custos`** (the bare name `clew` on PyPI is an unrelated placeholder). The module still imports as `clew`.
 
+Ran on 6,780 public benchmark traces: 8,042 duplicate calls detected — including 459 same-argument email sends. (Detection, not confirmed impact.)
+
 Real excerpt from a public Claude Code session (`09d9abe9`, 258 turns; local path abbreviated, numbers unchanged):
 
 ```
 Result: WASTE DETECTED
+
+- category breakdown: 0 error_repeat, 0 side_effect, 1 idempotent, 0 unclassified
 
 ### 1. requery — Read on `.../boot.ts`
 - turns: turn 50 → re-run at turn 58 (of 258 total)
@@ -157,6 +161,8 @@ Auto-detected input formats:
 | Clew native trace JSON | `trace_id` + `spans` |
 | Toolathlon trajectories | `modelname_run` + `task_status` |
 | RedundancyBench | `tasks` + `simulations` |
+
+*Cursor and Codex sessions are not supported yet — their local formats are under evaluation.*
 
 Because it ingests OpenTelemetry and OpenInference, it can read traces from Langfuse, Arize Phoenix, and any OTel-instrumented agent. *(OTLP protobuf-JSON is not yet supported; the error message points you to the SDK-JSON conversion.)*
 
