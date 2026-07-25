@@ -100,8 +100,8 @@ Beyond labeled and real-user data, Clew ran unmodified over **Toolathlon** — 2
 
 Breaking those pairs down by the report-only category labels above:
 
-- **47% are the `idempotent` grey area** — read-only or completion-declaration re-runs whose "is this really waste?" answer depends on whether the underlying state changed between calls. Excluding this grey area leaves **4,251 pairs (2.41% of tool spans)** — roughly **3× the rate seen on Claude Code sessions (0.80%)**.
-- **1,343 pairs are `side_effect` — state-changing tools re-invoked with the same arguments**, including **459 duplicate email-send pairs**. This is a detection of duplicate invocations with matching arguments; whether a real side effect actually occurred is not confirmed by the trace.
+- **47% are the `idempotent` grey area** — read-only or completion-declaration re-runs whose "is this really waste?" answer depends on whether the underlying state changed between calls. Excluding this grey area leaves **4,249 pairs (2.41% of tool spans)** — roughly **3× the rate seen on Claude Code sessions (0.80%)**.
+- **1,195 pairs are `side_effect` — state-changing tools re-invoked with the same arguments**, including **459 duplicate email-send pairs**. This is a detection of duplicate invocations with matching arguments; whether a real side effect actually occurred is not confirmed by the trace.
 
 Toolathlon is benchmark trajectories, not real user sessions. The Toolathlon adapter provides no token information, so no cost estimate is produced for these traces.
 
@@ -174,7 +174,7 @@ This repo treats anti-self-deception as a working discipline, not a slogan:
 
 - **Pre-registration.** Every detection change is committed *before* results are run, so the prediction carries an external timestamp. Predictions and stop-conditions are written first and not edited after seeing results.
 - **Frozen parameters.** `phi`, `N`, and the embedding model are pinned to a git tag; changing them requires a documented recalibration, never a post-hoc nudge.
-- **Published corrections.** When a small-sample number didn't survive a larger sample, we retracted it in the open. (An early "failed traces waste 2.6× more" held on 108 traces but collapsed across 7,116 — retracted. 18 of 22 models still show higher waste on failed traces, but no single multiplier holds.)
+- **Published corrections.** When a small-sample number didn't survive a larger sample, we retracted it in the open. (An early "failed traces waste 2.6× more" held on 108 traces but collapsed across 7,116 — retracted. 18 of 22 models still show higher waste on failed traces, but no single multiplier holds.) The Toolathlon `side_effect` count was published as **1,343** in v0.3.0 — that number came from an earlier prototype classifier that included `terminal-run_command` and `local-python-execute` as side effects; the shipped `_enrich.py` treats those tools as `unclassified` (payload-dependent, effect not inferable from name), which produces **1,195**. Corrected here; `4,251` on the same line also adjusted to `4,249` for the same reason (2 additional pairs re-categorized as `idempotent`).
 - **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues that no synthetic test caught: session mid-run abort (3/28 crashes → recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false-positives across 269 error responses → gated at the report layer, cascade unchanged). Both are recorded in `docs/CC_TRANSCRIPT.md` §29.
 - **Disclosed limits.** The semantic embedding layer does not cleanly separate same-topic real-world outputs — the `sha256` structural gate carries the precision result, not the embedding. We say so rather than imply the model is doing the work.
 
