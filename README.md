@@ -16,11 +16,19 @@ Real excerpt from a public Claude Code session (`09d9abe9`, 258 turns; local pat
 ```
 Result: WASTE DETECTED
 
+- wasted spans: 1
 - category breakdown: 0 error_repeat, 0 side_effect, 1 idempotent, 0 unclassified
+- Redundant-invocation candidates: 1 idempotent pairs. No verdict is rendered — refer to context and judge whether each was intentional.
+  - idempotent 1 — 0 with no state change indicated, 1 not established
+    - by tool identity: declarative 0
+    - by interval scan: no_side_effect 0; payload_dependent 0
+    - not established: targeted_writes 1; high_volume 0
+  - Whether these were wasted invocations is a user judgment; the tool records only the observation.
 
-### 1. requery — Read on `.../boot.ts`
+### 1. [idempotent] requery — Read on `.../boot.ts`
 - turns: turn 50 → re-run at turn 58 (of 258 total)
 - state: No modification of this file in between — re-read output is unchanged.
+- between_window: `targeted_writes` — State change potential not established from the trace alone; see full context.
 - re-consumed across 200 subsequent turns (≈439 tokens/turn → 87800 amplification tokens)
 - estimated cost impact: $0.026340 ~ $0.263400 (cache-hit to cache-miss)
 ```
