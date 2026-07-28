@@ -82,14 +82,15 @@ The 5 values, grouped by evidence:
   - **`declarative`** — the tool itself is declarative or idempotent by name (`local-claim_done`, `filesystem-create_directory`); repeating it is not a waste question. The interval between calls is not examined.
   - **`no_side_effect`** — no state-changing tool sits between the two calls. **Hand-labeled sample: 30/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 88.43%; see [`docs/GREYZONE_EXPANSION_PREREG.md`](docs/GREYZONE_EXPANSION_PREREG.md) §2.1).
   - **`payload_dependent`** — a payload-dependent tool sits between (`Bash`, `terminal-run_command`, `snowflake-write_query`, …); the tool cannot infer from name whether it changed state. **Hand-labeled sample: 30/30 TRUE** (same CI note).
+- **Grouped as "writes to other targets" in the report:**
+  - **`targeted_writes`** — a state-changing tool with a specific target is between the two calls. **Hand-labeled sample: 28/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 77.93%). Two cases were write-then-revert: a `.tex` file and a `.md` file each restored to origin content after intermediate modifications. Grouped separately from `no_side_effect` and `payload_dependent` (30/30 each, 88.43% lower bound) because the evidence strength differs — two of thirty sampled pairs were write-then-revert; neither of the other two categories showed any in their own 30-pair samples. See [`docs/GREYZONE_B21_EXTENSION_PREREG.md`](docs/GREYZONE_B21_EXTENSION_PREREG.md).
 - **Grouped as "not established" in the report:**
-  - **`targeted_writes`** — a state-changing tool with a specific target is between the two calls. Not hand-verified; reported as observation.
   - **`high_volume`** — a state-changing tool is present AND ≥ 20 tool spans lie between the calls. Long context makes trace-only judgment unreliable. Not hand-verified.
 
 Aggregate on Toolathlon (3,791 idempotent pairs):
 `declarative 1,226` / `no_side_effect 888` / `payload_dependent 405` / `targeted_writes 248` / `high_volume 1,024`.
 
-Report shows the two groups on separate lines; the tool does not render a final waste verdict. Whether a given idempotent re-run was actually wasted remains your judgment given your execution context. Pre-registration, priority rule (V2), and reproduction evidence: [`docs/GREYZONE_EXPANSION_PREREG.md`](docs/GREYZONE_EXPANSION_PREREG.md).
+Report shows the three tiers on separate lines; the tool does not render a final waste verdict. Whether a given idempotent re-run was actually wasted remains your judgment given your execution context. Pre-registration, priority rule (V2), and reproduction evidence: [`docs/GREYZONE_EXPANSION_PREREG.md`](docs/GREYZONE_EXPANSION_PREREG.md). Targeted-writes verification details: [`docs/GREYZONE_B21_EXTENSION_PREREG.md`](docs/GREYZONE_B21_EXTENSION_PREREG.md).
 
 **Honest scope for Claude Code users:** on 28 real Claude Code sessions only **16 pairs land in `idempotent`, and 56% of those fall into `high_volume`** (long intervals between rereads push them past the ≥ 20 threshold). In practice this sub-classification's yield concentrates on multi-tool environments (Toolathlon-like); a single Claude Code session usually leaves most idempotent pairs in the "not established" group. Threshold-20 revisit reserved for a separate pre-registration.
 
