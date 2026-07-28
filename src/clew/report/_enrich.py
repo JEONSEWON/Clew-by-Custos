@@ -190,6 +190,118 @@ _SIDE_EFFECT_TOOLS = frozenset({
     "pptx-update_slide", "pptx-delete_slide",
 })
 
+# ─────────────────────────────── between_window (report-only) ───────────────
+# Report-side sub-classification of `idempotent` pairs. Detection unchanged.
+# See `field_test/diagnostics/greyzone_expansion_PREREG.md` §1 for the frozen
+# rule (Rule V2) and enum definitions.
+#
+# NOTE — two side-effect sets coexist by design; do NOT unify them:
+#   - `_SIDE_EFFECT_TOOLS` above answers: "is THIS call itself a side effect?"
+#     Payload-dependent tools (Bash, PowerShell, local-python-execute,
+#     terminal-run_command, snowflake-write_query, ...) cannot be classified
+#     by name — they stay in the `unclassified` category.
+#   - `_BW_SIDE_EFFECT_TOOLS` below answers: "was there anything BETWEEN the
+#     two calls that could have changed state?" Payload-dependent tools MIGHT
+#     have changed state, so they must be counted conservatively.
+# Narrowing `_BW_SIDE_EFFECT_TOOLS` would misroute the payload_dependent
+# bucket (405 pairs on Toolathlon) into no_side_effect, breaking §4.1 counts.
+# Source of truth: `field_test/diagnostics/greyzone_b_writesplit.py`
+# `_SIDE_EFFECT_TOOLS`, plus CC additions per PREREG §1.6.
+
+_BW_DECLARATIVE_TOOLS = frozenset({
+    "local-claim_done",
+    "filesystem-create_directory",
+    # CC: no declarative-marker tool exists (PREREG §1.6 → CC_DECLARATIVE = ∅)
+})
+
+_BW_SIDE_EFFECT_TOOLS = frozenset({
+    # Toolathlon — mirrors greyzone_b_writesplit.py _SIDE_EFFECT_TOOLS.
+    # Includes payload-dependent tools (terminal-run_command, local-python-execute,
+    # snowflake-write_query, google-cloud-logging_write_log) — see NOTE above.
+    "filesystem-write_file", "filesystem-edit_file", "filesystem-move_file",
+    "filesystem-copy_file", "filesystem-delete_file",
+    "github-create_or_update_file", "github-delete_file", "github-create_issue",
+    "github-create_pull_request", "github-update_issue", "github-create_repository",
+    "github-add_labels", "github-create_comment", "github-merge_pull_request",
+    "github-update_pull_request", "github-create_branch", "github-close_issue",
+    "github-add_issue_comment", "github-push_files", "github-fork_repository",
+    "emails-send_email", "emails-send", "emails-reply", "emails-forward",
+    "snowflake-write_query",
+    "excel-write_data_to_excel", "excel-add_sheet", "excel-format_cells",
+    "excel-delete_sheet", "excel-rename_sheet",
+    "word-create_document", "word-add_paragraph", "word-format_text",
+    "word-add_heading", "word-add_table", "word-save_document",
+    "google_sheet-update_cells", "google_sheet-append_values", "google_sheet-clear_range",
+    "google_sheet-create_spreadsheet", "google_sheet-add_sheet",
+    "google-cloud-logging_write_log",
+    "google_forms-create_form", "google_forms-add_question",
+    "notion-API-post-page", "notion-API-patch-page", "notion-API-patch-block-children",
+    "notion-API-post-database", "notion-API-post-page-property",
+    "notion-API-delete-block", "notion-API-post-database-query",
+    "woocommerce-woo_products_update", "woocommerce-woo_products_create",
+    "woocommerce-woo_orders_update", "woocommerce-woo_orders_create",
+    "canvas-canvas_enroll_user", "canvas-canvas_unenroll_user",
+    "canvas-canvas_create_course", "canvas-canvas_update_course", "canvas-canvas_delete_course",
+    "canvas-canvas_create_announcement", "canvas-canvas_create_conversation",
+    "canvas-canvas_upload_file_from_path", "canvas-canvas_upload_file",
+    "canvas-canvas_create_assignment", "canvas-canvas_update_assignment",
+    "canvas-canvas_create_quiz", "canvas-canvas_update_quiz",
+    "canvas-canvas_create_module", "canvas-canvas_create_page",
+    "k8s-kubectl_create", "k8s-kubectl_apply", "k8s-kubectl_delete",
+    "k8s-kubectl_replace", "k8s-kubectl_patch", "k8s-kubectl_scale",
+    "terminal-run_command", "local-python-execute",
+    "playwright_with_chunk-browser_click", "playwright_with_chunk-browser_type",
+    "playwright_with_chunk-browser_navigate", "playwright_with_chunk-browser_press_key",
+    "playwright_with_chunk-browser_close", "playwright_with_chunk-browser_scroll",
+    "playwright_with_chunk-browser_hover", "playwright_with_chunk-browser_select_option",
+    "playwright_with_chunk-browser_fill", "playwright_with_chunk-browser_upload_file",
+    "playwright_with_chunk-browser_drag", "playwright_with_chunk-browser_tab_new",
+    "playwright_with_chunk-browser_tab_close",
+    "rail_12306-buy-tickets", "rail_12306-book-tickets", "rail_12306-cancel-tickets",
+    "pptx-open_presentation", "pptx-save_presentation", "pptx-add_slide",
+    "pptx-update_slide", "pptx-delete_slide",
+    # CC (PREREG §1.6): Bash/PowerShell live in both sets — payload-dependent
+    # AND state-changing. Mirror of Toolathlon's local-python-execute pattern.
+    "Edit", "Write", "MultiEdit", "NotebookEdit",
+    "Bash", "PowerShell",
+})
+
+_BW_BLACKBOX_TOOLS = frozenset({
+    # Toolathlon
+    "local-python-execute",
+    "terminal-run_command",
+    "snowflake-write_query",
+    "google-cloud-logging_write_log",
+    # CC (PREREG §1.6): Bash/PowerShell also in _BW_SIDE_EFFECT_TOOLS above.
+    "Bash", "PowerShell",
+})
+
+_BW_CONTEXT_LIMIT = 20  # PREREG §1.2 high_volume threshold
+
+
+def _classify_between_window(trace: Trace, origin: Span, cand: Span) -> str:
+    """PREREG §1.3 Rule V2 priority. Only called when category == 'idempotent'.
+
+    Scan window: `origin.end_time < s.start_time < cand.start_time`
+    (matches diagnostics `spans_between` exactly — the source of the frozen
+    §4.1 counts). Tool spans only.
+    """
+    if cand.agent_or_node_id in _BW_DECLARATIVE_TOOLS:
+        return "declarative"
+    between_tools = [
+        s for s in trace.spans
+        if s.span_kind == "tool"
+        and s.span_id not in (origin.span_id, cand.span_id)
+        and origin.end_time < s.start_time < cand.start_time
+    ]
+    if not any(s.agent_or_node_id in _BW_SIDE_EFFECT_TOOLS for s in between_tools):
+        return "no_side_effect"
+    if len(between_tools) >= _BW_CONTEXT_LIMIT:
+        return "high_volume"
+    if any(s.agent_or_node_id in _BW_BLACKBOX_TOOLS for s in between_tools):
+        return "payload_dependent"
+    return "targeted_writes"
+
 
 def _output_head(text: str, limit: int = 400) -> str:
     """Head of tool output. If JSON-wrapped, unwrap first `text` field (Toolathlon shape)."""
@@ -231,6 +343,7 @@ class EnrichedDetail:
     state_change_uncertain: bool  # True when file_path unavailable (e.g. Bash)
     input_summary: str  # fallback display when neither file_path nor command
     category: str  # error_repeat | side_effect | idempotent | unclassified
+    between_window: str | None  # PREREG §1.3; set iff category == "idempotent"
 
 
 @dataclass
@@ -312,6 +425,10 @@ def enrich(trace: Trace, details: list[WasteDetail]) -> EnrichmentResult:
         modified = _has_intervening_edit(trace, o, c, fp) if fp else False
         uncertain = fp is None  # cannot verify state change without a file target
         summary = fp or cmd or (c.input_text[:60] + ("…" if len(c.input_text) > 60 else ""))
+        category = _classify_category(c)
+        between_window = (
+            _classify_between_window(trace, o, c) if category == "idempotent" else None
+        )
         out.append(EnrichedDetail(
             detail=wd,
             file_path=fp,
@@ -323,6 +440,7 @@ def enrich(trace: Trace, details: list[WasteDetail]) -> EnrichmentResult:
             modified_in_between=modified,
             state_change_uncertain=uncertain,
             input_summary=summary,
-            category=_classify_category(c),
+            category=category,
+            between_window=between_window,
         ))
     return EnrichmentResult(enriched=out, n_skipped_error=n_skipped_error)
