@@ -8,7 +8,7 @@
 **선행 근거**:
 - (b-1) 정밀도 30/30 TRUE → `greyzone_b1_precision_RESULTS.md`
 - (b-2-2) 정밀도 30/30 TRUE → `greyzone_b22_RESULTS.md`
-- 두 결과의 90% CI 하한 ≈ 88% — "confirmed" 문면 금지 근거
+- 두 결과의 **95% 양측 Clopper-Pearson CI 하한 ≈ 88.43%** (2.5% each tail) — "confirmed" 문면 금지 근거
 
 ---
 
@@ -221,7 +221,7 @@ CC_BLACKBOX_TOOLS = {"Bash", "PowerShell"}
 | `targeted_writes` | Toolathlon (b-2-1) = 248 | **미검증** | 별도 사전등록 예정 |
 | `high_volume` | Toolathlon (b-2-3) = 1,024 | **미검증** | 별도 사전등록 예정 |
 
-**"검증 완료" 계산 근거**: sample n=30, 30/30 TRUE (100%). 90% Clopper-Pearson CI 하한 ≈ 88%. 이 사전등록에서 "확정" 문면 금지의 근거.
+**"검증 완료" 계산 근거**: sample n=30, 30/30 TRUE (100%). **95% 양측 Clopper-Pearson CI 하한 ≈ 88.43%** (2.5% each tail, 관례 통일 — 초기 문서의 "90% CI" 라벨은 오류, 값 자체는 정확). 이 사전등록에서 "확정" 문면 금지의 근거.
 
 ### §2.2 리포트에서의 구분 규칙 (동결)
 
