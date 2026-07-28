@@ -39,7 +39,8 @@ _POSSIBLE_CAUSES = (
     "\n"
     "This trace cannot isolate which — inspect the agent's file-handling logic.\n"
     "For Bash requeries the state between calls is not directly observable from the "
-    "trace; treat those as *state change uncertain* rather than confirmed waste.\n"
+    "trace; treat those as *state change uncertain* — the tool does not render a "
+    "final waste verdict.\n"
 )
 
 _CATEGORY_CAUSES = (
@@ -63,6 +64,25 @@ _CATEGORY_CAUSES = (
     "(command text, code, query body), so the tool name alone cannot "
     "classify it. Human review needed.\n"
 )
+
+# ─── PREREG §3.1 (§9 revised) frozen wording — idempotent between_window ────
+_BW_OBS_DECLARATIVE = (
+    "Tool is declarative or idempotent by name; "
+    "the interval between calls was not examined."
+)
+_BW_OBS_NO_CHANGE = "No state change was observed between the two calls."
+_BW_OBS_NOT_ESTABLISHED = (
+    "State change potential not established from the trace alone; "
+    "see full context."
+)
+_BW_JUDGE_DELEGATION = (
+    "Whether these were wasted invocations is a user judgment; "
+    "the tool records only the observation."
+)
+_BW_HEADER_NO_VERDICT = (
+    "No verdict is rendered — refer to context and judge whether each was intentional."
+)
+
 
 _CATEGORY_NOTE = (
     "## About categories\n"
@@ -124,6 +144,15 @@ def _render_pair(idx: int, ed: EnrichedDetail, ev: AmplificationEvent | None) ->
     lines.append(f"- **turns**: {turn_phrase}")
     lines.append(f"- **cosine**: {ed.detail.cosine:.4f}")
     lines.append(f"- **state**: {modif_line}")
+    if ed.between_window is not None:
+        # PREREG §3.1 (§9) per-pair wording — 3 evidence-based buckets.
+        if ed.between_window == "declarative":
+            obs = _BW_OBS_DECLARATIVE
+        elif ed.between_window in ("no_side_effect", "payload_dependent"):
+            obs = _BW_OBS_NO_CHANGE
+        else:  # targeted_writes | high_volume
+            obs = _BW_OBS_NOT_ESTABLISHED
+        lines.append(f"- **between_window**: `{ed.between_window}` — {obs}")
     if ev is not None:
         lines.append(
             f"- **re-consumed across {ev.turns_after} subsequent turns** "
@@ -186,6 +215,48 @@ def render_markdown(
             for c in ("error_repeat", "side_effect", "idempotent", "unclassified")
         )
         lines.append(f"- **category breakdown**: {cat_line}")
+
+        # PREREG §2.2 / §3.1 (§9): split idempotent by evidence axis.
+        # by tool identity      → declarative
+        # by interval scan (no side-effect / blackbox) → no_side_effect, payload_dependent
+        # not established (writes present) → targeted_writes, high_volume
+        bw_counts: dict[str, int] = {}
+        for ed in enrichment.enriched:
+            if ed.category == "idempotent" and ed.between_window:
+                bw_counts[ed.between_window] = bw_counts.get(ed.between_window, 0) + 1
+        idem_total = cat_counts.get("idempotent", 0)
+        if idem_total > 0:
+            by_identity = bw_counts.get("declarative", 0)
+            by_scan_no_change = (
+                bw_counts.get("no_side_effect", 0)
+                + bw_counts.get("payload_dependent", 0)
+            )
+            no_change_indicated = by_identity + by_scan_no_change
+            not_established = (
+                bw_counts.get("targeted_writes", 0)
+                + bw_counts.get("high_volume", 0)
+            )
+            lines.append(
+                f"- **Redundant-invocation candidates**: {idem_total} idempotent pairs. "
+                f"{_BW_HEADER_NO_VERDICT}"
+            )
+            lines.append(
+                f"  - idempotent {idem_total} — "
+                f"{no_change_indicated} with no state change indicated, "
+                f"{not_established} not established"
+            )
+            lines.append(f"    - by tool identity: declarative {by_identity}")
+            lines.append(
+                f"    - by interval scan: "
+                f"no_side_effect {bw_counts.get('no_side_effect', 0)}; "
+                f"payload_dependent {bw_counts.get('payload_dependent', 0)}"
+            )
+            lines.append(
+                f"    - not established: "
+                f"targeted_writes {bw_counts.get('targeted_writes', 0)}; "
+                f"high_volume {bw_counts.get('high_volume', 0)}"
+            )
+            lines.append(f"  - _{_BW_JUDGE_DELEGATION}_")
 
     if amplification is not None and amplification.n_events > 0:
         lo = amplification.lower_usd

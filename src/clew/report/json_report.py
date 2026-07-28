@@ -58,6 +58,10 @@ def render_json(
             "state_change_uncertain": ed.state_change_uncertain,
             "category": ed.category,
         }
+        # PREREG §0.4 backward compat: field present iff category == "idempotent".
+        # Absent (not null) for other categories — old 4-label consumers unaffected.
+        if ed.between_window is not None:
+            entry["between_window"] = ed.between_window
         ev = ev_by_sid.get(wd.candidate.span_id)
         if ev is not None:
             entry["turns_after"] = ev.turns_after
@@ -112,6 +116,15 @@ def render_json(
             c: sum(1 for ed in enrichment.enriched if ed.category == c)
             for c in ("error_repeat", "side_effect", "idempotent", "unclassified")
         },
+        # PREREG §1.3 / §2.2 (§9): between_window sub-classification of idempotent.
+        "between_window_counts": {
+            k: sum(
+                1 for ed in enrichment.enriched
+                if ed.category == "idempotent" and ed.between_window == k
+            )
+            for k in ("declarative", "no_side_effect", "payload_dependent",
+                      "targeted_writes", "high_volume")
+        },
         "waste_details": waste_details_list,
         "note": (
             "Detection thresholds were calibrated on synthetic traces; "
@@ -120,7 +133,9 @@ def render_json(
             "is estimated saving potential (cache-hit lower to cache-miss upper), "
             "not measured — assumes wasted output is re-consumed each subsequent turn. "
             "Category labels are report-only annotations; detection is unchanged. "
-            "Whether an idempotent re-run is truly waste depends on user context."
+            "Whether an idempotent re-run is truly waste depends on user context. "
+            "between_window records how the interval was classified; "
+            "no state-change verdict is rendered."
         ),
     }
 
