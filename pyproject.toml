@@ -1,6 +1,6 @@
 [project]
 name = "clew-custos"
-version = "0.3.1"
+version = "0.3.2"
 description = "Detect wasteful cycles in multi-agent traces (Custos / Clew, S0 MVP)."
 authors = [{ name = "Custos" }]
 readme = "README.md"
