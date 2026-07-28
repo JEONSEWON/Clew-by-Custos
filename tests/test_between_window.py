@@ -209,7 +209,7 @@ def test_declarative_gets_its_own_wording_in_markdown():
     assert "declarative or idempotent by name" in md
     assert "the interval between calls was not examined" in md
     # And its aggregate line
-    assert "by tool identity: declarative 1" in md
+    assert "indicated, by tool identity: declarative 1" in md
 
 
 def test_no_waste_case_renders_without_crash():
@@ -337,3 +337,86 @@ def test_between_window_toolathlon_counts_reproduce_pre_reg_4_1():
             f"Full counts: {dict(cnt)}"
         )
     assert sum(cnt.values()) == 3791
+
+
+# ─── extension (docs/GREYZONE_B21_EXTENSION_PREREG.md §2.1) ────────────────
+
+def test_targeted_writes_own_wording():
+    """PREREG extension §1.2: targeted_writes uses its own _BW_OBS_TARGETED_WRITES."""
+    from clew.report.markdown import (
+        _BW_OBS_DECLARATIVE,
+        _BW_OBS_NO_CHANGE,
+        _BW_OBS_NOT_ESTABLISHED,
+        _BW_OBS_TARGETED_WRITES,
+    )
+    assert _BW_OBS_TARGETED_WRITES != _BW_OBS_DECLARATIVE
+    assert _BW_OBS_TARGETED_WRITES != _BW_OBS_NO_CHANGE
+    assert _BW_OBS_TARGETED_WRITES != _BW_OBS_NOT_ESTABLISHED
+
+    origin = _tool_span("o", "filesystem-read_file", 1)
+    between = [_tool_span("w", "filesystem-write_file", 10)]
+    cand = _tool_span("c", "filesystem-read_file", 100)
+    trace = _trace([origin, *between, cand])
+    wd = WasteDetail(origin=origin, candidate=cand, cosine=1.0)
+    cr = _cascade_result([origin, *between, cand], ["c"])
+    md = render_markdown(trace, cr, [wd])
+    assert _BW_OBS_TARGETED_WRITES in md
+    assert _BW_OBS_NOT_ESTABLISHED not in md, (
+        "targeted_writes must not fall through to NOT_ESTABLISHED wording"
+    )
+
+
+def test_between_window_counts_stable_post_regrouping():
+    """PREREG extension §0.2 / §2.1 #2: display-layer restructure must not
+    change JSON between_window_counts field values."""
+    origin = _tool_span("o", "filesystem-read_file", 1)
+    between = [_tool_span("w", "filesystem-write_file", 10)]
+    cand = _tool_span("c", "filesystem-read_file", 100)
+    trace = _trace([origin, *between, cand])
+    wd = WasteDetail(origin=origin, candidate=cand, cosine=1.0)
+    cr = _cascade_result([origin, *between, cand], ["c"])
+    out = json.loads(render_json(trace, cr, [wd]))
+    assert out["between_window_counts"] == {
+        "declarative": 0, "no_side_effect": 0, "payload_dependent": 0,
+        "targeted_writes": 1, "high_volume": 0,
+    }
+    assert out["waste_details"][0]["between_window"] == "targeted_writes"
+
+
+def test_markdown_3tier_split_with_evidence_axis():
+    """PREREG extension §1.3: aggregate has 3-tier top-level +
+    evidence-axis sub-lines under indicated tier."""
+    origin = _tool_span("o", "filesystem-read_file", 1)
+    between = [_tool_span("w", "filesystem-write_file", 10)]
+    cand = _tool_span("c", "filesystem-read_file", 100)
+    trace = _trace([origin, *between, cand])
+    wd = WasteDetail(origin=origin, candidate=cand, cosine=1.0)
+    cr = _cascade_result([origin, *between, cand], ["c"])
+    md = render_markdown(trace, cr, [wd])
+
+    assert "with no state change indicated" in md
+    assert "with writes to other targets" in md
+    assert "not established" in md
+
+    assert "indicated, by tool identity" in md
+    assert "indicated, by interval scan" in md
+
+    assert "writes to other targets: targeted_writes 1" in md
+    assert "Validated on Toolathlon: 28/30 hand-labeled TRUE" in md
+
+    assert "not established: high_volume 0" in md
+    assert "not established: targeted_writes" not in md
+
+
+def test_markdown_writes_tier_absent_when_zero():
+    """PREREG extension §1.3: 'writes to other targets' sub-block only
+    rendered when targeted_writes > 0."""
+    origin = _tool_span("o", "filesystem-read_file", 1)
+    cand = _tool_span("c", "filesystem-read_file", 100)
+    trace = _trace([origin, cand])
+    wd = WasteDetail(origin=origin, candidate=cand, cosine=1.0)
+    cr = _cascade_result([origin, cand], ["c"])
+    md = render_markdown(trace, cr, [wd])
+    assert "with writes to other targets" in md
+    assert "writes to other targets: targeted_writes" not in md
+    assert "Validated on Toolathlon" not in md
