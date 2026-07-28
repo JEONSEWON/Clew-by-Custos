@@ -62,6 +62,29 @@ Each waste pair also carries a report-only category label with a short note on w
 
 The mapping is by **exact tool name**, never inferred from name substrings.
 
+### Idempotent sub-classification (`between_window`)
+
+Since v0.3.2, the `idempotent` category is split further into a 5-value `between_window` label — the report now tells you **which evidence supports** the "no state change between calls" claim, rather than lumping every idempotent re-run together.
+
+Like the category labels, `between_window` is a report-only annotation — what gets flagged as waste is unchanged (verified bit-identical; see [`docs/GREYZONE_EXPANSION_PREREG.md`](docs/GREYZONE_EXPANSION_PREREG.md) §9.8).
+
+The 5 values, grouped by evidence:
+
+- **Grouped as "no state change indicated" in the report:**
+  - **`declarative`** — the tool itself is declarative or idempotent by name (`local-claim_done`, `filesystem-create_directory`); repeating it is not a waste question. The interval between calls is not examined.
+  - **`no_side_effect`** — no state-changing tool sits between the two calls. **Hand-labeled sample: 30/30 TRUE** (90% Clopper-Pearson lower ≈ 88%; see [`docs/GREYZONE_EXPANSION_PREREG.md`](docs/GREYZONE_EXPANSION_PREREG.md) §2.1).
+  - **`payload_dependent`** — a payload-dependent tool sits between (`Bash`, `terminal-run_command`, `snowflake-write_query`, …); the tool cannot infer from name whether it changed state. **Hand-labeled sample: 30/30 TRUE** (same CI note).
+- **Grouped as "not established" in the report:**
+  - **`targeted_writes`** — a state-changing tool with a specific target is between the two calls. Not hand-verified; reported as observation.
+  - **`high_volume`** — a state-changing tool is present AND ≥ 20 tool spans lie between the calls. Long context makes trace-only judgment unreliable. Not hand-verified.
+
+Aggregate on Toolathlon (3,791 idempotent pairs):
+`declarative 1,226` / `no_side_effect 888` / `payload_dependent 405` / `targeted_writes 248` / `high_volume 1,024`.
+
+Report shows the two groups on separate lines; the tool does not render a final waste verdict. Whether a given idempotent re-run was actually wasted remains your judgment given your execution context. Pre-registration, priority rule (V2), and reproduction evidence: [`docs/GREYZONE_EXPANSION_PREREG.md`](docs/GREYZONE_EXPANSION_PREREG.md).
+
+**Honest scope for Claude Code users:** on 28 real Claude Code sessions only **16 pairs land in `idempotent`, and 56% of those fall into `high_volume`** (long intervals between rereads push them past the ≥ 20 threshold). In practice this sub-classification's yield concentrates on multi-tool environments (Toolathlon-like); a single Claude Code session usually leaves most idempotent pairs in the "not established" group. Threshold-20 revisit reserved for a separate pre-registration.
+
 ---
 
 ## Where it stands
@@ -92,7 +115,7 @@ Public dataset ([trace-commons/agent-traces](https://huggingface.co/datasets/tra
 - Aggregate saving potential (across all wasteful sessions): **\$1.01 ~ \$10.12** (cache-hit lower to cache-miss upper).
 - Per-session range: \$0 (no waste) up to \$0.64 ~ \$6.40 (one session, 18 waste spans).
 
-**Honest scope:** trace-commons has **no step-level ground truth** — the 34 spans are cascade-flagged candidates plus a state-change check per file, not annotator-verified waste. Precision lives on RedundancyBench; scale on real data lives here.
+**Honest scope:** trace-commons has **no step-level ground truth** — the 34 spans are cascade-flagged candidates plus a state-change check per file, not labeled as waste by a human annotator. Precision lives on RedundancyBench; scale on real data lives here.
 
 ### Toolathlon — 6,780 trajectories, cross-model scale
 
@@ -178,7 +201,7 @@ This repo treats anti-self-deception as a working discipline, not a slogan:
 - **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues that no synthetic test caught: session mid-run abort (3/28 crashes → recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false-positives across 269 error responses → gated at the report layer, cascade unchanged). Both are recorded in `docs/CC_TRANSCRIPT.md` §29.
 - **Disclosed limits.** The semantic embedding layer does not cleanly separate same-topic real-world outputs — the `sha256` structural gate carries the precision result, not the embedding. We say so rather than imply the model is doing the work.
 
-**239 tests**, CI on every PR, frozen parameters enforced as failing tests.
+**253 tests**, CI on every PR, frozen parameters enforced as failing tests.
 
 ---
 
