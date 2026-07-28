@@ -75,6 +75,10 @@ _BW_OBS_NOT_ESTABLISHED = (
     "State change potential not established from the trace alone; "
     "see full context."
 )
+_BW_OBS_TARGETED_WRITES = (
+    "State-changing tools were invoked in the interval, targeting other "
+    "resources; this reread's output is unchanged from the first call."
+)
 _BW_JUDGE_DELEGATION = (
     "Whether these were wasted invocations is a user judgment; "
     "the tool records only the observation."
@@ -145,12 +149,15 @@ def _render_pair(idx: int, ed: EnrichedDetail, ev: AmplificationEvent | None) ->
     lines.append(f"- **cosine**: {ed.detail.cosine:.4f}")
     lines.append(f"- **state**: {modif_line}")
     if ed.between_window is not None:
-        # PREREG §3.1 (§9) per-pair wording — 3 evidence-based buckets.
+        # PREREG §3.1 (§9) + extension (docs/GREYZONE_B21_EXTENSION_PREREG.md §1.2)
+        # per-pair wording — 4 evidence-based buckets.
         if ed.between_window == "declarative":
             obs = _BW_OBS_DECLARATIVE
         elif ed.between_window in ("no_side_effect", "payload_dependent"):
             obs = _BW_OBS_NO_CHANGE
-        else:  # targeted_writes | high_volume
+        elif ed.between_window == "targeted_writes":
+            obs = _BW_OBS_TARGETED_WRITES
+        else:  # high_volume
             obs = _BW_OBS_NOT_ESTABLISHED
         lines.append(f"- **between_window**: `{ed.between_window}` — {obs}")
     if ev is not None:
@@ -216,10 +223,13 @@ def render_markdown(
         )
         lines.append(f"- **category breakdown**: {cat_line}")
 
-        # PREREG §2.2 / §3.1 (§9): split idempotent by evidence axis.
-        # by tool identity      → declarative
-        # by interval scan (no side-effect / blackbox) → no_side_effect, payload_dependent
-        # not established (writes present) → targeted_writes, high_volume
+        # PREREG §2.2 / §3.1 (§9) + extension (docs/GREYZONE_B21_EXTENSION_PREREG.md §1.3)
+        # 3-tier top-level; evidence axis preserved as sub-lines under each tier:
+        #   indicated (no state change):
+        #     by tool identity → declarative  (interval NOT examined)
+        #     by interval scan → no_side_effect + payload_dependent  (interval examined)
+        #   writes to other targets → targeted_writes  (own tier, own evidence)
+        #   not established        → high_volume
         bw_counts: dict[str, int] = {}
         for ed in enrichment.enriched:
             if ed.category == "idempotent" and ed.between_window:
@@ -227,15 +237,13 @@ def render_markdown(
         idem_total = cat_counts.get("idempotent", 0)
         if idem_total > 0:
             by_identity = bw_counts.get("declarative", 0)
-            by_scan_no_change = (
+            by_scan = (
                 bw_counts.get("no_side_effect", 0)
                 + bw_counts.get("payload_dependent", 0)
             )
-            no_change_indicated = by_identity + by_scan_no_change
-            not_established = (
-                bw_counts.get("targeted_writes", 0)
-                + bw_counts.get("high_volume", 0)
-            )
+            no_change_indicated = by_identity + by_scan
+            writes_other_targets = bw_counts.get("targeted_writes", 0)
+            not_established = bw_counts.get("high_volume", 0)
             lines.append(
                 f"- **Redundant-invocation candidates**: {idem_total} idempotent pairs. "
                 f"{_BW_HEADER_NO_VERDICT}"
@@ -243,18 +251,28 @@ def render_markdown(
             lines.append(
                 f"  - idempotent {idem_total} — "
                 f"{no_change_indicated} with no state change indicated, "
+                f"{writes_other_targets} with writes to other targets, "
                 f"{not_established} not established"
             )
-            lines.append(f"    - by tool identity: declarative {by_identity}")
+            lines.append(f"    - indicated, by tool identity: declarative {by_identity}")
             lines.append(
-                f"    - by interval scan: "
+                f"    - indicated, by interval scan: "
                 f"no_side_effect {bw_counts.get('no_side_effect', 0)}; "
                 f"payload_dependent {bw_counts.get('payload_dependent', 0)}"
             )
+            if writes_other_targets > 0:
+                lines.append(
+                    f"    - writes to other targets: "
+                    f"targeted_writes {writes_other_targets}"
+                )
+                lines.append(
+                    f"      - Validated on Toolathlon: 28/30 hand-labeled TRUE "
+                    f"(95% two-sided Clopper-Pearson lower ≈ 77.93%). "
+                    f"Two write-then-revert observed."
+                )
             lines.append(
                 f"    - not established: "
-                f"targeted_writes {bw_counts.get('targeted_writes', 0)}; "
-                f"high_volume {bw_counts.get('high_volume', 0)}"
+                f"high_volume {not_established}"
             )
             lines.append(f"  - _{_BW_JUDGE_DELEGATION}_")
 
