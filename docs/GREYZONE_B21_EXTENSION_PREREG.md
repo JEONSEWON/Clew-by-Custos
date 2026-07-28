@@ -110,9 +110,10 @@ _BW_OBS_TARGETED_WRITES = (
 ```
 - Redundant-invocation candidates: N idempotent pairs. ...
   - idempotent N — X with no state change indicated, W with writes to other targets, Z not established
-    - indicated (no state change): declarative D; no_side_effect NS; payload_dependent PD
+    - indicated, by tool identity: declarative D
+    - indicated, by interval scan: no_side_effect NS; payload_dependent PD
     - writes to other targets: targeted_writes TW
-      - Hand-labeled sample: 28/30 TRUE (95% two-sided Clopper-Pearson lower ≈ 77.93%). Two write-then-revert observed.
+      - Validated on Toolathlon: 28/30 hand-labeled TRUE (95% two-sided Clopper-Pearson lower ≈ 77.93%). Two write-then-revert observed.
     - not established: high_volume HV
   - _Whether these were wasted invocations is a user judgment..._
 ```
@@ -123,6 +124,19 @@ indicated = bw_counts["declarative"] + bw_counts["no_side_effect"] + bw_counts["
 targeted  = bw_counts["targeted_writes"]
 not_established = bw_counts["high_volume"]  # 기존 (targeted + high) 아님
 ```
+
+**★ 집계에서 증거 축 (declarative vs no_side_effect/payload_dependent) 을 유지하는 이유**:
+`docs/GREYZONE_EXPANSION_PREREG.md` §9 (declarative 문면 정정) 와 일관성. declarative 는
+도구 이름으로 분기 (`the interval between calls was not examined`), no_side_effect ·
+payload_dependent 는 interval scan 근거 (`No state change was observed between the two calls`).
+per-pair 문면이 두 증거 축을 구분하는데 집계에서 한 줄로 합치면 §9 정밀도 정정이
+뭉개진다. 3층 프레이밍은 상위 (indicated / writes / not established), 증거 축은 하위
+(`indicated, by tool identity` · `indicated, by interval scan`) 로 나눠 표현.
+
+**★ 통계 라인의 "Validated on Toolathlon:" prefix 이유**: 사용자가 자기 트레이스로
+CLI 를 돌렸을 때 "28/30 이 내 데이터 통계인가?" 로 오해하지 않게 검증 출처를 명시.
+통계 값 자체는 (b-2-1) hand-labeled 사전등록 (`greyzone_b21_PREREG.md`) · 결과
+(`greyzone_b21_RESULTS.md`) 근거.
 
 ### §1.4 JSON 리포트 — 무변
 
@@ -224,16 +238,22 @@ Aggregate on Toolathlon (3,791 idempotent pairs):
 
 1. `docs(prereg): targeted_writes extension pre-registration`
    - 본 문서 `docs/GREYZONE_B21_EXTENSION_PREREG.md` 로 이관 (증거 인라인, `field_test/diagnostics/` 원본은 커밋 안 함)
+   - 초기 이관본 (§1.3 markdown 예시가 §9 증거 축을 부분 뭉갬)
 
-2. `feat(report): split targeted_writes into own reporting group (3-tier)`
+2. `docs(prereg): correct §1.3 markdown example — preserve §9 evidence-axis split`
+   - §1.3 예시 하위 라인 분리 (`indicated, by tool identity` · `indicated, by interval scan`)
+   - 통계 라인에 `Validated on Toolathlon:` prefix 추가 (사용자 데이터로 오해 방지)
+   - 설계 근거 노트 추가 (§9 일관성 · 출처 명시 근거)
+
+3. `feat(report): split targeted_writes into own reporting group (3-tier)`
    - `src/clew/report/_enrich.py` — **무변** (0 lines)
-   - `src/clew/report/markdown.py` — 상수 `_BW_OBS_TARGETED_WRITES` 신규, per-pair 4분기 분기, 집계 블록 3층 재구조화
+   - `src/clew/report/markdown.py` — 상수 `_BW_OBS_TARGETED_WRITES` 신규, per-pair 4분기 분기, 집계 블록 3층 재구조화 (증거 축 분리 유지)
    - `src/clew/report/json_report.py` — **무변** (0 lines, JSON 스키마 유지)
 
-3. `test(report): targeted_writes wording + count stability + 3-tier markdown`
+4. `test(report): targeted_writes wording + count stability + 3-tier markdown`
    - `tests/test_between_window.py` 확장 또는 신규 파일 (4 신규 테스트)
 
-4. `docs(readme): document (b-2-1) 28/30 result + F2 revert honesty scope`
+5. `docs(readme): document (b-2-1) 28/30 result + F2 revert honesty scope`
    - README 서브섹션 `targeted_writes` 문면 갱신
    - 그룹핑 헤더 3개 (`indicated` / `writes to other targets` / `not established`) 로 재구조화
    - Aggregate 라인 무변 (카운트 5개 그대로)
