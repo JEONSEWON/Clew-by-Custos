@@ -18,6 +18,8 @@ Result: WASTE DETECTED
 
 - wasted spans: 1
 - category breakdown: 0 error_repeat, 0 side_effect, 1 idempotent, 0 unclassified
+- Tool mapping coverage for this trace: 6 of 6 tools recognized (100.0%).
+- Idempotent pairs with unrecognized tool in interval: 0 of 1.
 - Redundant-invocation candidates: 1 idempotent pairs. No verdict is rendered — refer to context and judge whether each was intentional.
   - idempotent 1 — 0 with no state change indicated, 0 with high tool volume, 1 with writes to other targets
     - indicated, by tool identity: declarative 0
@@ -84,7 +86,7 @@ The 5 values, grouped by evidence:
   - **`no_side_effect`** — no state-changing tool sits between the two calls. **Hand-labeled sample: 30/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 88.43%; see [`docs/GREYZONE_EXPANSION_PREREG.md`](docs/GREYZONE_EXPANSION_PREREG.md) §2.1).
   - **`payload_dependent`** — a payload-dependent tool sits between (`Bash`, `terminal-run_command`, `snowflake-write_query`, …); the tool cannot infer from name whether it changed state. **Hand-labeled sample: 30/30 TRUE** (same CI note).
 - **Grouped as "high_volume" in the report:**
-  - **`high_volume`** — a state-changing tool is present AND ≥ 20 tool spans lie between the calls. **Hand-labeled sample: 29/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 82.78%). One case was a same-target repeated write with unchanged content (a `.tex` file rewritten three times with the same sha256). Grouped separately from `targeted_writes` (28/30, 77.93% lower bound) — its evidence is stronger, so it renders in a higher tier. See [`docs/GREYZONE_B23_EXTENSION_PREREG.md`](docs/GREYZONE_B23_EXTENSION_PREREG.md).
+  - **`high_volume`** — a state-changing tool is present AND ≥ 20 tool spans lie between the calls. **Hand-labeled sample: 29/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 82.78%). One case was a same-target repeated write with unchanged content (a `.tex` file rewritten three times with the same sha256). Grouped separately from `targeted_writes` (28/30, 77.93% lower bound) — its evidence is stronger, so it renders in a higher tier. **This tier has the highest mapping-coverage dependence of the five** — 51.4% of `high_volume` pairs on Toolathlon had at least one unrecognized tool in the interval (structural consequence of the ≥ 20 threshold: the wider the interval, the higher the chance an unrecognized tool appears). The 29/30 verdict itself is result-based (`sha256` identity) and unaffected by that dependence — see the Tool mapping coverage section below. Full details: [`docs/GREYZONE_B23_EXTENSION_PREREG.md`](docs/GREYZONE_B23_EXTENSION_PREREG.md), [`docs/COVERAGE_TRANSPARENCY_PREREG.md`](docs/COVERAGE_TRANSPARENCY_PREREG.md).
 - **Grouped as "writes to other targets" in the report:**
   - **`targeted_writes`** — a state-changing tool with a specific target is between the two calls. **Hand-labeled sample: 28/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 77.93%). Two cases were write-then-revert: a `.tex` file and a `.md` file each restored to origin content after intermediate modifications. Grouped separately from `no_side_effect` and `payload_dependent` (30/30 each, 88.43% lower bound) because the evidence strength differs — two of thirty sampled pairs were write-then-revert; neither of the other two categories showed any in their own 30-pair samples. See [`docs/GREYZONE_B21_EXTENSION_PREREG.md`](docs/GREYZONE_B21_EXTENSION_PREREG.md).
 
@@ -94,6 +96,22 @@ Aggregate on Toolathlon (3,791 idempotent pairs):
 Report shows three top-level tiers rendered as four aggregate lines (the `indicated` tier splits into `by tool identity` and `by interval scan` sub-lines), ordered by evidence strength (`indicated` 88.43% → `high_volume` 82.78% → `writes to other targets` 77.93%); the tool does not render a final waste verdict. Whether a given idempotent re-run was actually wasted remains your judgment given your execution context. Pre-registration, priority rule (V2), and reproduction evidence: [`docs/GREYZONE_EXPANSION_PREREG.md`](docs/GREYZONE_EXPANSION_PREREG.md). Per-tier extensions: [`docs/GREYZONE_B21_EXTENSION_PREREG.md`](docs/GREYZONE_B21_EXTENSION_PREREG.md) (`targeted_writes`), [`docs/GREYZONE_B23_EXTENSION_PREREG.md`](docs/GREYZONE_B23_EXTENSION_PREREG.md) (`high_volume`).
 
 **Honest scope for Claude Code users:** on 28 real Claude Code sessions only **16 pairs land in `idempotent`, and 56% of those fall into `high_volume`** (long intervals between rereads push them past the ≥ 20 threshold). In practice this sub-classification's yield concentrates on multi-tool environments (Toolathlon-like); a single Claude Code session usually leaves most idempotent pairs in the `high_volume` tier. The 82.78% lower bound applies to the Toolathlon 30-pair hand-labeled sample, not to Claude Code sessions — cross-population inference is a separate measurement. Threshold-20 revisit reserved for a separate pre-registration.
+
+### Tool mapping coverage
+
+The `between_window` classification is **relative to Clew's tool mapping** — the set of tool names Clew recognizes as state-changing, read-only, or declarative. Tools that are not in any of these lists are counted as if they were absent from the interval. So a tier label of `no_side_effect` means "no state change via **mapped** tools", not "no state change" in the absolute sense.
+
+The report banner at the top of each waste report surfaces this: one line for the trace's mapping coverage, and (when there is at least one idempotent pair) a second line for how many of those pairs had an unrecognized tool in the interval.
+
+**On the Toolathlon benchmark** (2026-07-29 measurement, `docs/COVERAGE_TRANSPARENCY_PREREG.md`):
+- 138 of 523 unique tool names are recognized — **26.4% coverage**.
+- Of the 3,791 report-shown idempotent pairs, 1,376 (36.30%) had at least one unrecognized tool in the interval. Per tier: `declarative` 34.9%, `no_side_effect` 21.3%, `payload_dependent` 34.1%, `targeted_writes` 38.3%, **`high_volume` 51.4%** (highest, structural consequence of the ≥ 20 span threshold).
+
+**What this means for verdicts.** Verdicts are based on `sha256(output_A) == sha256(output_B)`, which is a **result-based** check ([`docs/GREYZONE_B21_EXTENSION_PREREG.md`](docs/GREYZONE_B21_EXTENSION_PREREG.md) §a inherited from (b-2-1)). If the reread output is unchanged, the pair is flagged regardless of whether an unrecognized tool sat between the calls. So the hand-labeled TRUE rates (30/30, 30/30, 28/30, 29/30) and their Clopper-Pearson lower bounds (88.43% / 88.43% / 77.93% / 82.78%) are unaffected by mapping coverage — they were always about result identity, not about tool inventory.
+
+**What this means for tier labels.** The tier a pair lands in *does* depend on mapping. A pair with an unrecognized state-changing tool in the interval will land in `no_side_effect` instead of `targeted_writes` or `payload_dependent`. That is a label-precision limitation, not a false verdict. The banner surfaces this so a user reading "no waste detected" on a low-coverage trace does not mistake it for "we are clean" — the reassurance is honest only within the mapped subset.
+
+**Coverage on your own trace.** The report banner shows this trace's coverage. If the number is low and matters to you, the missing tools need to be added to the mapping. A user-registration path (`clew.yaml`) is on the roadmap.
 
 ---
 

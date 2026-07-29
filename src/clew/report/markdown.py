@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from clew.cost.amplification import AmplificationEstimate, AmplificationEvent
 from clew.detect.cascade import CascadeResult
 from clew.model import Trace
-from clew.report._enrich import EnrichedDetail, enrich
+from clew.report._enrich import EnrichedDetail, coverage_stats, enrich
 from clew.report._model import WasteDetail
 
 _PHI = 0.514345
@@ -86,6 +86,20 @@ _BW_JUDGE_DELEGATION = (
 )
 _BW_HEADER_NO_VERDICT = (
     "No verdict is rendered — refer to context and judge whether each was intentional."
+)
+
+# ─── PREREG: docs/COVERAGE_TRANSPARENCY_PREREG.md §1.1 (frozen) ─────────────
+# Two-line banner. Line A: always rendered (including waste-0). Line B:
+# conditional on the report having at least one idempotent pair. The label
+# narrowing (mapping-relative classification) is stated once in the README
+# About section, not sprinkled through per-pair wording.
+_COVERAGE_LINE_A = (
+    "**Tool mapping coverage for this trace**: {recognized} of "
+    "{unique_in_trace} tools recognized ({pct:.1%})."
+)
+_COVERAGE_LINE_B = (
+    "**Idempotent pairs with unrecognized tool in interval**: "
+    "{pairs_affected} of {idempotent_total}."
 )
 
 
@@ -201,20 +215,33 @@ def render_markdown(
     lines.append(f"- **detector params**: φ={_PHI}, N={_N}, model={_MODEL}")
     lines.append("")
 
+    # Enrich once. Used by (a) coverage banner in the waste-0 branch too,
+    # (b) category breakdown / per-pair rendering below.
+    enrichment = enrich(trace, details)
+    cov = coverage_stats(trace, enrichment.enriched)
+
     if not cr.wasteful:
         lines.append("## Result: no waste detected")
         lines.append("")
         lines.append("No wasteful patterns found (wasteful=False).")
         lines.append("")
+        # Coverage line A — ALWAYS rendered, including waste-0.
+        # PREREG §1.1 Q2 rationale: a low-coverage user seeing "no waste"
+        # alone reads it as "we're clean" while Clew is blind to most of
+        # their tool inventory. False reassurance is worse than false alarm.
+        if cov["unique_tools_in_trace"] > 0:
+            lines.append("- " + _COVERAGE_LINE_A.format(
+                recognized=cov["recognized_tools"],
+                unique_in_trace=cov["unique_tools_in_trace"],
+                pct=cov["coverage_ratio"],
+            ))
+            lines.append("")
         lines.append(_FOOTER)
         return "\n".join(lines)
 
     lines.append("## Result: WASTE DETECTED")
     lines.append("")
     lines.append(f"- **wasted spans**: {len(cr.waste_span_ids)}")
-
-    # Enrich once — reused for category breakdown + per-pair rendering below.
-    enrichment = enrich(trace, details)
     if enrichment.enriched:
         cat_counts: dict[str, int] = {}
         for ed in enrichment.enriched:
@@ -224,6 +251,27 @@ def render_markdown(
             for c in ("error_repeat", "side_effect", "idempotent", "unclassified")
         )
         lines.append(f"- **category breakdown**: {cat_line}")
+
+        # Coverage banner. PREREG §1.1 Q1 rationale: coverage relativity applies
+        # to between_window only (category classification already handles unknown
+        # tools honestly by routing them to `unclassified`). Placing this line at
+        # the header level would over-signal that the whole report is uncertain,
+        # training readers to ignore it. So the banner sits here — right before
+        # the Redundant-invocation candidates section it actually qualifies.
+        if cov["unique_tools_in_trace"] > 0:
+            lines.append("- " + _COVERAGE_LINE_A.format(
+                recognized=cov["recognized_tools"],
+                unique_in_trace=cov["unique_tools_in_trace"],
+                pct=cov["coverage_ratio"],
+            ))
+        # Coverage line B — only when there is at least one idempotent pair.
+        # Zero-context number is confusing without pairs to point at.
+        idem_count = cat_counts.get("idempotent", 0)
+        if idem_count > 0:
+            lines.append("- " + _COVERAGE_LINE_B.format(
+                pairs_affected=cov["pairs_with_unrecognized_in_between"],
+                idempotent_total=cov["idempotent_pairs_total"],
+            ))
 
         # PREREG §2.2 / §3.1 (§9) + extensions
         # (docs/GREYZONE_B21_EXTENSION_PREREG.md §1.3, GREYZONE_B23_EXTENSION_PREREG.md §1.3)
