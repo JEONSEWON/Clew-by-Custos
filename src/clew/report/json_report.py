@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from clew.cost.amplification import AmplificationEstimate
 from clew.detect.cascade import CascadeResult
 from clew.model import Trace
-from clew.report._enrich import enrich
+from clew.report._enrich import coverage_stats, enrich
 from clew.report._model import WasteDetail
 
 _PHI = 0.514345
@@ -35,6 +35,7 @@ def render_json(
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     enrichment = enrich(trace, details)
+    cov = coverage_stats(trace, enrichment.enriched)
     ev_by_sid = {ev.span_id: ev for ev in amplification.events} if amplification else {}
 
     waste_details_list = []
@@ -125,6 +126,9 @@ def render_json(
             for k in ("declarative", "no_side_effect", "payload_dependent",
                       "targeted_writes", "high_volume")
         },
+        # PREREG docs/COVERAGE_TRANSPARENCY_PREREG.md §1.2: tool-mapping
+        # coverage metadata. Additive field — old consumers ignore it.
+        "coverage_stats": cov,
         "waste_details": waste_details_list,
         "note": (
             "Detection thresholds were calibrated on synthetic traces; "

@@ -353,6 +353,56 @@ class EnrichmentResult:
     n_skipped_error: int
 
 
+def coverage_stats(trace: Trace, enriched: list["EnrichedDetail"]) -> dict:
+    """Tool mapping coverage stats for a single trace.
+
+    Definitions (frozen, docs/COVERAGE_TRANSPARENCY_PREREG.md §1.1):
+      recognized  = tool name in (_BW_SIDE_EFFECT_TOOLS
+                                  ∪ _BW_DECLARATIVE_TOOLS
+                                  ∪ _IDEMPOTENT_TOOLS)
+      unrecognized = tool name NOT in any of those three lists
+
+    Both counts are over `unique tool NAMES` in the trace's tool-kind spans.
+
+    pairs_with_unrecognized_in_between counts idempotent pairs where at least
+    one strictly-between tool-kind span has an unrecognized name.
+    """
+    tool_names = {s.agent_or_node_id for s in trace.spans if s.span_kind == "tool"}
+    recognized = {
+        t for t in tool_names
+        if t in _BW_SIDE_EFFECT_TOOLS
+        or t in _BW_DECLARATIVE_TOOLS
+        or t in _IDEMPOTENT_TOOLS
+    }
+    unrecognized = tool_names - recognized
+
+    idem_total = 0
+    pairs_affected = 0
+    for ed in enriched:
+        if ed.category != "idempotent":
+            continue
+        idem_total += 1
+        o = ed.detail.origin
+        c = ed.detail.candidate
+        # strict window; matches the rule used elsewhere in this module.
+        for s in trace.spans:
+            if s.span_kind != "tool":
+                continue
+            if not (o.end_time <= s.start_time < c.start_time):
+                continue
+            if s.agent_or_node_id in unrecognized:
+                pairs_affected += 1
+                break
+
+    return {
+        "unique_tools_in_trace": len(tool_names),
+        "recognized_tools": len(recognized),
+        "coverage_ratio": (len(recognized) / len(tool_names)) if tool_names else 1.0,
+        "idempotent_pairs_total": idem_total,
+        "pairs_with_unrecognized_in_between": pairs_affected,
+    }
+
+
 def _parse_input(text: str) -> Any:
     try:
         return json.loads(text)
