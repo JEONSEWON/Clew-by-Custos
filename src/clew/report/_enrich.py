@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from clew.detect.structural import find_candidates
 from clew.model import Span, Trace
 from clew.report._model import WasteDetail
 
@@ -448,6 +449,158 @@ def _has_intervening_edit(trace: Trace, origin: Span, cand: Span, file_path: str
         if fp == file_path:
             return True
     return False
+
+
+# ─────────────────────────────── ID bridge (report-only) ────────────────────
+# Separate axis from cascade waste. Same-input side-effect pairs are scanned
+# for entity-ID identity in the two responses. Independent of sha256 gate:
+# the pair may be excluded from waste (different responses because different
+# entities were created), yet counted here.
+#
+# Mapping frozen per docs/ID_BRIDGE_PRODUCTION_PREREG.md §1.1 — 26 tools.
+# Extractor kinds mirror field_test/diagnostics/id_bridge_scan.py:
+#   "path"       — dot-separated JSON key traversal (integers index arrays)
+#   "array_path" — same as path; distinct label for readability
+#   "regex_url"  — regex applied to the full response body
+
+_ID_BRIDGE_MAPPING: dict[str, tuple[str, str]] = {
+    # notion
+    "notion-API-post-page":                 ("path",       "id"),
+    "notion-API-patch-page":                ("path",       "id"),
+    "notion-API-patch-block-children":      ("array_path", "results.0.id"),
+    # google
+    "google_sheet-create_spreadsheet":      ("path",       "spreadsheetId"),
+    "google_forms-create_form":             ("path",       "formId"),
+    # github (commit sha)
+    "github-create_or_update_file":         ("path",       "commit.sha"),
+    "github-delete_file":                   ("path",       "commit.sha"),
+    "github-create_branch":                 ("path",       "object.sha"),
+    "github-push_files":                    ("path",       "object.sha"),
+    "github-merge_pull_request":            ("path",       "sha"),
+    "github-add_issue_comment":             ("path",       "id"),
+    # github (URL tail)
+    "github-create_pull_request":           ("regex_url",  r"/pull/(\d+)"),
+    "github-update_issue":                  ("regex_url",  r"/issues/(\d+)"),
+    # canvas
+    "canvas-canvas_create_course":          ("path",       "id"),
+    "canvas-canvas_create_announcement":    ("path",       "id"),
+    "canvas-canvas_create_assignment":      ("path",       "id"),
+    "canvas-canvas_create_quiz":            ("path",       "id"),
+    "canvas-canvas_create_conversation":    ("array_path", "0.id"),
+    "canvas-canvas_upload_file_from_path":  ("path",       "id"),
+    "canvas-canvas_enroll_user":            ("path",       "id"),
+    "canvas-canvas_update_course":          ("path",       "id"),
+    "canvas-canvas_update_assignment":      ("path",       "id"),
+    "canvas-canvas_update_quiz":            ("path",       "id"),
+    # woocommerce
+    "woocommerce-woo_products_create":      ("path",       "id"),
+    "woocommerce-woo_products_update":      ("path",       "id"),
+    "woocommerce-woo_orders_update":        ("path",       "id"),
+}
+
+
+def _unwrap_id_bridge_output(text: str) -> str:
+    """Toolathlon envelope unwrap. `{"type":"text","text":"<body>","...":...}`
+    is unwrapped once; anything else is returned as-is."""
+    if not text:
+        return ""
+    try:
+        outer = json.loads(text)
+        if isinstance(outer, dict) and "text" in outer and isinstance(outer["text"], str):
+            return outer["text"]
+    except Exception:
+        pass
+    return text
+
+
+def _dig_id_bridge(obj: Any, path_parts: list[str]) -> Any:
+    cur: Any = obj
+    for p in path_parts:
+        if isinstance(cur, list):
+            try:
+                cur = cur[int(p)]
+            except (ValueError, IndexError, TypeError):
+                return None
+        elif isinstance(cur, dict):
+            if p not in cur:
+                return None
+            cur = cur[p]
+        else:
+            return None
+    return cur
+
+
+def extract_entity_id(tool: str, output_text: str) -> str | None:
+    """Return extracted ID string, or None if the tool is not in the mapping
+    or the specific JSONPath fails on this response. Deterministic; no LLM."""
+    if tool not in _ID_BRIDGE_MAPPING:
+        return None
+    kind, spec = _ID_BRIDGE_MAPPING[tool]
+    body = _unwrap_id_bridge_output(output_text)
+    if not body:
+        return None
+    if kind == "regex_url":
+        m = re.search(spec, body)
+        return m.group(1) if m else None
+    try:
+        parsed = json.loads(body)
+    except Exception:
+        return None
+    val = _dig_id_bridge(parsed, spec.split("."))
+    if val is None:
+        return None
+    if isinstance(val, (int, float, str)):
+        s = str(val).strip()
+        if not s or s.lower() in ("null", "none"):
+            return None
+        return s
+    return None
+
+
+@dataclass
+class IdBridgeCandidate:
+    origin_span_id: str
+    candidate_span_id: str
+    tool: str
+    verdict: str  # "differ" | "same" | "no_id"
+    origin_id: str | None
+    candidate_id: str | None
+
+
+def scan_id_bridge_candidates(trace: Trace) -> list[IdBridgeCandidate]:
+    """Same-input side-effect pair scan. Independent of cascade.
+
+    Pool = find_candidates(trace, 2) filtered to cand.span_kind == "tool"
+    and cand.agent_or_node_id in _SIDE_EFFECT_TOOLS. For each pair, extract
+    IDs from origin and candidate outputs and classify three ways.
+
+    Does NOT feed waste_span_ids. Does NOT feed between_window_counts.
+    Purely additive report layer.
+    """
+    out: list[IdBridgeCandidate] = []
+    for origin, cand in find_candidates(trace, 2):
+        if cand.span_kind != "tool":
+            continue
+        tool = cand.agent_or_node_id
+        if tool not in _SIDE_EFFECT_TOOLS:
+            continue
+        o_id = extract_entity_id(tool, origin.output_text)
+        c_id = extract_entity_id(tool, cand.output_text)
+        if o_id is None or c_id is None:
+            verdict = "no_id"
+        elif o_id == c_id:
+            verdict = "same"
+        else:
+            verdict = "differ"
+        out.append(IdBridgeCandidate(
+            origin_span_id=origin.span_id,
+            candidate_span_id=cand.span_id,
+            tool=tool,
+            verdict=verdict,
+            origin_id=o_id,
+            candidate_id=c_id,
+        ))
+    return out
 
 
 def enrich(trace: Trace, details: list[WasteDetail]) -> EnrichmentResult:
