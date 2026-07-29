@@ -71,13 +71,14 @@ _BW_OBS_DECLARATIVE = (
     "the interval between calls was not examined."
 )
 _BW_OBS_NO_CHANGE = "No state change was observed between the two calls."
-_BW_OBS_NOT_ESTABLISHED = (
-    "State change potential not established from the trace alone; "
-    "see full context."
-)
 _BW_OBS_TARGETED_WRITES = (
     "State-changing tools were invoked in the interval, targeting other "
     "resources; this reread's output is unchanged from the first call."
+)
+_BW_OBS_HIGH_VOLUME = (
+    "State-changing tools were invoked across a long interval "
+    "(≥ 20 tool spans between the two calls); this reread's output "
+    "is unchanged from the first call."
 )
 _BW_JUDGE_DELEGATION = (
     "Whether these were wasted invocations is a user judgment; "
@@ -149,7 +150,8 @@ def _render_pair(idx: int, ed: EnrichedDetail, ev: AmplificationEvent | None) ->
     lines.append(f"- **cosine**: {ed.detail.cosine:.4f}")
     lines.append(f"- **state**: {modif_line}")
     if ed.between_window is not None:
-        # PREREG §3.1 (§9) + extension (docs/GREYZONE_B21_EXTENSION_PREREG.md §1.2)
+        # PREREG §3.1 (§9) + extensions
+        # (docs/GREYZONE_B21_EXTENSION_PREREG.md §1.2, GREYZONE_B23_EXTENSION_PREREG.md §1.2)
         # per-pair wording — 4 evidence-based buckets.
         if ed.between_window == "declarative":
             obs = _BW_OBS_DECLARATIVE
@@ -158,7 +160,7 @@ def _render_pair(idx: int, ed: EnrichedDetail, ev: AmplificationEvent | None) ->
         elif ed.between_window == "targeted_writes":
             obs = _BW_OBS_TARGETED_WRITES
         else:  # high_volume
-            obs = _BW_OBS_NOT_ESTABLISHED
+            obs = _BW_OBS_HIGH_VOLUME
         lines.append(f"- **between_window**: `{ed.between_window}` — {obs}")
     if ev is not None:
         lines.append(
@@ -223,13 +225,15 @@ def render_markdown(
         )
         lines.append(f"- **category breakdown**: {cat_line}")
 
-        # PREREG §2.2 / §3.1 (§9) + extension (docs/GREYZONE_B21_EXTENSION_PREREG.md §1.3)
-        # 3-tier top-level; evidence axis preserved as sub-lines under each tier:
+        # PREREG §2.2 / §3.1 (§9) + extensions
+        # (docs/GREYZONE_B21_EXTENSION_PREREG.md §1.3, GREYZONE_B23_EXTENSION_PREREG.md §1.3)
+        # 3 top-level tiers, 4 aggregate lines, ordered by evidence strength:
         #   indicated (no state change):
         #     by tool identity → declarative  (interval NOT examined)
         #     by interval scan → no_side_effect + payload_dependent  (interval examined)
+        #   high_volume            → high_volume  (own tier — b23, 82.78% lower)
         #   writes to other targets → targeted_writes  (own tier, own evidence)
-        #   not established        → high_volume
+        # "not established" group removed (empty after b23).
         bw_counts: dict[str, int] = {}
         for ed in enrichment.enriched:
             if ed.category == "idempotent" and ed.between_window:
@@ -242,8 +246,8 @@ def render_markdown(
                 + bw_counts.get("payload_dependent", 0)
             )
             no_change_indicated = by_identity + by_scan
+            high_volume_count = bw_counts.get("high_volume", 0)
             writes_other_targets = bw_counts.get("targeted_writes", 0)
-            not_established = bw_counts.get("high_volume", 0)
             lines.append(
                 f"- **Redundant-invocation candidates**: {idem_total} idempotent pairs. "
                 f"{_BW_HEADER_NO_VERDICT}"
@@ -251,8 +255,8 @@ def render_markdown(
             lines.append(
                 f"  - idempotent {idem_total} — "
                 f"{no_change_indicated} with no state change indicated, "
-                f"{writes_other_targets} with writes to other targets, "
-                f"{not_established} not established"
+                f"{high_volume_count} with high tool volume, "
+                f"{writes_other_targets} with writes to other targets"
             )
             lines.append(f"    - indicated, by tool identity: declarative {by_identity}")
             lines.append(
@@ -260,6 +264,13 @@ def render_markdown(
                 f"no_side_effect {bw_counts.get('no_side_effect', 0)}; "
                 f"payload_dependent {bw_counts.get('payload_dependent', 0)}"
             )
+            if high_volume_count > 0:
+                lines.append(f"    - high_volume: {high_volume_count}")
+                lines.append(
+                    f"      - Validated on Toolathlon: 29/30 hand-labeled TRUE "
+                    f"(95% two-sided Clopper-Pearson lower ≈ 82.78%). "
+                    f"One same-target repeated write observed."
+                )
             if writes_other_targets > 0:
                 lines.append(
                     f"    - writes to other targets: "
@@ -270,10 +281,6 @@ def render_markdown(
                     f"(95% two-sided Clopper-Pearson lower ≈ 77.93%). "
                     f"Two write-then-revert observed."
                 )
-            lines.append(
-                f"    - not established: "
-                f"high_volume {not_established}"
-            )
             lines.append(f"  - _{_BW_JUDGE_DELEGATION}_")
 
     if amplification is not None and amplification.n_events > 0:
