@@ -7,7 +7,13 @@ from datetime import datetime, timezone
 from clew.cost.amplification import AmplificationEstimate, AmplificationEvent
 from clew.detect.cascade import CascadeResult
 from clew.model import Trace
-from clew.report._enrich import EnrichedDetail, coverage_stats, enrich
+from clew.report._enrich import (
+    EnrichedDetail,
+    IdBridgeCandidate,
+    coverage_stats,
+    enrich,
+    scan_id_bridge_candidates,
+)
 from clew.report._model import WasteDetail
 
 _PHI = 0.514345
@@ -102,6 +108,29 @@ _COVERAGE_LINE_B = (
     "{pairs_affected} of {idempotent_total}."
 )
 
+# ─── PREREG docs/ID_BRIDGE_PRODUCTION_PREREG.md §1.4 (frozen) ───────────────
+# "Duplicate creation check" section. Renders alongside — not in place of —
+# cascade waste details. Word "provable" is intentionally absent (§0.2).
+_DUPLICATE_CREATION_HEADER = "## Duplicate creation check"
+_DUPLICATE_CREATION_INTRO = (
+    "The waste detector above requires both responses to be byte-identical. "
+    "That is the right test for reads — a re-read that returns the same "
+    "content is a redundant call. For creation tools it is reversed: if a "
+    "document really was created twice, the two responses carry different "
+    "entity IDs, so the waste detector excludes them by construction. This "
+    "section scans that excluded pool separately."
+)
+_ID_BRIDGE_VERDICT_DIFFER = (
+    "Both calls returned entity IDs, and they differ: {origin_id} / {candidate_id}."
+)
+_ID_BRIDGE_VERDICT_SAME = (
+    "Both calls returned the same entity ID: {origin_id}."
+)
+_ID_BRIDGE_VERDICT_NO_ID = (
+    "This tool's response contains no entity ID; whether a second entity was "
+    "created cannot be determined from the trace."
+)
+
 
 _CATEGORY_NOTE = (
     "## About categories\n"
@@ -121,6 +150,43 @@ _CATEGORY_NOTE = (
     "\n"
     "The mapping is by tool name only — never inferred from name substrings.\n"
 )
+
+
+def _render_id_bridge_section(candidates: list[IdBridgeCandidate]) -> list[str]:
+    """Duplicate creation check section (PREREG §1.4).
+
+    Renders header + intro + aggregate line + per-candidate list. When the
+    pool is empty, renders header + intro + explicit "0 candidates" line
+    (§1.6 decision 3 — checked but empty ≠ not checked).
+    """
+    lines: list[str] = [_DUPLICATE_CREATION_HEADER, "", _DUPLICATE_CREATION_INTRO, ""]
+    if not candidates:
+        lines.append("- **candidates**: 0 candidates found in this trace.")
+        lines.append("")
+        return lines
+    differ = sum(1 for c in candidates if c.verdict == "differ")
+    same = sum(1 for c in candidates if c.verdict == "same")
+    no_id = sum(1 for c in candidates if c.verdict == "no_id")
+    lines.append(f"- **candidates**: {len(candidates)} pairs total")
+    lines.append(f"  - {differ} with different entity IDs")
+    lines.append(f"  - {same} with the same entity ID")
+    lines.append(f"  - {no_id} without extractable entity ID")
+    lines.append("")
+    for i, cand in enumerate(candidates, 1):
+        lines.append(f"### {i}. {cand.tool}")
+        lines.append("")
+        lines.append(f"- origin span `{cand.origin_span_id}` → candidate span `{cand.candidate_span_id}`")
+        if cand.verdict == "differ":
+            wording = _ID_BRIDGE_VERDICT_DIFFER.format(
+                origin_id=cand.origin_id, candidate_id=cand.candidate_id,
+            )
+        elif cand.verdict == "same":
+            wording = _ID_BRIDGE_VERDICT_SAME.format(origin_id=cand.origin_id)
+        else:
+            wording = _ID_BRIDGE_VERDICT_NO_ID
+        lines.append(f"- {wording}")
+        lines.append("")
+    return lines
 
 
 def _event_lookup(amp: AmplificationEstimate | None) -> dict[str, AmplificationEvent]:
@@ -219,6 +285,7 @@ def render_markdown(
     # (b) category breakdown / per-pair rendering below.
     enrichment = enrich(trace, details)
     cov = coverage_stats(trace, enrichment.enriched)
+    id_bridge = scan_id_bridge_candidates(trace)
 
     if not cr.wasteful:
         lines.append("## Result: no waste detected")
@@ -236,6 +303,11 @@ def render_markdown(
                 pct=cov["coverage_ratio"],
             ))
             lines.append("")
+        # PREREG §1.6 decision 4 — Duplicate creation check must render even
+        # when cascade waste is 0, otherwise a real duplicate creation is
+        # hidden behind "no waste detected".
+        if id_bridge:
+            lines.extend(_render_id_bridge_section(id_bridge))
         lines.append(_FOOTER)
         return "\n".join(lines)
 
@@ -385,6 +457,10 @@ def render_markdown(
             snip = wd.candidate.output_text[:snippet_len]
             lines.append(f"> {snip}")
             lines.append("")
+
+    # PREREG §1.6 decision 2 — position between Wasted Span Details and
+    # Possible causes. Reports discovery, not explanation.
+    lines.extend(_render_id_bridge_section(id_bridge))
 
     lines.append(_POSSIBLE_CAUSES)
     lines.append(_CATEGORY_CAUSES)

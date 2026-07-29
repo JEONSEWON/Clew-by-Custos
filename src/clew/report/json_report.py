@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from clew.cost.amplification import AmplificationEstimate
 from clew.detect.cascade import CascadeResult
 from clew.model import Trace
-from clew.report._enrich import coverage_stats, enrich
+from clew.report._enrich import coverage_stats, enrich, scan_id_bridge_candidates
 from clew.report._model import WasteDetail
 
 _PHI = 0.514345
@@ -36,6 +36,7 @@ def render_json(
 
     enrichment = enrich(trace, details)
     cov = coverage_stats(trace, enrichment.enriched)
+    id_bridge = scan_id_bridge_candidates(trace)
     ev_by_sid = {ev.span_id: ev for ev in amplification.events} if amplification else {}
 
     waste_details_list = []
@@ -129,6 +130,19 @@ def render_json(
         # PREREG docs/COVERAGE_TRANSPARENCY_PREREG.md §1.2: tool-mapping
         # coverage metadata. Additive field — old consumers ignore it.
         "coverage_stats": cov,
+        # PREREG docs/ID_BRIDGE_PRODUCTION_PREREG.md §1.7: same-input
+        # side-effect pair scan with entity-ID extraction. Additive.
+        "id_bridge_candidates": [
+            {
+                "origin_span_id": c.origin_span_id,
+                "candidate_span_id": c.candidate_span_id,
+                "tool": c.tool,
+                "verdict": c.verdict,
+                "origin_id": c.origin_id,
+                "candidate_id": c.candidate_id,
+            }
+            for c in id_bridge
+        ],
         "waste_details": waste_details_list,
         "note": (
             "Detection thresholds were calibrated on synthetic traces; "
