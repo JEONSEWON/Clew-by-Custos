@@ -19,16 +19,17 @@ Result: WASTE DETECTED
 - wasted spans: 1
 - category breakdown: 0 error_repeat, 0 side_effect, 1 idempotent, 0 unclassified
 - Redundant-invocation candidates: 1 idempotent pairs. No verdict is rendered — refer to context and judge whether each was intentional.
-  - idempotent 1 — 0 with no state change indicated, 1 not established
-    - by tool identity: declarative 0
-    - by interval scan: no_side_effect 0; payload_dependent 0
-    - not established: targeted_writes 1; high_volume 0
+  - idempotent 1 — 0 with no state change indicated, 0 with high tool volume, 1 with writes to other targets
+    - indicated, by tool identity: declarative 0
+    - indicated, by interval scan: no_side_effect 0; payload_dependent 0
+    - writes to other targets: targeted_writes 1
+      - Validated on Toolathlon: 28/30 hand-labeled TRUE (95% two-sided Clopper-Pearson lower ≈ 77.93%). Two write-then-revert observed.
   - Whether these were wasted invocations is a user judgment; the tool records only the observation.
 
 ### 1. [idempotent] requery — Read on `.../boot.ts`
 - turns: turn 50 → re-run at turn 58 (of 258 total)
 - state: No modification of this file in between — re-read output is unchanged.
-- between_window: `targeted_writes` — State change potential not established from the trace alone; see full context.
+- between_window: `targeted_writes` — State-changing tools were invoked in the interval, targeting other resources; this reread's output is unchanged from the first call.
 - re-consumed across 200 subsequent turns (≈439 tokens/turn → 87800 amplification tokens)
 - estimated cost impact: $0.026340 ~ $0.263400 (cache-hit to cache-miss)
 ```
@@ -82,17 +83,17 @@ The 5 values, grouped by evidence:
   - **`declarative`** — the tool itself is declarative or idempotent by name (`local-claim_done`, `filesystem-create_directory`); repeating it is not a waste question. The interval between calls is not examined.
   - **`no_side_effect`** — no state-changing tool sits between the two calls. **Hand-labeled sample: 30/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 88.43%; see [`docs/GREYZONE_EXPANSION_PREREG.md`](docs/GREYZONE_EXPANSION_PREREG.md) §2.1).
   - **`payload_dependent`** — a payload-dependent tool sits between (`Bash`, `terminal-run_command`, `snowflake-write_query`, …); the tool cannot infer from name whether it changed state. **Hand-labeled sample: 30/30 TRUE** (same CI note).
+- **Grouped as "high_volume" in the report:**
+  - **`high_volume`** — a state-changing tool is present AND ≥ 20 tool spans lie between the calls. **Hand-labeled sample: 29/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 82.78%). One case was a same-target repeated write with unchanged content (a `.tex` file rewritten three times with the same sha256). Grouped separately from `targeted_writes` (28/30, 77.93% lower bound) — its evidence is stronger, so it renders in a higher tier. See [`docs/GREYZONE_B23_EXTENSION_PREREG.md`](docs/GREYZONE_B23_EXTENSION_PREREG.md).
 - **Grouped as "writes to other targets" in the report:**
   - **`targeted_writes`** — a state-changing tool with a specific target is between the two calls. **Hand-labeled sample: 28/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 77.93%). Two cases were write-then-revert: a `.tex` file and a `.md` file each restored to origin content after intermediate modifications. Grouped separately from `no_side_effect` and `payload_dependent` (30/30 each, 88.43% lower bound) because the evidence strength differs — two of thirty sampled pairs were write-then-revert; neither of the other two categories showed any in their own 30-pair samples. See [`docs/GREYZONE_B21_EXTENSION_PREREG.md`](docs/GREYZONE_B21_EXTENSION_PREREG.md).
-- **Grouped as "not established" in the report:**
-  - **`high_volume`** — a state-changing tool is present AND ≥ 20 tool spans lie between the calls. Long context makes trace-only judgment unreliable. Not hand-verified.
 
 Aggregate on Toolathlon (3,791 idempotent pairs):
 `declarative 1,226` / `no_side_effect 888` / `payload_dependent 405` / `targeted_writes 248` / `high_volume 1,024`.
 
-Report shows the three tiers on separate lines; the tool does not render a final waste verdict. Whether a given idempotent re-run was actually wasted remains your judgment given your execution context. Pre-registration, priority rule (V2), and reproduction evidence: [`docs/GREYZONE_EXPANSION_PREREG.md`](docs/GREYZONE_EXPANSION_PREREG.md). Targeted-writes verification details: [`docs/GREYZONE_B21_EXTENSION_PREREG.md`](docs/GREYZONE_B21_EXTENSION_PREREG.md).
+Report shows three top-level tiers rendered as four aggregate lines (the `indicated` tier splits into `by tool identity` and `by interval scan` sub-lines), ordered by evidence strength (`indicated` 88.43% → `high_volume` 82.78% → `writes to other targets` 77.93%); the tool does not render a final waste verdict. Whether a given idempotent re-run was actually wasted remains your judgment given your execution context. Pre-registration, priority rule (V2), and reproduction evidence: [`docs/GREYZONE_EXPANSION_PREREG.md`](docs/GREYZONE_EXPANSION_PREREG.md). Per-tier extensions: [`docs/GREYZONE_B21_EXTENSION_PREREG.md`](docs/GREYZONE_B21_EXTENSION_PREREG.md) (`targeted_writes`), [`docs/GREYZONE_B23_EXTENSION_PREREG.md`](docs/GREYZONE_B23_EXTENSION_PREREG.md) (`high_volume`).
 
-**Honest scope for Claude Code users:** on 28 real Claude Code sessions only **16 pairs land in `idempotent`, and 56% of those fall into `high_volume`** (long intervals between rereads push them past the ≥ 20 threshold). In practice this sub-classification's yield concentrates on multi-tool environments (Toolathlon-like); a single Claude Code session usually leaves most idempotent pairs in the "not established" group. Threshold-20 revisit reserved for a separate pre-registration.
+**Honest scope for Claude Code users:** on 28 real Claude Code sessions only **16 pairs land in `idempotent`, and 56% of those fall into `high_volume`** (long intervals between rereads push them past the ≥ 20 threshold). In practice this sub-classification's yield concentrates on multi-tool environments (Toolathlon-like); a single Claude Code session usually leaves most idempotent pairs in the `high_volume` tier. The 82.78% lower bound applies to the Toolathlon 30-pair hand-labeled sample, not to Claude Code sessions — cross-population inference is a separate measurement. Threshold-20 revisit reserved for a separate pre-registration.
 
 ---
 

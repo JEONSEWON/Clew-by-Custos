@@ -339,19 +339,20 @@ def test_between_window_toolathlon_counts_reproduce_pre_reg_4_1():
     assert sum(cnt.values()) == 3791
 
 
-# ─── extension (docs/GREYZONE_B21_EXTENSION_PREREG.md §2.1) ────────────────
+# ─── extensions (b21 + b23) ─────────────────────────────────────────────────
 
 def test_targeted_writes_own_wording():
-    """PREREG extension §1.2: targeted_writes uses its own _BW_OBS_TARGETED_WRITES."""
+    """b21 §1.2 + b23 §1.2: targeted_writes uses its own _BW_OBS_TARGETED_WRITES,
+    distinct from all other tiers including the new _BW_OBS_HIGH_VOLUME."""
     from clew.report.markdown import (
         _BW_OBS_DECLARATIVE,
         _BW_OBS_NO_CHANGE,
-        _BW_OBS_NOT_ESTABLISHED,
+        _BW_OBS_HIGH_VOLUME,
         _BW_OBS_TARGETED_WRITES,
     )
     assert _BW_OBS_TARGETED_WRITES != _BW_OBS_DECLARATIVE
     assert _BW_OBS_TARGETED_WRITES != _BW_OBS_NO_CHANGE
-    assert _BW_OBS_TARGETED_WRITES != _BW_OBS_NOT_ESTABLISHED
+    assert _BW_OBS_TARGETED_WRITES != _BW_OBS_HIGH_VOLUME
 
     origin = _tool_span("o", "filesystem-read_file", 1)
     between = [_tool_span("w", "filesystem-write_file", 10)]
@@ -361,14 +362,65 @@ def test_targeted_writes_own_wording():
     cr = _cascade_result([origin, *between, cand], ["c"])
     md = render_markdown(trace, cr, [wd])
     assert _BW_OBS_TARGETED_WRITES in md
-    assert _BW_OBS_NOT_ESTABLISHED not in md, (
-        "targeted_writes must not fall through to NOT_ESTABLISHED wording"
+    assert _BW_OBS_HIGH_VOLUME not in md, (
+        "targeted_writes must not fall through to HIGH_VOLUME wording"
     )
 
 
-def test_between_window_counts_stable_post_regrouping():
-    """PREREG extension §0.2 / §2.1 #2: display-layer restructure must not
-    change JSON between_window_counts field values."""
+def test_high_volume_own_wording():
+    """b23 §1.2: high_volume uses its own _BW_OBS_HIGH_VOLUME, distinct from
+    all four other wording constants."""
+    from clew.report.markdown import (
+        _BW_OBS_DECLARATIVE,
+        _BW_OBS_NO_CHANGE,
+        _BW_OBS_HIGH_VOLUME,
+        _BW_OBS_TARGETED_WRITES,
+    )
+    assert _BW_OBS_HIGH_VOLUME != _BW_OBS_DECLARATIVE
+    assert _BW_OBS_HIGH_VOLUME != _BW_OBS_NO_CHANGE
+    assert _BW_OBS_HIGH_VOLUME != _BW_OBS_TARGETED_WRITES
+
+    origin = _tool_span("o", "filesystem-read_file", 1)
+    # ≥ 20 between-tools, includes a side-effect → high_volume
+    between = [
+        _tool_span(f"b{i}", "filesystem-read_file", 10 + i) for i in range(19)
+    ] + [_tool_span("bb", "filesystem-write_file", 30)]
+    cand = _tool_span("c", "filesystem-read_file", 100)
+    trace = _trace([origin, *between, cand])
+    wd = WasteDetail(origin=origin, candidate=cand, cosine=1.0)
+    cr = _cascade_result([origin, *between, cand], ["c"])
+    md = render_markdown(trace, cr, [wd])
+    assert _BW_OBS_HIGH_VOLUME in md, "high_volume must receive its own wording"
+    assert _BW_OBS_TARGETED_WRITES not in md, (
+        "high_volume must not fall through to TARGETED_WRITES wording"
+    )
+
+
+def test_not_established_constant_removed():
+    """b23 §1.2: _BW_OBS_NOT_ESTABLISHED must not exist in markdown module.
+    The 'not established' group is empty after b23; the constant is dead code."""
+    import clew.report.markdown as md_mod
+    assert not hasattr(md_mod, "_BW_OBS_NOT_ESTABLISHED"), (
+        "b23 §1.2: _BW_OBS_NOT_ESTABLISHED must be removed"
+    )
+    # Also verify no textual leak in the rendered output.
+    origin = _tool_span("o", "filesystem-read_file", 1)
+    between = [
+        _tool_span(f"b{i}", "filesystem-read_file", 10 + i) for i in range(19)
+    ] + [_tool_span("bb", "filesystem-write_file", 30)]
+    cand = _tool_span("c", "filesystem-read_file", 100)
+    trace = _trace([origin, *between, cand])
+    wd = WasteDetail(origin=origin, candidate=cand, cosine=1.0)
+    cr = _cascade_result([origin, *between, cand], ["c"])
+    md = render_markdown(trace, cr, [wd])
+    assert "not established" not in md, (
+        "b23: 'not established' group must not appear in rendered markdown"
+    )
+
+
+def test_between_window_counts_stable_post_b23():
+    """b21 §0.2 / b23 §0.2: display-layer restructure must not change
+    JSON between_window_counts field values across BOTH extensions."""
     origin = _tool_span("o", "filesystem-read_file", 1)
     between = [_tool_span("w", "filesystem-write_file", 10)]
     cand = _tool_span("c", "filesystem-read_file", 100)
@@ -382,41 +434,165 @@ def test_between_window_counts_stable_post_regrouping():
     }
     assert out["waste_details"][0]["between_window"] == "targeted_writes"
 
+    # And for a high_volume pair the enum still lands correctly (not lost by
+    # the display-layer changes).
+    origin2 = _tool_span("o2", "filesystem-read_file", 1000)
+    between2 = [
+        _tool_span(f"hb{i}", "filesystem-read_file", 1010 + i) for i in range(19)
+    ] + [_tool_span("hbb", "filesystem-write_file", 1030)]
+    cand2 = _tool_span("c2", "filesystem-read_file", 1100)
+    trace2 = _trace([origin2, *between2, cand2])
+    wd2 = WasteDetail(origin=origin2, candidate=cand2, cosine=1.0)
+    cr2 = _cascade_result([origin2, *between2, cand2], ["c2"])
+    out2 = json.loads(render_json(trace2, cr2, [wd2]))
+    assert out2["waste_details"][0]["between_window"] == "high_volume"
+    assert out2["between_window_counts"]["high_volume"] == 1
 
-def test_markdown_3tier_split_with_evidence_axis():
-    """PREREG extension §1.3: aggregate has 3-tier top-level +
-    evidence-axis sub-lines under indicated tier."""
+
+def test_markdown_tier_order_evidence_strength():
+    """b23 §1.3: aggregate lines render in evidence-strength order:
+      (1) indicated, by tool identity
+      (2) indicated, by interval scan
+      (3) high_volume         (own tier, 82.78% lower — above targeted_writes)
+      (4) writes to other targets: targeted_writes  (77.93% lower)
+    Top-level tiers = 3 (indicated / high_volume / writes to other targets).
+    """
     origin = _tool_span("o", "filesystem-read_file", 1)
-    between = [_tool_span("w", "filesystem-write_file", 10)]
+    # Craft: one targeted_writes pair + one high_volume pair to exercise both tiers.
+    tw_between = [_tool_span("w", "filesystem-write_file", 10)]
+    hv_between = [
+        _tool_span(f"hb{i}", "filesystem-read_file", 200 + i) for i in range(19)
+    ] + [_tool_span("hbb", "filesystem-write_file", 230)]
+    cand_tw = _tool_span("c_tw", "filesystem-read_file", 100)
+    origin_hv = _tool_span("o_hv", "filesystem-read_file", 190)
+    cand_hv = _tool_span("c_hv", "filesystem-read_file", 300)
+    trace = _trace([origin, *tw_between, cand_tw, origin_hv, *hv_between, cand_hv])
+    wd_tw = WasteDetail(origin=origin, candidate=cand_tw, cosine=1.0)
+    wd_hv = WasteDetail(origin=origin_hv, candidate=cand_hv, cosine=1.0)
+    cr = _cascade_result(list(trace.spans), ["c_tw", "c_hv"])
+    md = render_markdown(trace, cr, [wd_tw, wd_hv])
+
+    # Summary line: evidence-strength order + parallel "with X" phrasing.
+    assert re.search(
+        r"idempotent 2 —\s*0 with no state change indicated,\s*"
+        r"1 with high tool volume,\s*"
+        r"1 with writes to other targets",
+        md,
+    ), f"Aggregate summary order or wording changed. Got:\n{md}"
+
+    # 4 aggregate lines in order.
+    pos_ident = md.find("indicated, by tool identity")
+    pos_scan = md.find("indicated, by interval scan")
+    pos_hv = md.find("- high_volume: 1")
+    pos_tw = md.find("writes to other targets: targeted_writes 1")
+    assert 0 <= pos_ident < pos_scan < pos_hv < pos_tw, (
+        f"Aggregate line order broken. positions: "
+        f"ident={pos_ident}, scan={pos_scan}, hv={pos_hv}, tw={pos_tw}"
+    )
+
+    # Both stat lines present.
+    assert "Validated on Toolathlon: 29/30 hand-labeled TRUE" in md
+    assert re.search(r"Clopper-Pearson lower [≈~] 82\.78", md)
+    assert "Validated on Toolathlon: 28/30 hand-labeled TRUE" in md
+    assert re.search(r"Clopper-Pearson lower [≈~] 77\.93", md)
+
+    # "not established" group must be gone.
+    assert "not established" not in md
+
+
+def test_markdown_high_volume_tier_absent_when_zero():
+    """b23 §1.3: high_volume line + stat are conditional on high_volume > 0.
+    Summary line still shows '0 with high tool volume' (all counts always
+    printed for arithmetic transparency)."""
+    origin = _tool_span("o", "filesystem-read_file", 1)
+    between = [_tool_span("w", "filesystem-write_file", 10)]  # targeted_writes only
     cand = _tool_span("c", "filesystem-read_file", 100)
     trace = _trace([origin, *between, cand])
     wd = WasteDetail(origin=origin, candidate=cand, cosine=1.0)
     cr = _cascade_result([origin, *between, cand], ["c"])
     md = render_markdown(trace, cr, [wd])
-
-    assert "with no state change indicated" in md
-    assert "with writes to other targets" in md
-    assert "not established" in md
-
-    assert "indicated, by tool identity" in md
-    assert "indicated, by interval scan" in md
-
-    assert "writes to other targets: targeted_writes 1" in md
-    assert "Validated on Toolathlon: 28/30 hand-labeled TRUE" in md
-
-    assert "not established: high_volume 0" in md
-    assert "not established: targeted_writes" not in md
+    # Summary still shows the count (0), but no dedicated high_volume line/stat.
+    assert "0 with high tool volume" in md
+    assert re.search(r"^\s+- high_volume:", md, re.M) is None, (
+        "high_volume line must be absent when count == 0"
+    )
+    assert "82.78" not in md
 
 
 def test_markdown_writes_tier_absent_when_zero():
-    """PREREG extension §1.3: 'writes to other targets' sub-block only
-    rendered when targeted_writes > 0."""
+    """b21 §1.3 (unchanged by b23): writes-to-other-targets line + stat are
+    conditional on targeted_writes > 0. Summary line still shows the count."""
     origin = _tool_span("o", "filesystem-read_file", 1)
     cand = _tool_span("c", "filesystem-read_file", 100)
     trace = _trace([origin, cand])
     wd = WasteDetail(origin=origin, candidate=cand, cosine=1.0)
     cr = _cascade_result([origin, cand], ["c"])
     md = render_markdown(trace, cr, [wd])
-    assert "with writes to other targets" in md
+    assert "0 with writes to other targets" in md
     assert "writes to other targets: targeted_writes" not in md
-    assert "Validated on Toolathlon" not in md
+    assert "77.93" not in md
+
+
+# ─── standing rule (docs/GREYZONE_B23_EXTENSION_PREREG.md §5) ──────────────
+
+def test_readme_example_matches_current_render_structure():
+    """b23 §5 standing rule: README output example must reflect the current
+    render structure. When render wording/lines change, regenerate the example
+    in the same PR.
+
+    This is a *structural* check (not char-for-char): it verifies the example
+    block uses the current tier-header phrasing, not obsolete ones. Two prior
+    slips (0.3.2 between_window intro; b21 targeted_writes 3-tier) prompted
+    promoting this to a standing rule.
+    """
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+
+    # Extract the first fenced code block that contains "Result: WASTE DETECTED".
+    m = re.search(r"```\s*\n(Result: WASTE DETECTED.*?)```", readme, re.S)
+    assert m, "README must contain a 'Result: WASTE DETECTED' fenced example"
+    example = m.group(1)
+
+    # Current (b23) tier phrasing must be present.
+    assert "with no state change indicated" in example
+    assert "indicated, by tool identity" in example
+    assert "indicated, by interval scan" in example
+
+    # Obsolete phrasings from earlier iterations must be gone.
+    # Pre-b21: "by tool identity" (without "indicated, ").
+    assert re.search(r"^\s+- by tool identity", example, re.M) is None, (
+        "README example uses pre-b21 aggregate wording; regenerate."
+    )
+    # Pre-b21: "by interval scan" (without "indicated, ").
+    assert re.search(r"^\s+- by interval scan", example, re.M) is None, (
+        "README example uses pre-b21 aggregate wording; regenerate."
+    )
+    # Pre-b23: "not established:" line.
+    assert "not established: targeted_writes" not in example, (
+        "README example uses pre-b23 'not established' grouping; regenerate."
+    )
+    assert "not established: high_volume" not in example, (
+        "README example uses pre-b23 'not established' grouping; regenerate."
+    )
+
+    # Current per-pair wording variants must appear if the example flags any
+    # idempotent pair. (Loose check: at least one of the current 4 wordings.)
+    from clew.report.markdown import (
+        _BW_OBS_DECLARATIVE, _BW_OBS_NO_CHANGE,
+        _BW_OBS_TARGETED_WRITES, _BW_OBS_HIGH_VOLUME,
+    )
+    per_pair_line = re.search(r"between_window: `[^`]+`\s*—\s*(.+)", example)
+    if per_pair_line:
+        wording = per_pair_line.group(1).strip().rstrip(".")
+        current = {
+            _BW_OBS_DECLARATIVE.rstrip("."),
+            _BW_OBS_NO_CHANGE.rstrip("."),
+            _BW_OBS_TARGETED_WRITES.rstrip("."),
+            _BW_OBS_HIGH_VOLUME.rstrip("."),
+        }
+        assert any(wording.startswith(c) for c in current), (
+            f"README example's per-pair wording is not among current 4:\n"
+            f"  got: {wording!r}\n"
+            f"  expected one of (prefix match): {sorted(current)}"
+        )
