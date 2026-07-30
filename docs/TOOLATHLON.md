@@ -3,7 +3,7 @@
 **Target data**: [hkust-nlp/Toolathlon-Trajectories](https://huggingface.co/datasets/hkust-nlp/Toolathlon-Trajectories) (HF, CC-BY-4.0, gated).
 
 **Why a separate adapter**:
-- On our 20 development sessions (§22.11.8), confirmed waste = 0. The detector's true-positive capability cannot be demonstrated on this corpus.
+- On our 20 development sessions (§22.11.8), no candidates were upheld as waste after owner adjudication. The detector's true-positive capability cannot be demonstrated on this corpus.
 - Toolathlon has 17 models × 3 runs × real long-horizon tool-use traces (with task success/failure labels). arXiv:2602.19008 names canonical path deviation as the failure cause → waste is likely to exist in reality.
 - Recon (§23.5 evidence) confirmed re-invocations exist: of 108 traces, 39 (36%) contain (name, args) re-invocations, 177 candidates total.
 
