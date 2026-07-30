@@ -113,6 +113,25 @@ The report banner at the top of each waste report surfaces this: one line for th
 
 **Coverage on your own trace.** The report banner shows this trace's coverage. If the number is low and matters to you, the missing tools need to be added to the mapping. A user-registration path (`clew.yaml`) is on the roadmap.
 
+### Duplicate creation check
+
+Clew ships two detectors with opposite logic:
+
+| Detector | Trigger | Meaning |
+|---|---|---|
+| **Waste detection** | Both responses byte-identical | Same result — the second call was redundant. Right for reads. |
+| **Duplicate creation check** | Two entity IDs differ | Different entities — two things really were created. Right for creation tools. |
+
+The waste detector excludes creation-tool pairs by design — if two `notion-API-post-page` calls create two different pages, they carry different IDs, so byte identity fails and the detector doesn't flag them. The `Duplicate creation check` section in the report scans that excluded pool separately, using per-tool entity-ID extraction (26 tools currently mapped, see `docs/ID_BRIDGE_PRODUCTION_PREREG.md` §1.1).
+
+**On the Toolathlon benchmark** (2026-07-29 measurement):
+- 3,432 same-input side-effect pairs scanned.
+- 159 (4.63%) had different entity IDs.
+- 76 (2.21%) had the same entity ID.
+- 3,197 (93.16%) had no extractable entity ID — reported as an audit blind spot rather than a verdict.
+
+The 93% `no_id` share is the honest scope: most tools do not return entity IDs in their responses (emails send success strings, SQL writes return row counts, filesystem operations return `ok`). This section makes that blind spot visible rather than hiding it. Mapping expansion is tracked separately.
+
 ---
 
 ## Where it stands
