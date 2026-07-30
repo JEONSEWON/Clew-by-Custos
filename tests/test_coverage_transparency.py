@@ -203,7 +203,11 @@ def test_coverage_stats_mixed_bucket():
 # ────────────────────────── JSON schema ─────────────────────────────────────
 
 def test_coverage_stats_json_schema():
-    """JSON top-level `coverage_stats` field with 5 keys."""
+    """JSON top-level `coverage_stats` field.
+
+    Schema is the 5 keys from COVERAGE_TRANSPARENCY_PREREG plus
+    unrecognized_tool_names (COVERAGE_BANNER_AMEND_PREREG §4 option B).
+    """
     origin = _tool_span("o", "filesystem-read_file", 1)
     cand = _tool_span("c", "filesystem-read_file", 100)
     trace = _trace([origin, cand])
@@ -218,12 +222,14 @@ def test_coverage_stats_json_schema():
         "coverage_ratio",
         "idempotent_pairs_total",
         "pairs_with_unrecognized_in_between",
+        "unrecognized_tool_names",
     }
     assert cov["unique_tools_in_trace"] == 1
     assert cov["recognized_tools"] == 1
     assert cov["coverage_ratio"] == 1.0
     assert cov["idempotent_pairs_total"] == 1
     assert cov["pairs_with_unrecognized_in_between"] == 0
+    assert cov["unrecognized_tool_names"] == []
 
 
 def test_coverage_stats_present_in_json_waste_zero():
@@ -323,3 +329,151 @@ def test_readme_example_has_coverage_banner():
         "README example is missing the coverage banner. Regenerate it "
         "from a real render (per docs/COVERAGE_TRANSPARENCY_PREREG.md §5)."
     )
+
+
+# ────────────── Line C: top-N unrecognized names (banner amend) ─────────────
+
+
+def test_coverage_line_c_absent_when_zero_unrecognized():
+    """PREREG (banner amend) §3.2: Line C must NOT render when all tools recognized."""
+    s = _tool_span("s", "filesystem-read_file", 1)
+    trace = _trace([s])
+    cr = _cascade_result([s], [])
+    md = render_markdown(trace, cr, [])
+    assert "Unrecognized tools in this trace" not in md
+
+
+def test_coverage_line_c_present_when_unrecognized_gt_zero():
+    """§3.1: Line C renders when at least one unrecognized tool exists."""
+    s1 = _tool_span("s1", "filesystem-read_file", 1)
+    s2 = _tool_span("s2", "some-brand-new-tool", 2)
+    trace = _trace([s1, s2])
+    cr = _cascade_result([s1, s2], [])
+    md = render_markdown(trace, cr, [])
+    assert "Unrecognized tools in this trace" in md
+    assert "some-brand-new-tool" in md
+
+
+def test_coverage_line_c_names_sorted_by_occurrence_desc():
+    """§3.1: sort key is occurrence-desc, alphabetic tie-break."""
+    # bravo appears 3× (spans t=1,2,3), alpha 2×, zulu 1×.
+    spans = [
+        _tool_span("b1", "bravo-tool", 1),
+        _tool_span("b2", "bravo-tool", 2),
+        _tool_span("b3", "bravo-tool", 3),
+        _tool_span("a1", "alpha-tool", 4),
+        _tool_span("a2", "alpha-tool", 5),
+        _tool_span("z1", "zulu-tool", 6),
+    ]
+    trace = _trace(spans)
+    cov = coverage_stats(trace, [])
+    assert cov["unrecognized_tool_names"] == ["bravo-tool", "alpha-tool", "zulu-tool"]
+
+
+def test_coverage_line_c_alpha_tie_break():
+    """§3.1: tie-break on occurrence count is alphabetic."""
+    spans = [
+        _tool_span("g1", "gamma-tool", 1),
+        _tool_span("g2", "gamma-tool", 2),
+        _tool_span("d1", "delta-tool", 3),
+        _tool_span("d2", "delta-tool", 4),
+    ]
+    trace = _trace(spans)
+    cov = coverage_stats(trace, [])
+    assert cov["unrecognized_tool_names"] == ["delta-tool", "gamma-tool"]
+
+
+def test_coverage_line_c_ellipsis_when_more_than_5():
+    """§3.1: >5 unrecognized → top-5 shown, '… (+K more)' suffix."""
+    spans = []
+    # Seven distinct unrecognized names, each seen once. Alphabetic order applies
+    # because all have count=1.
+    for i, name in enumerate(["a-tool", "b-tool", "c-tool", "d-tool",
+                              "e-tool", "f-tool", "g-tool"]):
+        spans.append(_tool_span(f"s{i}", name, i + 1))
+    trace = _trace(spans)
+    cr = _cascade_result(spans, [])
+    md = render_markdown(trace, cr, [])
+    assert "Unrecognized tools in this trace (top 5)" in md
+    assert "a-tool, b-tool, c-tool, d-tool, e-tool" in md
+    assert "… (+2 more)" in md
+    # f-tool and g-tool should NOT appear in the top-5 comma list.
+    banner_line = next(
+        line for line in md.splitlines() if "Unrecognized tools in this trace" in line
+    )
+    assert "f-tool" not in banner_line
+    assert "g-tool" not in banner_line
+
+
+def test_coverage_line_c_no_ellipsis_when_le_5():
+    """§3.1: ≤5 unrecognized → n_shown = actual, no '(+K more)'."""
+    spans = [
+        _tool_span("s1", "x-tool", 1),
+        _tool_span("s2", "y-tool", 2),
+    ]
+    trace = _trace(spans)
+    cr = _cascade_result(spans, [])
+    md = render_markdown(trace, cr, [])
+    assert "Unrecognized tools in this trace (top 2)" in md
+    assert "more)" not in md
+
+
+def test_coverage_line_c_renders_in_waste_zero():
+    """§3.5: waste-0 branch renders Line C too (parallels Line A)."""
+    s = _tool_span("s", "some-unmapped-tool", 1)
+    trace = _trace([s])
+    cr = _cascade_result([s], [])
+    md = render_markdown(trace, cr, [])
+    assert "no waste detected" in md.lower()
+    assert "Unrecognized tools in this trace" in md
+    assert "some-unmapped-tool" in md
+
+
+def test_coverage_line_c_renders_in_waste_detected():
+    """§3.4 / §3.5 also applies inside the waste-detected branch."""
+    origin = _tool_span("o", "filesystem-read_file", 1)
+    unmapped = _tool_span("u", "some-brand-new-tool", 10)
+    cand = _tool_span("c", "filesystem-read_file", 100)
+    trace = _trace([origin, unmapped, cand])
+    wd = WasteDetail(origin=origin, candidate=cand, cosine=1.0)
+    cr = _cascade_result([origin, unmapped, cand], ["c"])
+    md = render_markdown(trace, cr, [wd])
+    assert "Result: WASTE DETECTED" in md
+    assert "Unrecognized tools in this trace" in md
+    assert "some-brand-new-tool" in md
+
+
+def test_json_unrecognized_tool_names_full_not_truncated():
+    """§4 option B: JSON list is the FULL list, no top-5 cap."""
+    # 7 unrecognized names, occurrence 1 each — Line C truncates to 5, JSON has all 7.
+    spans = []
+    for i, name in enumerate(["a", "b", "c", "d", "e", "f", "g"]):
+        spans.append(_tool_span(f"s{i}", f"{name}-tool", i + 1))
+    trace = _trace(spans)
+    cr = _cascade_result(spans, [])
+    out = json.loads(render_json(trace, cr, []))
+    assert out["coverage_stats"]["unrecognized_tool_names"] == [
+        "a-tool", "b-tool", "c-tool", "d-tool", "e-tool", "f-tool", "g-tool",
+    ]
+
+
+def test_coverage_line_c_no_over_claim_wording():
+    """§3.3: Line C constant carries no banned phrase and no 'provable'."""
+    from clew.report.markdown import _COVERAGE_LINE_C
+    low = _COVERAGE_LINE_C.lower()
+    for phrase in _BANNED:
+        assert phrase not in low
+    assert "provable" not in low
+
+
+def test_coverage_line_c_determinism():
+    """§3.1: same input → same sorted names."""
+    spans = [
+        _tool_span("s1", "b-tool", 1),
+        _tool_span("s2", "a-tool", 2),
+        _tool_span("s3", "a-tool", 3),
+    ]
+    trace = _trace(spans)
+    a = coverage_stats(trace, [])["unrecognized_tool_names"]
+    b = coverage_stats(trace, [])["unrecognized_tool_names"]
+    assert a == b == ["a-tool", "b-tool"]
