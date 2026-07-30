@@ -766,7 +766,7 @@ Conditions:
 
 After structural candidate is confirmed:
 `cosine(embed(origin.output_text), embed(candidate.output_text)) >= 0.514345` →
-confirmed waste.
+waste candidate.
 
 **Pattern 2: `pingpong_aba`** — A→B→A→B alternation
 

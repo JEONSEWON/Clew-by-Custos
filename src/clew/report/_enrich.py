@@ -367,6 +367,10 @@ def coverage_stats(trace: Trace, enriched: list["EnrichedDetail"]) -> dict:
 
     pairs_with_unrecognized_in_between counts idempotent pairs where at least
     one strictly-between tool-kind span has an unrecognized name.
+
+    unrecognized_tool_names (docs/COVERAGE_BANNER_AMEND_PREREG.md §3.1 / §4):
+    full list of unrecognized names sorted by span-occurrence desc,
+    alphabetic tie-break (deterministic). Empty list if none.
     """
     tool_names = {s.agent_or_node_id for s in trace.spans if s.span_kind == "tool"}
     recognized = {
@@ -376,6 +380,14 @@ def coverage_stats(trace: Trace, enriched: list["EnrichedDetail"]) -> dict:
         or t in _IDEMPOTENT_TOOLS
     }
     unrecognized = tool_names - recognized
+
+    unrec_counts: dict[str, int] = {}
+    for s in trace.spans:
+        if s.span_kind == "tool" and s.agent_or_node_id in unrecognized:
+            unrec_counts[s.agent_or_node_id] = unrec_counts.get(s.agent_or_node_id, 0) + 1
+    unrecognized_tool_names = sorted(
+        unrec_counts.keys(), key=lambda n: (-unrec_counts[n], n)
+    )
 
     idem_total = 0
     pairs_affected = 0
@@ -401,6 +413,7 @@ def coverage_stats(trace: Trace, enriched: list["EnrichedDetail"]) -> dict:
         "coverage_ratio": (len(recognized) / len(tool_names)) if tool_names else 1.0,
         "idempotent_pairs_total": idem_total,
         "pairs_with_unrecognized_in_between": pairs_affected,
+        "unrecognized_tool_names": unrecognized_tool_names,
     }
 
 

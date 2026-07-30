@@ -418,3 +418,14 @@ for two reasons:
 
 At args-equal precision on this dataset, the reread detector adds zero
 new waste findings. KILL stands; no narrower-gate rescue.
+
+## 12. Working branch retirement (2026-07-31)
+
+The local implementation branch `feat/reread-detector` (4 commits:
+`fc8510e`, `706e19b`, `a615bb1`, `6ddb3bf`) is retired. The branch was
+never pushed to the remote and is not merged into `main`. The KILL
+evidence and rationale are preserved in §11 above.
+
+Related preserved artifacts:
+- `prereg/reread-detector` — pre-registration branch (kept).
+- `docs/reread-kill-results` — KILL-results docs branch (kept).

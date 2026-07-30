@@ -107,6 +107,29 @@ _COVERAGE_LINE_B = (
     "**Idempotent pairs with unrecognized tool in interval**: "
     "{pairs_affected} of {idempotent_total}."
 )
+# docs/COVERAGE_BANNER_AMEND_PREREG.md §3.1 (N=5, occurrence-desc + alpha tie).
+# Renders when unrecognized > 0, in both waste-0 and waste-detected branches
+# (parallels Line A's early-render rule, §3.5). Full list lives in JSON
+# coverage_stats.unrecognized_tool_names (§4 option B).
+_COVERAGE_LINE_C_TOP_N = 5
+_COVERAGE_LINE_C = (
+    "**Unrecognized tools in this trace (top {n_shown})**: {names}{more}"
+)
+
+
+def _format_coverage_line_c(unrecognized_tool_names: list[str]) -> str | None:
+    """Render Line C body; None when the list is empty."""
+    total = len(unrecognized_tool_names)
+    if total == 0:
+        return None
+    n_shown = min(_COVERAGE_LINE_C_TOP_N, total)
+    shown = unrecognized_tool_names[:n_shown]
+    more = f", … (+{total - n_shown} more)" if total > n_shown else ""
+    return _COVERAGE_LINE_C.format(
+        n_shown=n_shown,
+        names=", ".join(shown),
+        more=more,
+    )
 
 # ─── PREREG docs/ID_BRIDGE_PRODUCTION_PREREG.md §1.4 (frozen) ───────────────
 # "Duplicate creation check" section. Renders alongside — not in place of —
@@ -302,6 +325,9 @@ def render_markdown(
                 unique_in_trace=cov["unique_tools_in_trace"],
                 pct=cov["coverage_ratio"],
             ))
+            line_c = _format_coverage_line_c(cov["unrecognized_tool_names"])
+            if line_c is not None:
+                lines.append("- " + line_c)
             lines.append("")
         # PREREG §1.6 decision 4 — Duplicate creation check must render even
         # when cascade waste is 0, otherwise a real duplicate creation is
@@ -344,6 +370,9 @@ def render_markdown(
                 pairs_affected=cov["pairs_with_unrecognized_in_between"],
                 idempotent_total=cov["idempotent_pairs_total"],
             ))
+        line_c = _format_coverage_line_c(cov["unrecognized_tool_names"])
+        if line_c is not None:
+            lines.append("- " + line_c)
 
         # PREREG §2.2 / §3.1 (§9) + extensions
         # (docs/GREYZONE_B21_EXTENSION_PREREG.md §1.3, GREYZONE_B23_EXTENSION_PREREG.md §1.3)
