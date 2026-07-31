@@ -236,6 +236,18 @@ Auto-detected input formats:
 
 Because it ingests OpenTelemetry and OpenInference, it can read traces from Langfuse, Arize Phoenix, and any OTel-instrumented agent. *(OTLP protobuf-JSON is not yet supported; the error message points you to the SDK-JSON conversion.)*
 
+### OpenInference framework coverage
+
+Auto-instrumented agent frameworks emit spans through the OpenInference schema (`openinference.span.kind`, `input.value`, `output.value`, `tool.name`, `graph.node.id`). Clew's adapter maps the shared schema to its canonical model:
+
+| Framework | Validated via fixture | Notes |
+|---|---|---|
+| LangChain / LangGraph | ✔ `tests/fixtures/openinference_langchain.json` | `TOOL` output arrives JSON-wrapped (`{"type":"tool","data":{"content":…}}`); the adapter unwraps to raw content. `AGENT` spans lack `graph.node.id` here, so `span_name` is used. |
+| CrewAI | ✔ `tests/fixtures/openinference_crewai.json` | `TOOL` `span_name` has a `.run` suffix (`search_web.run`); the adapter prefers `tool.name` (`search_web`). `AGENT` `span_name` has a `._execute_core` suffix; the adapter prefers `graph.node.id` (`Web Researcher`). |
+| Other OpenInference-instrumented agents (AutoGen, LlamaIndex, OpenAI Agents SDK, etc.) | schema-shared, not per-framework fixture | Same envelope shim + `agent_or_node_id` rules apply. Case-by-case fixtures are added as dumps are validated. |
+
+Pre-registration and mapping details: [`docs/OPENINFERENCE_ADAPTER_PREREG.md`](docs/OPENINFERENCE_ADAPTER_PREREG.md).
+
 ---
 
 ## How we keep ourselves honest
@@ -248,7 +260,7 @@ This repo treats anti-self-deception as a working discipline, not a slogan:
 - **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues that no synthetic test caught: session mid-run abort (3/28 crashes → recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false-positives across 269 error responses → gated at the report layer, cascade unchanged). Both are recorded in `docs/CC_TRANSCRIPT.md` §29.
 - **Disclosed limits.** The semantic embedding layer does not cleanly separate same-topic real-world outputs — the `sha256` structural gate carries the precision result, not the embedding. We say so rather than imply the model is doing the work.
 
-**253 tests**, CI on every PR, frozen parameters enforced as failing tests.
+**343 tests**, CI on every PR, frozen parameters enforced as failing tests.
 
 ---
 
