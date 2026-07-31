@@ -22,6 +22,27 @@ _ALLOWED_CATEGORIES = ("read_only", "side_effect", "payload_dependent", "declara
 _SUPPORTED_VERSIONS = frozenset({1})
 _WALK_UP_LIMIT = 5
 
+# Phase 2 entity_id validation
+# Suspicious tail segments — Q3 confirmed frozen list. Message_id/event_id
+# excluded because they are legitimate entity IDs for email `send` and
+# calendar `create_event` respectively (see design doc §2.5).
+_SUSPICIOUS_TAIL_PATTERNS = frozenset({
+    "requestid", "reqid",
+    "correlationid", "corrid",
+    "traceid",
+    "spanid",
+    "sessionid",
+    "callid", "runid",
+    "transactionid", "txnid",
+})
+# Patterns that get the "transaction can be a first-class entity" nuance in
+# the warn text (payment/financial domains).
+_AMBIGUOUS_TAIL_PATTERNS = frozenset({"transactionid", "txnid"})
+_PHASE3_KEYS = frozenset({
+    # Reserved for future extensions. Reject to fail loud on typos / mixed configs.
+    "id_field", "id_regex_url", "id_extractor", "entity_type",
+})
+
 
 class UserToolConfigError(ValueError):
     """Raised for any clew.yaml schema/validation failure."""
@@ -49,9 +70,23 @@ class ResolvedTools:
     override_names: frozenset[str] = frozenset()
     override_details: tuple[tuple[str, str, str], ...] = ()
 
+    # Phase 2: user-registered entity_id paths. Stored as sorted tuple for
+    # frozen-dataclass compatibility; access via `user_entity_id_map` property.
+    user_entity_id_pairs: tuple[tuple[str, str], ...] = ()
+    # Suspicious tail warns (frozen after resolve). Tuple to stay immutable.
+    entity_id_warnings: tuple[str, ...] = ()
+
     @property
     def has_user_tools(self) -> bool:
         return bool(self.user_names)
+
+    @property
+    def user_entity_id_map(self) -> dict[str, str]:
+        return dict(self.user_entity_id_pairs)
+
+    @property
+    def has_user_entity_ids(self) -> bool:
+        return bool(self.user_entity_id_pairs)
 
 
 def _builtin_snapshot() -> ResolvedTools:
@@ -150,29 +185,32 @@ def load_user_config(path: Path) -> ResolvedTools:
             f"{path}: 'tools' must be a mapping, got {type(tools_raw).__name__}"
         )
 
-    # Reject Phase 2 fields early so mixed configs fail loud.
-    _reject_phase2_fields(path, tools_raw)
+    # Reject Phase 3+ fields early so mixed configs fail loud.
+    _reject_phase3_fields(path, tools_raw)
 
-    user_categories = _validate_tools_dict(path, tools_raw)
-    return resolve_user_tools(user_categories)
+    user_categories, user_entity_ids = _validate_tools_dict(path, tools_raw)
+    return resolve_user_tools(user_categories, user_entity_ids)
 
 
-def _reject_phase2_fields(path: Path, tools_raw: dict) -> None:
-    phase2_keys = {"id_field", "id_regex_url", "id_extractor"}
+def _reject_phase3_fields(path: Path, tools_raw: dict) -> None:
+    """Phase 2 owns `entity_id`. Everything else in the reserved list is future work."""
     for tool_name, spec in tools_raw.items():
         if not isinstance(spec, dict):
             continue
-        offenders = phase2_keys & set(spec.keys())
+        offenders = _PHASE3_KEYS & set(spec.keys())
         if offenders:
             raise UserToolConfigError(
-                f"{path}: tool {tool_name!r} contains Phase 2 field(s) "
+                f"{path}: tool {tool_name!r} contains reserved field(s) "
                 f"{sorted(offenders)} — not supported in this Clew version"
             )
 
 
-def _validate_tools_dict(path: Path, tools_raw: dict) -> dict[str, str]:
-    """Return {tool_name: category} after §2.6 validation."""
+def _validate_tools_dict(
+    path: Path, tools_raw: dict
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Return ({tool_name: category}, {tool_name: entity_id_path}) after §2.6/§2.1-§2.2 validation."""
     seen: dict[str, str] = {}
+    entity_ids: dict[str, str] = {}
     for name, spec in tools_raw.items():
         if not isinstance(name, str):
             raise UserToolConfigError(
@@ -199,14 +237,111 @@ def _validate_tools_dict(path: Path, tools_raw: dict) -> dict[str, str]:
                 f"(allowed: {', '.join(_ALLOWED_CATEGORIES)})"
             )
         seen[name] = category
-    return seen
+
+        # Phase 2 — entity_id validation.
+        if "entity_id" in spec:
+            _validate_entity_id(path, name, category, spec["entity_id"])
+            entity_ids[name] = spec["entity_id"]
+
+    return seen, entity_ids
 
 
-def resolve_user_tools(user_categories: dict[str, str]) -> ResolvedTools:
-    """Compose ResolvedTools from user_categories dict + built-in snapshot.
+def _validate_entity_id(path: Path, name: str, category: str, value: Any) -> None:
+    """§2.1 CREATE-only + §2.2 dot-path grammar.
 
-    Rebuildable purely from `user_categories` — used by loader and tests.
+    Rejects:
+      - non-side_effect category (Q1).
+      - non-string value.
+      - bracket / wildcard / JSONPath sigils.
+      - empty string, empty segments, numeric segments (array index rejected, Q2).
     """
+    # Q1 — CREATE-only: entity_id only allowed on side_effect.
+    if category != "side_effect":
+        raise UserToolConfigError(
+            f"{path}: tool {name!r} has entity_id but category={category!r}. "
+            f"entity_id is only valid on category='side_effect' — it must point "
+            f"to the ID of an entity your tool NEWLY CREATES, not to an ID of "
+            f"an existing entity that was queried, opened, or listed. See "
+            f"docs/ID_BRIDGE_SCOPE_PRINCIPLE.md §1."
+        )
+    if not isinstance(value, str):
+        raise UserToolConfigError(
+            f"{path}: tool {name!r} — entity_id must be a string, got "
+            f"{type(value).__name__}"
+        )
+    if not value:
+        raise UserToolConfigError(
+            f"{path}: tool {name!r} — entity_id must be non-empty"
+        )
+    # Q2 — grammar: reject sigils outright.
+    for bad in ("[", "]", "*", "$"):
+        if bad in value:
+            raise UserToolConfigError(
+                f"{path}: tool {name!r} — entity_id may not contain {bad!r}. "
+                f"Only dot-separated path is supported (e.g. 'response.ticket.id'). "
+                f"Array indices are intentionally rejected — see design doc §2.2."
+            )
+    segments = value.split(".")
+    for i, seg in enumerate(segments):
+        if not seg:
+            raise UserToolConfigError(
+                f"{path}: tool {name!r} — entity_id has empty segment at "
+                f"position {i} in {value!r}"
+            )
+        if seg.isdigit():
+            # Numeric segment == implicit array index. Also rejected (Q2).
+            raise UserToolConfigError(
+                f"{path}: tool {name!r} — entity_id segment {seg!r} is numeric. "
+                f"Array indices are intentionally rejected — see design doc §2.2."
+            )
+
+
+def _normalize_tail(segment: str) -> str:
+    """casefold + strip underscores/dashes for suspicious-tail match."""
+    return segment.casefold().replace("_", "").replace("-", "")
+
+
+def _suspicious_warn_for(name: str, path_str: str) -> str | None:
+    """Return a warn line iff the last segment matches a suspicious tail pattern.
+
+    Two message variants (Q3 confirmed):
+      - transaction_id / txn_id → ambiguous (payment domain caveat).
+      - other patterns → generic request-identifier warn.
+    """
+    tail = path_str.rsplit(".", 1)[-1]
+    normalized = _normalize_tail(tail)
+    if normalized not in _SUSPICIOUS_TAIL_PATTERNS:
+        return None
+    if normalized in _AMBIGUOUS_TAIL_PATTERNS:
+        return (
+            f"clew: entity_id path for {name!r} ends in {tail!r} — this is often "
+            f"a request identifier, but in payment/financial domains a transaction "
+            f"can be a first-class entity. Verify against your response schema."
+        )
+    return (
+        f"clew: entity_id path for {name!r} ends in {tail!r} — this often names "
+        f"a request/transaction/session identifier rather than a created entity. "
+        f"Verify against docs/ID_BRIDGE_SCOPE_PRINCIPLE.md §1 before relying on it."
+    )
+
+
+def resolve_user_tools(
+    user_categories: dict[str, str],
+    user_entity_ids: dict[str, str] | None = None,
+) -> ResolvedTools:
+    """Compose ResolvedTools from user_categories + user_entity_ids + built-in snapshot.
+
+    Rebuildable purely from inputs — used by loader and tests.
+
+    Also validates against the built-in ID bridge mapping: user cannot override
+    an entity_id that Clew already knows (frozen §3.1 gate). Suspicious tail
+    warns are collected into `entity_id_warnings` (frozen tuple).
+    """
+    from clew.report._enrich import _ID_BRIDGE_MAPPING  # noqa: PLC0415
+
+    if user_entity_ids is None:
+        user_entity_ids = {}
+
     snap = _builtin_snapshot()
 
     idem = set(snap.idempotent)
@@ -241,6 +376,19 @@ def resolve_user_tools(user_categories: dict[str, str]) -> ResolvedTools:
             bw_decl.add(name)
             idem.add(name)
 
+    # Phase 2 — validate entity_id doesn't collide with the built-in mapping.
+    warnings: list[str] = []
+    for tool_name, path_str in user_entity_ids.items():
+        if tool_name in _ID_BRIDGE_MAPPING:
+            raise UserToolConfigError(
+                f"tool {tool_name!r}: entity_id conflicts with built-in ID "
+                f"mapping. Built-in extraction takes precedence — remove "
+                f"entity_id from your config for this tool."
+            )
+        warn = _suspicious_warn_for(tool_name, path_str)
+        if warn is not None:
+            warnings.append(warn)
+
     return ResolvedTools(
         idempotent=frozenset(idem),
         side_effect=frozenset(side),
@@ -250,6 +398,8 @@ def resolve_user_tools(user_categories: dict[str, str]) -> ResolvedTools:
         user_names=frozenset(user_names),
         override_names=frozenset(override_names),
         override_details=tuple(sorted(override_details)),
+        user_entity_id_pairs=tuple(sorted(user_entity_ids.items())),
+        entity_id_warnings=tuple(warnings),
     )
 
 
@@ -322,7 +472,7 @@ def emit_load_warnings(
     *,
     stream=None,
 ) -> None:
-    """Print load-time warnings (§2.4 override, Q3) to stderr.
+    """Print load-time warnings (Phase 1 override + Phase 2 suspicious tails) to stderr.
 
     Called once per CLI invocation, right after loading clew.yaml.
     """
@@ -331,3 +481,5 @@ def emit_load_warnings(
     line = format_override_warning(tools)
     if line is not None:
         print(line, file=stream)
+    for warn in tools.entity_id_warnings:
+        print(warn, file=stream)

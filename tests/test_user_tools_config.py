@@ -301,14 +301,15 @@ def test_empty_yaml_raises(tmp_path: Path):
         load_user_config(p)
 
 
-def test_phase2_field_rejected(tmp_path: Path):
-    """id_field is Phase 2 — must fail loud on Phase 1 loader."""
+def test_reserved_field_rejected(tmp_path: Path):
+    """`id_field` was the design-draft name; Phase 2 shipped as `entity_id`.
+    Reject the older / reserved field name to fail loud on typos."""
     p = tmp_path / "clew.yaml"
     p.write_text(
         "version: 1\ntools:\n  create_x:\n    category: side_effect\n    id_field: response.id\n",
         encoding="utf-8",
     )
-    with pytest.raises(UserToolConfigError, match="Phase 2 field"):
+    with pytest.raises(UserToolConfigError, match="reserved field"):
         load_user_config(p)
 
 

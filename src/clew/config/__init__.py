@@ -1,4 +1,4 @@
-"""clew.yaml user-tool registration (Phase 1: 4-category classification)."""
+"""clew.yaml user-tool registration (Phase 1: 4-category; Phase 2: entity_id)."""
 from clew.config.user_tools import (
     ResolvedTools,
     UserToolConfigError,
