@@ -283,9 +283,33 @@ Discovery order: `--config PATH` > `clew.yaml` walking up from the trace file (m
 2. The coverage banner splits `recognized` into `built-in / user / user-overriding-built-in`. The three counts always sum to `recognized`.
 3. The banner adds one line — *Precision bounds were measured on built-in mappings; user-registered tools are unverified.* — because the 88.43% Clopper–Pearson lower bound on `no_side_effect` was measured on Clew's own mapping. That number does not transfer to tools we haven't seen.
 
-Validation is fail-fast: unknown categories, missing `version` / `tools`, duplicate tool names, or Phase 2 fields (e.g. `id_field:`, reserved for a future release) all abort with a clear message. No silent path.
+Validation is fail-fast: unknown categories, missing `version` / `tools`, duplicate tool names, or reserved future-work fields (e.g. `id_regex_url:`, `entity_type:`) all abort with a clear message. No silent path.
 
-Not in scope for this release: user-registered entity-ID extraction (for the duplicate-creation check) — that requires per-tool response-schema validation and is a separate design.
+#### Registering entity-ID paths (`entity_id`)
+
+The report's *Duplicate creation check* section compares response IDs from two side-effect calls to distinguish "the tool ran twice but the same entity is referenced" (same ID) from "two different entities were created" (different IDs). Clew ships this for 26 built-in tools (notion / github / canvas / etc.). For your own side-effect tools, add an `entity_id` path so the same check works:
+
+```yaml
+version: 1
+tools:
+  create_ticket:
+    category: side_effect
+    entity_id: response.ticket.id
+```
+
+**Rules (fail-fast at load time):**
+
+- `entity_id` is only valid on `category: side_effect`. It must point to the ID of an entity your tool *newly creates* — not to an ID of an existing entity that was queried, opened, or listed. Registering `search_tickets` as `side_effect` just because it uses POST is a common misconfiguration.
+- Dot-path only (`response.ticket.id`). Bracket notation (`response[0].id`), wildcards (`response.*.id`), JSONPath (`$.response.id`), and numeric segments (`response.0.id`) are all rejected. Array indices were intentionally excluded because they invite a specific misconfiguration — `results[0].id` on a query API returns the first *searched* entity, not a newly created one.
+- Registering a path on a tool Clew already has a built-in ID mapping for (e.g. `notion-API-post-page`) raises an error: the built-in mapping takes precedence and the frozen 159/76/3197 Toolathlon distribution stays bit-identical.
+
+**Runtime signals:**
+
+- On every load, if the tail of your path looks like a request/session/trace identifier (`request_id`, `correlation_id`, `trace_id`, `span_id`, `session_id`, `call_id`, `run_id`, or `transaction_id`), Clew warns to stderr. `message_id` and `event_id` are legitimate entity IDs for email `send` and calendar `create_event` and are *not* flagged.
+- After the cascade runs, if any user-registered path failed to extract on some pairs, Clew prints per-tool ratios to stderr — `5/5 extractions failed (path likely misconfigured)` vs `1/8 extractions failed (partial — response variance)`. Silent extraction failures are not possible; every ratio > 0 shows up.
+- In the report's *Duplicate creation check*, results split into `built-in:` and `user-registered:` sub-lines when both are present, and a footnote appears: *Precision bounds on the built-in mappings were measured on Toolathlon; user-registered mappings are unverified.* Clew cannot statically verify that your path names the entity your tool creates — that is a claim you make.
+
+Not in scope for this release: URL-tail regex, entity-type registration, and array-indexed paths.
 
 ---
 
@@ -299,7 +323,7 @@ This repo treats anti-self-deception as a working discipline, not a slogan:
 - **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues that no synthetic test caught: session mid-run abort (3/28 crashes → recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false-positives across 269 error responses → gated at the report layer, cascade unchanged). Both are recorded in `docs/CC_TRANSCRIPT.md` §29.
 - **Disclosed limits.** The semantic embedding layer does not cleanly separate same-topic real-world outputs — the `sha256` structural gate carries the precision result, not the embedding. We say so rather than imply the model is doing the work.
 
-**384 tests**, CI on every PR, frozen parameters enforced as failing tests.
+**433 tests**, CI on every PR, frozen parameters enforced as failing tests.
 
 ---
 
