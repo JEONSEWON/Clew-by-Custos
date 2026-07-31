@@ -18,6 +18,7 @@ Design decisions:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -65,6 +66,65 @@ def _kind_of(attrs: dict[str, Any]) -> SpanKind:
     return "chain"
 
 
+def _agent_or_node_id_of(
+    span_kind: SpanKind, span_name: str, attrs: dict[str, Any]
+) -> str:
+    """OpenInference span → Clew agent_or_node_id (§4.2 of prereg).
+
+    Priority per span_kind:
+      tool   → attrs["tool.name"] → span_name → "anonymous"
+      agent  → attrs["graph.node.id"] → span_name → "anonymous"
+      llm    → span_name → "anonymous"   (unchanged)
+      chain  → span_name → "anonymous"   (unchanged)
+    """
+    if span_kind == "tool":
+        v = attrs.get("tool.name")
+        if isinstance(v, str) and v:
+            return v
+    elif span_kind == "agent":
+        v = attrs.get("graph.node.id")
+        if isinstance(v, str) and v:
+            return v
+    return span_name or "anonymous"
+
+
+def _extract_tool_output(attrs: dict[str, Any]) -> str:
+    """OpenInference TOOL span → output.value with envelope unwrap (§4.3 of prereg).
+
+    Observed schemas:
+      LangChain: mime "application/json", value = {"type":"tool","data":{"content":"<orig>"}}
+      CrewAI:    mime "text/plain",       value = "<orig>"
+
+    Failure direction is safe (false negative, not false positive):
+      Envelope unwrap failure → raw as-is. Two calls with matching raw still
+      hash-equal downstream; two with differing raw still classify as non-waste.
+    """
+    raw = attrs.get("output.value", "")
+    if not isinstance(raw, str):
+        return str(raw) if raw is not None else ""
+    mime = attrs.get("output.mime_type", "")
+
+    if mime == "text/plain":
+        return raw
+
+    if mime == "application/json":
+        try:
+            obj = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return raw
+        if (
+            isinstance(obj, dict)
+            and obj.get("type") == "tool"
+            and isinstance(obj.get("data"), dict)
+            and "content" in obj["data"]
+        ):
+            content = obj["data"]["content"]
+            return content if isinstance(content, str) else str(content)
+        return raw
+
+    return raw
+
+
 def _token_count_of(attrs: dict[str, Any]) -> int | None:
     v = attrs.get("llm.token_count.total")
     return int(v) if v is not None else None
@@ -99,7 +159,13 @@ def otel_spans_to_trace(
     converted: list[Span] = []
     for s in spans:
         attrs: dict[str, Any] = dict(s.attributes or {})
-        output_text = _coerce_text(attrs.get("output.value"))
+        span_kind = _kind_of(attrs)
+        span_name = s.name or "anonymous"
+
+        if span_kind == "tool":
+            output_text = _extract_tool_output(attrs)
+        else:
+            output_text = _coerce_text(attrs.get("output.value"))
         if not output_text.strip():
             raise ValueError(
                 f"span {s.name!r} (span_id={_hex_span(s.context.span_id)}) has empty "
@@ -118,8 +184,8 @@ def otel_spans_to_trace(
                 parent_span_id=(
                     _hex_span(s.parent.span_id) if s.parent is not None else None
                 ),
-                agent_or_node_id=s.name or "anonymous",
-                span_kind=_kind_of(attrs),
+                agent_or_node_id=_agent_or_node_id_of(span_kind, span_name, attrs),
+                span_kind=span_kind,
                 start_time=_ns_to_utc(s.start_time),
                 end_time=_ns_to_utc(s.end_time),
                 input_text=_coerce_text(attrs.get("input.value")),
