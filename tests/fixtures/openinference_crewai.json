@@ -1,0 +1,175 @@
+[
+  {
+    "name": "search_web.run",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000002",
+      "span_id": "0xfdd5ed09a10b9a0d",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x254c2c5251af7441",
+    "start_time": "2026-07-30T16:32:19.121299Z",
+    "end_time": "2026-07-30T16:32:19.121299Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"query\": \"Claude Opus 4.7 release\"}",
+      "input.mime_type": "application/json",
+      "tool.name": "search_web",
+      "tool.description": "Search the web for information.",
+      "tool.parameters": "{\"properties\": {\"query\": {\"title\": \"Query\", \"type\": \"string\"}}, \"required\": [\"query\"], \"title\": \"SearchWebToolSchema\", \"type\": \"object\"}",
+      "tool.description_updated": false,
+      "tool.cache_function": "_default_cache_function",
+      "tool.result_as_answer": false,
+      "tool.current_usage_count": 0,
+      "output.value": "Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\nResult 3: Claude Code CLI adds MCP server catalog integration.",
+      "output.mime_type": "text/plain",
+      "openinference.span.kind": "TOOL"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "search_web.run",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000002",
+      "span_id": "0x3633e5b207ff5e56",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x254c2c5251af7441",
+    "start_time": "2026-07-30T16:32:19.129816Z",
+    "end_time": "2026-07-30T16:32:19.130816Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"query\": \"Claude Opus 4.7 release\"}",
+      "input.mime_type": "application/json",
+      "tool.name": "search_web",
+      "tool.description": "Search the web for information.",
+      "tool.parameters": "{\"properties\": {\"query\": {\"title\": \"Query\", \"type\": \"string\"}}, \"required\": [\"query\"], \"title\": \"SearchWebToolSchema\", \"type\": \"object\"}",
+      "tool.description_updated": false,
+      "tool.cache_function": "_default_cache_function",
+      "tool.result_as_answer": false,
+      "tool.current_usage_count": 1,
+      "output.value": "Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\nResult 3: Claude Code CLI adds MCP server catalog integration.",
+      "output.mime_type": "text/plain",
+      "openinference.span.kind": "TOOL"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "Web Researcher._execute_core",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000002",
+      "span_id": "0x254c2c5251af7441",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0xecba06b1d293afa9",
+    "start_time": "2026-07-30T16:32:19.077579Z",
+    "end_time": "2026-07-30T16:32:19.152787Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"agent\": {\"entity_type\": \"agent\", \"id\": \"11c5c667-7db5-4bac-8e22-eaad5fe4d7c5\", \"role\": \"Web Researcher\", \"goal\": \"Find information about AI releases\", \"backstory\": \"You investigate recent AI product announcements.\", \"cache\": true, \"verbose\": false, \"max_rpm\": null, \"allow_delegation\": false, \"tools\": [{\"name\": \"search_web\", \"description\": \"Search the web for information.\", \"env_vars\": [], \"result_schema\": null, \"description_updated\": false, \"result_as_answer\": false, \"max_usage_count\": null, \"tool_failure_policy\": null, \"current_usage_count\": 0, \"tool_type\": \"__main__.SearchWebTool\"}, {\"name\": \"read_file\", \"description\": \"Read a file from disk.\", \"env_vars\": [], \"result_schema\": null, \"description_updated\": false, \"result_as_answer\": false, \"max_usage_count\": null, \"tool_failure_policy\": null, \"current_usage_count\": 0, \"tool_type\": \"__main__.ReadFileTool\"}], \"max_iter\": 3, \"tool_failure_policy\": null, \"i18n\": {\"prompt_file\": null}, \"cache_handler\": null, \"tools_results\": [], \"max_tokens\": null, \"knowledge\": null, \"knowledge_sources\": null, \"knowledge_storage\": null, \"security_config\": {\"fingerprint\": {\"metadata\": {}}}, \"checkpoint\": null, \"adapted_agent\": false, \"knowledge_config\": null, \"apps\": null, \"mcps\": null, \"memory\": null, \"skills\": null, \"execution_context\": null, \"checkpoint_kickoff_event_id\": null, \"max_execution_time\": null, \"use_system_prompt\": true, \"system_template\": null, \"prompt_template\": null, \"response_template\": null, \"allow_code_execution\": false, \"respect_context_window\": true, \"max_retry_limit\": 2, \"multimodal\": false, \"inject_date\": false, \"date_format\": \"%Y-%m-%d\", \"code_execution_mode\": \"safe\", \"planning_config\": null, \"planning\": false, \"reasoning\": false, \"max_reasoning_attempts\": null, \"embedder\": null, \"agent_knowledge_context\": null, \"crew_knowledge_context\": null, \"knowledge_search_query\": null, \"from_repository\": null, \"guardrail_max_retries\": 3, \"a2a\": null, \"key\": \"14dfa3508fa8a1d0167cb8812fbe3706\"}, \"context\": \"\", \"tools\": [\"name='search_web' description='Search the web for information.' env_vars=[] args_schema=<class 'crewai.tools.base_tool.SearchWebToolSchema'> result_schema=None description_updated=False cache_function=<function _default_cache_function at 0x000001F01BF27600> result_as_answer=False max_usage_count=None tool_failure_policy=None current_usage_count=0 tool_type='__main__.SearchWebTool'\", \"name='read_file' description='Read a file from disk.' env_vars=[] args_schema=<class 'crewai.tools.base_tool.ReadFileToolSchema'> result_schema=None description_updated=False cache_function=<function _default_cache_function at 0x000001F01BF27600> result_as_answer=False max_usage_count=None tool_failure_policy=None current_usage_count=0 tool_type='__main__.ReadFileTool'\"]}",
+      "input.mime_type": "application/json",
+      "task_key": "13a555a724e3982ab2ca4ae2f479a9ea",
+      "task_id": "9ea01eec-8bff-4308-aecc-b7275588d3d0",
+      "graph.node.id": "Web Researcher",
+      "crew_key": "c078d122a8caf81e65b707f29aaf6515",
+      "crew_id": "d491069a-fe2c-4f1b-8b8f-12d2d4dff16e",
+      "output.value": "{\"description\": \"Search for information about Claude Opus 4.7 release.\", \"name\": \"Search for information about Claude Opus 4.7 release.\", \"expected_output\": \"A list of findings.\", \"summary\": \"Search for information about Claude Opus 4.7 release....\", \"raw\": \"Task complete.\", \"pydantic\": null, \"json_dict\": null, \"agent\": \"Web Researcher\", \"output_format\": \"raw\", \"messages\": [{\"role\": \"system\", \"content\": \"You are Web Researcher. You investigate recent AI product announcements.\\nYour personal goal is: Find information about AI releases\"}, {\"role\": \"user\", \"content\": \"\\nCurrent Task: Search for information about Claude Opus 4.7 release.\\n\\nThis is the expected criteria for your final answer: A list of findings.\\nyou MUST return the actual complete content as the final answer, not a summary.\"}, {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"call_1\", \"type\": \"function\", \"function\": {\"name\": \"search_web\", \"arguments\": \"{\\\"query\\\": \\\"Claude Opus 4.7 release\\\"}\"}}]}, {\"role\": \"tool\", \"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"tool_call_id\": \"call_1\", \"name\": \"search_web\"}, {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"call_2\", \"type\": \"function\", \"function\": {\"name\": \"search_web\", \"arguments\": \"{\\\"query\\\": \\\"Claude Opus 4.7 release\\\"}\"}}]}, {\"role\": \"tool\", \"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"tool_call_id\": \"call_2\", \"name\": \"search_web\"}, {\"role\": \"assistant\", \"content\": \"Task complete.\"}], \"tool_failures\": []}",
+      "output.mime_type": "application/json",
+      "openinference.span.kind": "AGENT"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "Fact Verifier._execute_core",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000002",
+      "span_id": "0xeb4de50ee901fe33",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0xecba06b1d293afa9",
+    "start_time": "2026-07-30T16:32:19.168704Z",
+    "end_time": "2026-07-30T16:32:19.197199Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"agent\": {\"entity_type\": \"agent\", \"id\": \"576d25ce-95cc-45ee-9bbe-4931094bc4de\", \"role\": \"Fact Verifier\", \"goal\": \"Cross-check the researcher's findings\", \"backstory\": \"You verify claims about AI product releases.\", \"cache\": true, \"verbose\": false, \"max_rpm\": null, \"allow_delegation\": false, \"tools\": [{\"name\": \"search_web\", \"description\": \"Search the web for information.\", \"env_vars\": [], \"result_schema\": null, \"description_updated\": false, \"result_as_answer\": false, \"max_usage_count\": null, \"tool_failure_policy\": null, \"current_usage_count\": 2, \"tool_type\": \"__main__.SearchWebTool\"}, {\"name\": \"read_file\", \"description\": \"Read a file from disk.\", \"env_vars\": [], \"result_schema\": null, \"description_updated\": false, \"result_as_answer\": false, \"max_usage_count\": null, \"tool_failure_policy\": null, \"current_usage_count\": 0, \"tool_type\": \"__main__.ReadFileTool\"}], \"max_iter\": 3, \"tool_failure_policy\": null, \"i18n\": {\"prompt_file\": null}, \"cache_handler\": null, \"tools_results\": [], \"max_tokens\": null, \"knowledge\": null, \"knowledge_sources\": null, \"knowledge_storage\": null, \"security_config\": {\"fingerprint\": {\"metadata\": {}}}, \"checkpoint\": null, \"adapted_agent\": false, \"knowledge_config\": null, \"apps\": null, \"mcps\": null, \"memory\": null, \"skills\": null, \"execution_context\": null, \"checkpoint_kickoff_event_id\": null, \"max_execution_time\": null, \"use_system_prompt\": true, \"system_template\": null, \"prompt_template\": null, \"response_template\": null, \"allow_code_execution\": false, \"respect_context_window\": true, \"max_retry_limit\": 2, \"multimodal\": false, \"inject_date\": false, \"date_format\": \"%Y-%m-%d\", \"code_execution_mode\": \"safe\", \"planning_config\": null, \"planning\": false, \"reasoning\": false, \"max_reasoning_attempts\": null, \"embedder\": null, \"agent_knowledge_context\": null, \"crew_knowledge_context\": null, \"knowledge_search_query\": null, \"from_repository\": null, \"guardrail_max_retries\": 3, \"a2a\": null, \"key\": \"b7ddb6b85b8d847cded93631feb2e2f1\"}, \"context\": \"Task complete.\", \"tools\": [\"name='search_web' description='Search the web for information.' env_vars=[] args_schema=<class 'crewai.tools.base_tool.SearchWebToolSchema'> result_schema=None description_updated=False cache_function=<function _default_cache_function at 0x000001F01BF27600> result_as_answer=False max_usage_count=None tool_failure_policy=None current_usage_count=2 tool_type='__main__.SearchWebTool'\", \"name='read_file' description='Read a file from disk.' env_vars=[] args_schema=<class 'crewai.tools.base_tool.ReadFileToolSchema'> result_schema=None description_updated=False cache_function=<function _default_cache_function at 0x000001F01BF27600> result_as_answer=False max_usage_count=None tool_failure_policy=None current_usage_count=0 tool_type='__main__.ReadFileTool'\"]}",
+      "input.mime_type": "application/json",
+      "task_key": "1b15523b180de3f721a60550e24047c8",
+      "task_id": "e287dbcf-803d-4e70-84b8-f45a30e0fb99",
+      "graph.node.id": "Fact Verifier",
+      "crew_key": "c078d122a8caf81e65b707f29aaf6515",
+      "crew_id": "d491069a-fe2c-4f1b-8b8f-12d2d4dff16e",
+      "graph.node.parent_id": "Web Researcher",
+      "output.value": "{\"description\": \"Verify the same findings with an independent search.\", \"name\": \"Verify the same findings with an independent search.\", \"expected_output\": \"Confirmation report.\", \"summary\": \"Verify the same findings with an independent search....\", \"raw\": \"Task complete.\", \"pydantic\": null, \"json_dict\": null, \"agent\": \"Fact Verifier\", \"output_format\": \"raw\", \"messages\": [{\"role\": \"system\", \"content\": \"You are Fact Verifier. You verify claims about AI product releases.\\nYour personal goal is: Cross-check the researcher's findings\"}, {\"role\": \"user\", \"content\": \"\\nCurrent Task: Verify the same findings with an independent search.\\n\\nThis is the expected criteria for your final answer: Confirmation report.\\nyou MUST return the actual complete content as the final answer, not a summary.\\n\\nThis is the context you're working with:\\nTask complete.\"}, {\"role\": \"assistant\", \"content\": \"Task complete.\"}], \"tool_failures\": []}",
+      "output.mime_type": "application/json",
+      "openinference.span.kind": "AGENT"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "Crew_d491069a-fe2c-4f1b-8b8f-12d2d4dff16e.kickoff",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000002",
+      "span_id": "0xecba06b1d293afa9",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": null,
+    "start_time": "2026-07-30T16:32:18.992023Z",
+    "end_time": "2026-07-30T16:32:19.206725Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "crew_key": "c078d122a8caf81e65b707f29aaf6515",
+      "crew_id": "d491069a-fe2c-4f1b-8b8f-12d2d4dff16e",
+      "crew_inputs": "",
+      "crew_agents": "[{\"key\": \"14dfa3508fa8a1d0167cb8812fbe3706\", \"id\": \"11c5c667-7db5-4bac-8e22-eaad5fe4d7c5\", \"role\": \"Web Researcher\", \"goal\": \"Find information about AI releases\", \"backstory\": \"You investigate recent AI product announcements.\", \"verbose?\": false, \"max_iter\": 3, \"max_rpm\": null, \"delegation_enabled\": false, \"tools_names\": [\"search_web\", \"read_file\"]}, {\"key\": \"b7ddb6b85b8d847cded93631feb2e2f1\", \"id\": \"576d25ce-95cc-45ee-9bbe-4931094bc4de\", \"role\": \"Fact Verifier\", \"goal\": \"Cross-check the researcher's findings\", \"backstory\": \"You verify claims about AI product releases.\", \"verbose?\": false, \"max_iter\": 3, \"max_rpm\": null, \"delegation_enabled\": false, \"tools_names\": [\"search_web\", \"read_file\"]}]",
+      "crew_tasks": "[{\"id\": \"9ea01eec-8bff-4308-aecc-b7275588d3d0\", \"description\": \"Search for information about Claude Opus 4.7 release.\", \"expected_output\": \"A list of findings.\", \"async_execution?\": false, \"human_input?\": false, \"agent_role\": \"Web Researcher\", \"agent_key\": \"14dfa3508fa8a1d0167cb8812fbe3706\", \"context\": null, \"tools_names\": [\"search_web\", \"read_file\"]}, {\"id\": \"e287dbcf-803d-4e70-84b8-f45a30e0fb99\", \"description\": \"Verify the same findings with an independent search.\", \"expected_output\": \"Confirmation report.\", \"async_execution?\": false, \"human_input?\": false, \"agent_role\": \"Fact Verifier\", \"agent_key\": \"b7ddb6b85b8d847cded93631feb2e2f1\", \"context\": null, \"tools_names\": [\"search_web\", \"read_file\"]}]",
+      "output.value": "{\"raw\": \"Task complete.\", \"pydantic\": null, \"json_dict\": null, \"tasks_output\": [{\"description\": \"Search for information about Claude Opus 4.7 release.\", \"name\": \"Search for information about Claude Opus 4.7 release.\", \"expected_output\": \"A list of findings.\", \"summary\": \"Search for information about Claude Opus 4.7 release....\", \"raw\": \"Task complete.\", \"pydantic\": null, \"json_dict\": null, \"agent\": \"Web Researcher\", \"output_format\": \"raw\", \"messages\": [{\"role\": \"system\", \"content\": \"You are Web Researcher. You investigate recent AI product announcements.\\nYour personal goal is: Find information about AI releases\"}, {\"role\": \"user\", \"content\": \"\\nCurrent Task: Search for information about Claude Opus 4.7 release.\\n\\nThis is the expected criteria for your final answer: A list of findings.\\nyou MUST return the actual complete content as the final answer, not a summary.\"}, {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"call_1\", \"type\": \"function\", \"function\": {\"name\": \"search_web\", \"arguments\": \"{\\\"query\\\": \\\"Claude Opus 4.7 release\\\"}\"}}]}, {\"role\": \"tool\", \"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"tool_call_id\": \"call_1\", \"name\": \"search_web\"}, {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"call_2\", \"type\": \"function\", \"function\": {\"name\": \"search_web\", \"arguments\": \"{\\\"query\\\": \\\"Claude Opus 4.7 release\\\"}\"}}]}, {\"role\": \"tool\", \"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"tool_call_id\": \"call_2\", \"name\": \"search_web\"}, {\"role\": \"assistant\", \"content\": \"Task complete.\"}], \"tool_failures\": []}, {\"description\": \"Verify the same findings with an independent search.\", \"name\": \"Verify the same findings with an independent search.\", \"expected_output\": \"Confirmation report.\", \"summary\": \"Verify the same findings with an independent search....\", \"raw\": \"Task complete.\", \"pydantic\": null, \"json_dict\": null, \"agent\": \"Fact Verifier\", \"output_format\": \"raw\", \"messages\": [{\"role\": \"system\", \"content\": \"You are Fact Verifier. You verify claims about AI product releases.\\nYour personal goal is: Cross-check the researcher's findings\"}, {\"role\": \"user\", \"content\": \"\\nCurrent Task: Verify the same findings with an independent search.\\n\\nThis is the expected criteria for your final answer: Confirmation report.\\nyou MUST return the actual complete content as the final answer, not a summary.\\n\\nThis is the context you're working with:\\nTask complete.\"}, {\"role\": \"assistant\", \"content\": \"Task complete.\"}], \"tool_failures\": []}], \"token_usage\": {\"total_tokens\": 0, \"prompt_tokens\": 0, \"cached_prompt_tokens\": 0, \"completion_tokens\": 0, \"reasoning_tokens\": 0, \"cache_creation_tokens\": 0, \"successful_requests\": 8}}",
+      "output.mime_type": "application/json",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  }
+]

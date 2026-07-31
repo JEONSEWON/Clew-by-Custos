@@ -1,0 +1,771 @@
+[
+  {
+    "name": "Prompt",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x5022ab26786cc0a9",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x7408b68532c52970",
+    "start_time": "2026-07-30T16:18:34.548589Z",
+    "end_time": "2026-07-30T16:18:34.549583Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}], \"remaining_steps\": 10006}",
+      "input.mime_type": "application/json",
+      "output.value": "[{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}]",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 1, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:b92267f6-8def-7745-11cc-63e4de1e554c\", \"checkpoint_ns\": \"agent:b92267f6-8def-7745-11cc-63e4de1e554c\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "ScriptedModel",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0xe8796f04c5cca1c6",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x7408b68532c52970",
+    "start_time": "2026-07-30T16:18:34.550580Z",
+    "end_time": "2026-07-30T16:18:34.554103Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [[{\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"HumanMessage\"], \"kwargs\": {\"content\": \"Find info about Claude Opus 4.7.\", \"type\": \"human\", \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}]]}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"generations\": [[{\"text\": \"\", \"generation_info\": null, \"type\": \"ChatGeneration\", \"message\": {\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"AIMessage\"], \"kwargs\": {\"content\": \"\", \"type\": \"ai\", \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": []}}}]], \"llm_output\": null, \"run\": null, \"type\": \"LLMResult\"}",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "llm.output_messages.0.message.role": "assistant",
+      "llm.output_messages.0.message.tool_calls.0.tool_call.id": "call_1",
+      "llm.output_messages.0.message.tool_calls.0.tool_call.function.name": "search_web",
+      "llm.output_messages.0.message.tool_calls.0.tool_call.function.arguments": "{\"query\": \"Claude Opus 4.7 release\"}",
+      "llm.invocation_parameters": "{\"_type\": \"scripted\", \"stop\": null}",
+      "llm.provider": "scriptedmodel",
+      "metadata": "{\"ls_integration\": \"langchain_chat_model\", \"langgraph_step\": 1, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:b92267f6-8def-7745-11cc-63e4de1e554c\", \"checkpoint_ns\": \"agent:b92267f6-8def-7745-11cc-63e4de1e554c\", \"ls_provider\": \"scriptedmodel\", \"ls_model_type\": \"chat\", \"lc_versions\": {\"langchain-core\": \"1.4.7\"}}",
+      "openinference.span.kind": "LLM"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "RunnableSequence",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x7408b68532c52970",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x594f5eac7ce49181",
+    "start_time": "2026-07-30T16:18:34.548589Z",
+    "end_time": "2026-07-30T16:18:34.555098Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}], \"remaining_steps\": 10006}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 1, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:b92267f6-8def-7745-11cc-63e4de1e554c\", \"checkpoint_ns\": \"agent:b92267f6-8def-7745-11cc-63e4de1e554c\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "call_model",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x3fbcfc83e848041a",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x594f5eac7ce49181",
+    "start_time": "2026-07-30T16:18:34.547580Z",
+    "end_time": "2026-07-30T16:18:34.555098Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}], \"remaining_steps\": 10006}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"messages\": [{\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}]}",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 1, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:b92267f6-8def-7745-11cc-63e4de1e554c\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "should_continue",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x64f05cb93ed44999",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x594f5eac7ce49181",
+    "start_time": "2026-07-30T16:18:34.556099Z",
+    "end_time": "2026-07-30T16:18:34.556099Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}], \"remaining_steps\": 10006}",
+      "input.mime_type": "application/json",
+      "output.value": "[\"Send(node='tools', arg={'__type': 'tool_call_with_context', 'tool_call': {'name': 'search_web', 'args': {'query': 'Claude Opus 4.7 release'}, 'id': 'call_1', 'type': 'tool_call'}, 'state': {'messages': [HumanMessage(content='Find info about Claude Opus 4.7.', additional_kwargs={}, response_metadata={}, id='0c7a274e-7902-42f6-8cb6-da409ce835e6'), AIMessage(content='', additional_kwargs={}, response_metadata={}, id='lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0', tool_calls=[{'name': 'search_web', 'args': {'query': 'Claude Opus 4.7 release'}, 'id': 'call_1', 'type': 'tool_call'}], invalid_tool_calls=[])], 'remaining_steps': 10006}})\"]",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 1, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:b92267f6-8def-7745-11cc-63e4de1e554c\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "agent",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x594f5eac7ce49181",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x997704f49a5ff50b",
+    "start_time": "2026-07-30T16:18:34.546579Z",
+    "end_time": "2026-07-30T16:18:34.557097Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}], \"remaining_steps\": 10006}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"messages\": [{\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}]}",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 1, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:b92267f6-8def-7745-11cc-63e4de1e554c\"}",
+      "openinference.span.kind": "AGENT"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "search_web",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0xa06cffcb8731810e",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x84a60b11538dacbe",
+    "start_time": "2026-07-30T16:18:34.561100Z",
+    "end_time": "2026-07-30T16:18:34.562101Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "Claude Opus 4.7 release",
+      "output.value": "{\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": null, \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}",
+      "output.mime_type": "application/json",
+      "tool.name": "search_web",
+      "tool.description": "Search the web for information.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 2, \"langgraph_node\": \"tools\", \"langgraph_triggers\": [\"__pregel_push\"], \"langgraph_path\": [\"__pregel_push\", 0, false], \"langgraph_checkpoint_ns\": \"tools:d67968da-62e8-e0be-6c16-cdfd48bb9169\", \"checkpoint_ns\": \"tools:d67968da-62e8-e0be-6c16-cdfd48bb9169\"}",
+      "openinference.span.kind": "TOOL"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "tools",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x84a60b11538dacbe",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x997704f49a5ff50b",
+    "start_time": "2026-07-30T16:18:34.559098Z",
+    "end_time": "2026-07-30T16:18:34.563101Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"__type\": \"tool_call_with_context\", \"tool_call\": {\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}, \"state\": {\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}], \"remaining_steps\": 10006}}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"messages\": [{\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": null, \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}]}",
+      "output.mime_type": "application/json",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 2, \"langgraph_node\": \"tools\", \"langgraph_triggers\": [\"__pregel_push\"], \"langgraph_path\": [\"__pregel_push\", 0, false], \"langgraph_checkpoint_ns\": \"tools:d67968da-62e8-e0be-6c16-cdfd48bb9169\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "Prompt",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x77f9b9a4c036b4d9",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x160533d9271a628d",
+    "start_time": "2026-07-30T16:18:34.565099Z",
+    "end_time": "2026-07-30T16:18:34.566103Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}], \"remaining_steps\": 10004}",
+      "input.mime_type": "application/json",
+      "output.value": "[{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}]",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 3, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:f760f88a-d314-63c9-d930-b3f05d259ac7\", \"checkpoint_ns\": \"agent:f760f88a-d314-63c9-d930-b3f05d259ac7\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "ScriptedModel",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x915b5ad452eacd84",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x160533d9271a628d",
+    "start_time": "2026-07-30T16:18:34.567099Z",
+    "end_time": "2026-07-30T16:18:34.568100Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [[{\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"HumanMessage\"], \"kwargs\": {\"content\": \"Find info about Claude Opus 4.7.\", \"type\": \"human\", \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"AIMessage\"], \"kwargs\": {\"content\": \"\", \"type\": \"ai\", \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": []}}, {\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"ToolMessage\"], \"kwargs\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"status\": \"success\"}}]]}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"generations\": [[{\"text\": \"\", \"generation_info\": null, \"type\": \"ChatGeneration\", \"message\": {\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"AIMessage\"], \"kwargs\": {\"content\": \"\", \"type\": \"ai\", \"id\": \"lc_run--019fb3d2-09c7-74b3-a7d7-baa5be7a7fbc-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_2\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": []}}}]], \"llm_output\": null, \"run\": null, \"type\": \"LLMResult\"}",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "llm.input_messages.1.message.role": "assistant",
+      "llm.input_messages.1.message.tool_calls.0.tool_call.id": "call_1",
+      "llm.input_messages.1.message.tool_calls.0.tool_call.function.name": "search_web",
+      "llm.input_messages.1.message.tool_calls.0.tool_call.function.arguments": "{\"query\": \"Claude Opus 4.7 release\"}",
+      "llm.input_messages.2.message.role": "tool",
+      "llm.input_messages.2.message.content": "Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\nResult 3: Claude Code CLI adds MCP server catalog integration.",
+      "llm.input_messages.2.message.tool_call_id": "call_1",
+      "llm.input_messages.2.message.name": "search_web",
+      "llm.output_messages.0.message.role": "assistant",
+      "llm.output_messages.0.message.tool_calls.0.tool_call.id": "call_2",
+      "llm.output_messages.0.message.tool_calls.0.tool_call.function.name": "search_web",
+      "llm.output_messages.0.message.tool_calls.0.tool_call.function.arguments": "{\"query\": \"Claude Opus 4.7 release\"}",
+      "llm.invocation_parameters": "{\"_type\": \"scripted\", \"stop\": null}",
+      "llm.provider": "scriptedmodel",
+      "metadata": "{\"ls_integration\": \"langchain_chat_model\", \"langgraph_step\": 3, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:f760f88a-d314-63c9-d930-b3f05d259ac7\", \"checkpoint_ns\": \"agent:f760f88a-d314-63c9-d930-b3f05d259ac7\", \"ls_provider\": \"scriptedmodel\", \"ls_model_type\": \"chat\", \"lc_versions\": {\"langchain-core\": \"1.4.7\"}}",
+      "openinference.span.kind": "LLM"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "RunnableSequence",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x160533d9271a628d",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x7452421f7300ee26",
+    "start_time": "2026-07-30T16:18:34.565099Z",
+    "end_time": "2026-07-30T16:18:34.568100Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}], \"remaining_steps\": 10004}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09c7-74b3-a7d7-baa5be7a7fbc-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_2\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 3, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:f760f88a-d314-63c9-d930-b3f05d259ac7\", \"checkpoint_ns\": \"agent:f760f88a-d314-63c9-d930-b3f05d259ac7\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "call_model",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x1e0049912f1c69b8",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x7452421f7300ee26",
+    "start_time": "2026-07-30T16:18:34.564107Z",
+    "end_time": "2026-07-30T16:18:34.569097Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}], \"remaining_steps\": 10004}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"messages\": [{\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09c7-74b3-a7d7-baa5be7a7fbc-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_2\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}]}",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 3, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:f760f88a-d314-63c9-d930-b3f05d259ac7\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "should_continue",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0xa6c6ffec2fc4a3f6",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x7452421f7300ee26",
+    "start_time": "2026-07-30T16:18:34.569097Z",
+    "end_time": "2026-07-30T16:18:34.570097Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09c7-74b3-a7d7-baa5be7a7fbc-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_2\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}], \"remaining_steps\": 10004}",
+      "input.mime_type": "application/json",
+      "output.value": "[\"Send(node='tools', arg={'__type': 'tool_call_with_context', 'tool_call': {'name': 'search_web', 'args': {'query': 'Claude Opus 4.7 release'}, 'id': 'call_2', 'type': 'tool_call'}, 'state': {'messages': [HumanMessage(content='Find info about Claude Opus 4.7.', additional_kwargs={}, response_metadata={}, id='0c7a274e-7902-42f6-8cb6-da409ce835e6'), AIMessage(content='', additional_kwargs={}, response_metadata={}, id='lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0', tool_calls=[{'name': 'search_web', 'args': {'query': 'Claude Opus 4.7 release'}, 'id': 'call_1', 'type': 'tool_call'}], invalid_tool_calls=[]), ToolMessage(content='Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\\\nResult 3: Claude Code CLI adds MCP server catalog integration.', name='search_web', id='fcbc0b37-98a3-47a9-8474-67361102963d', tool_call_id='call_1'), AIMessage(content='', additional_kwargs={}, response_metadata={}, id='lc_run--019fb3d2-09c7-74b3-a7d7-baa5be7a7fbc-0', tool_calls=[{'name': 'search_web', 'args': {'query': 'Claude Opus 4.7 release'}, 'id': 'call_2', 'type': 'tool_call'}], invalid_tool_calls=[])], 'remaining_steps': 10004}})\"]",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 3, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:f760f88a-d314-63c9-d930-b3f05d259ac7\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "agent",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x7452421f7300ee26",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x997704f49a5ff50b",
+    "start_time": "2026-07-30T16:18:34.564107Z",
+    "end_time": "2026-07-30T16:18:34.571097Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}], \"remaining_steps\": 10004}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"messages\": [{\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09c7-74b3-a7d7-baa5be7a7fbc-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_2\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}]}",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 3, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:f760f88a-d314-63c9-d930-b3f05d259ac7\"}",
+      "openinference.span.kind": "AGENT"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "search_web",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x07846664edc6a01a",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x465565e2b46b5536",
+    "start_time": "2026-07-30T16:18:34.574102Z",
+    "end_time": "2026-07-30T16:18:34.576098Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "Claude Opus 4.7 release",
+      "output.value": "{\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": null, \"tool_call_id\": \"call_2\", \"artifact\": null, \"status\": \"success\"}}",
+      "output.mime_type": "application/json",
+      "tool.name": "search_web",
+      "tool.description": "Search the web for information.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 4, \"langgraph_node\": \"tools\", \"langgraph_triggers\": [\"__pregel_push\"], \"langgraph_path\": [\"__pregel_push\", 0, false], \"langgraph_checkpoint_ns\": \"tools:29f38928-894f-fefb-6c66-a97796a408a0\", \"checkpoint_ns\": \"tools:29f38928-894f-fefb-6c66-a97796a408a0\"}",
+      "openinference.span.kind": "TOOL"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "tools",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x465565e2b46b5536",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x997704f49a5ff50b",
+    "start_time": "2026-07-30T16:18:34.572097Z",
+    "end_time": "2026-07-30T16:18:34.577096Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"__type\": \"tool_call_with_context\", \"tool_call\": {\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_2\", \"type\": \"tool_call\"}, \"state\": {\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09c7-74b3-a7d7-baa5be7a7fbc-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_2\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}], \"remaining_steps\": 10004}}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"messages\": [{\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": null, \"tool_call_id\": \"call_2\", \"artifact\": null, \"status\": \"success\"}}]}",
+      "output.mime_type": "application/json",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 4, \"langgraph_node\": \"tools\", \"langgraph_triggers\": [\"__pregel_push\"], \"langgraph_path\": [\"__pregel_push\", 0, false], \"langgraph_checkpoint_ns\": \"tools:29f38928-894f-fefb-6c66-a97796a408a0\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "Prompt",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0xf9487cc2c811b705",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x0b36aa81cfd76d12",
+    "start_time": "2026-07-30T16:18:34.579101Z",
+    "end_time": "2026-07-30T16:18:34.580102Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09c7-74b3-a7d7-baa5be7a7fbc-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_2\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"a96fe0ce-5ee9-47a8-8779-5b02d329812b\", \"tool_call_id\": \"call_2\", \"artifact\": null, \"status\": \"success\"}}], \"remaining_steps\": 10002}",
+      "input.mime_type": "application/json",
+      "output.value": "[{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09c7-74b3-a7d7-baa5be7a7fbc-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_2\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"a96fe0ce-5ee9-47a8-8779-5b02d329812b\", \"tool_call_id\": \"call_2\", \"artifact\": null, \"status\": \"success\"}}]",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 5, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:99c77d02-f14b-c2ce-3f09-1bffb047c30e\", \"checkpoint_ns\": \"agent:99c77d02-f14b-c2ce-3f09-1bffb047c30e\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "ScriptedModel",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x93c37d994636d1f3",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x0b36aa81cfd76d12",
+    "start_time": "2026-07-30T16:18:34.581100Z",
+    "end_time": "2026-07-30T16:18:34.582101Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [[{\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"HumanMessage\"], \"kwargs\": {\"content\": \"Find info about Claude Opus 4.7.\", \"type\": \"human\", \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"AIMessage\"], \"kwargs\": {\"content\": \"\", \"type\": \"ai\", \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": []}}, {\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"ToolMessage\"], \"kwargs\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"status\": \"success\"}}, {\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"AIMessage\"], \"kwargs\": {\"content\": \"\", \"type\": \"ai\", \"id\": \"lc_run--019fb3d2-09c7-74b3-a7d7-baa5be7a7fbc-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_2\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": []}}, {\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"ToolMessage\"], \"kwargs\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"a96fe0ce-5ee9-47a8-8779-5b02d329812b\", \"tool_call_id\": \"call_2\", \"status\": \"success\"}}]]}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"generations\": [[{\"text\": \"Done.\", \"generation_info\": null, \"type\": \"ChatGeneration\", \"message\": {\"lc\": 1, \"type\": \"constructor\", \"id\": [\"langchain\", \"schema\", \"messages\", \"AIMessage\"], \"kwargs\": {\"content\": \"Done.\", \"type\": \"ai\", \"id\": \"lc_run--019fb3d2-09d5-7f43-94d3-20b6181c8005-0\", \"tool_calls\": [], \"invalid_tool_calls\": []}}}]], \"llm_output\": null, \"run\": null, \"type\": \"LLMResult\"}",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "llm.input_messages.1.message.role": "assistant",
+      "llm.input_messages.1.message.tool_calls.0.tool_call.id": "call_1",
+      "llm.input_messages.1.message.tool_calls.0.tool_call.function.name": "search_web",
+      "llm.input_messages.1.message.tool_calls.0.tool_call.function.arguments": "{\"query\": \"Claude Opus 4.7 release\"}",
+      "llm.input_messages.2.message.role": "tool",
+      "llm.input_messages.2.message.content": "Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\nResult 3: Claude Code CLI adds MCP server catalog integration.",
+      "llm.input_messages.2.message.tool_call_id": "call_1",
+      "llm.input_messages.2.message.name": "search_web",
+      "llm.input_messages.3.message.role": "assistant",
+      "llm.input_messages.3.message.tool_calls.0.tool_call.id": "call_2",
+      "llm.input_messages.3.message.tool_calls.0.tool_call.function.name": "search_web",
+      "llm.input_messages.3.message.tool_calls.0.tool_call.function.arguments": "{\"query\": \"Claude Opus 4.7 release\"}",
+      "llm.input_messages.4.message.role": "tool",
+      "llm.input_messages.4.message.content": "Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\nResult 3: Claude Code CLI adds MCP server catalog integration.",
+      "llm.input_messages.4.message.tool_call_id": "call_2",
+      "llm.input_messages.4.message.name": "search_web",
+      "llm.output_messages.0.message.role": "assistant",
+      "llm.output_messages.0.message.content": "Done.",
+      "llm.invocation_parameters": "{\"_type\": \"scripted\", \"stop\": null}",
+      "llm.provider": "scriptedmodel",
+      "metadata": "{\"ls_integration\": \"langchain_chat_model\", \"langgraph_step\": 5, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:99c77d02-f14b-c2ce-3f09-1bffb047c30e\", \"checkpoint_ns\": \"agent:99c77d02-f14b-c2ce-3f09-1bffb047c30e\", \"ls_provider\": \"scriptedmodel\", \"ls_model_type\": \"chat\", \"lc_versions\": {\"langchain-core\": \"1.4.7\"}}",
+      "openinference.span.kind": "LLM"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "RunnableSequence",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x0b36aa81cfd76d12",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x57634872aa3e82b8",
+    "start_time": "2026-07-30T16:18:34.579101Z",
+    "end_time": "2026-07-30T16:18:34.583101Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09c7-74b3-a7d7-baa5be7a7fbc-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_2\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"a96fe0ce-5ee9-47a8-8779-5b02d329812b\", \"tool_call_id\": \"call_2\", \"artifact\": null, \"status\": \"success\"}}], \"remaining_steps\": 10002}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"type\": \"ai\", \"data\": {\"content\": \"Done.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09d5-7f43-94d3-20b6181c8005-0\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": null}}",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 5, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:99c77d02-f14b-c2ce-3f09-1bffb047c30e\", \"checkpoint_ns\": \"agent:99c77d02-f14b-c2ce-3f09-1bffb047c30e\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "call_model",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x75c968ef369257a7",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x57634872aa3e82b8",
+    "start_time": "2026-07-30T16:18:34.578100Z",
+    "end_time": "2026-07-30T16:18:34.584099Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09c7-74b3-a7d7-baa5be7a7fbc-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_2\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"a96fe0ce-5ee9-47a8-8779-5b02d329812b\", \"tool_call_id\": \"call_2\", \"artifact\": null, \"status\": \"success\"}}], \"remaining_steps\": 10002}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"messages\": [{\"type\": \"ai\", \"data\": {\"content\": \"Done.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09d5-7f43-94d3-20b6181c8005-0\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": null}}]}",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 5, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:99c77d02-f14b-c2ce-3f09-1bffb047c30e\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "should_continue",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0xdcfaecd39a7e7608",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x57634872aa3e82b8",
+    "start_time": "2026-07-30T16:18:34.585098Z",
+    "end_time": "2026-07-30T16:18:34.586097Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09c7-74b3-a7d7-baa5be7a7fbc-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_2\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"a96fe0ce-5ee9-47a8-8779-5b02d329812b\", \"tool_call_id\": \"call_2\", \"artifact\": null, \"status\": \"success\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"Done.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09d5-7f43-94d3-20b6181c8005-0\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": null}}], \"remaining_steps\": 10002}",
+      "input.mime_type": "application/json",
+      "output.value": "__end__",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 5, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:99c77d02-f14b-c2ce-3f09-1bffb047c30e\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "agent",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x57634872aa3e82b8",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": "0x997704f49a5ff50b",
+    "start_time": "2026-07-30T16:18:34.578100Z",
+    "end_time": "2026-07-30T16:18:34.587096Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09c7-74b3-a7d7-baa5be7a7fbc-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_2\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"a96fe0ce-5ee9-47a8-8779-5b02d329812b\", \"tool_call_id\": \"call_2\", \"artifact\": null, \"status\": \"success\"}}], \"remaining_steps\": 10002}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"messages\": [{\"type\": \"ai\", \"data\": {\"content\": \"Done.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09d5-7f43-94d3-20b6181c8005-0\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": null}}]}",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\", \"langgraph_step\": 5, \"langgraph_node\": \"agent\", \"langgraph_triggers\": [\"branch:to:agent\"], \"langgraph_path\": [\"__pregel_pull\", \"agent\"], \"langgraph_checkpoint_ns\": \"agent:99c77d02-f14b-c2ce-3f09-1bffb047c30e\"}",
+      "openinference.span.kind": "AGENT"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  },
+  {
+    "name": "LangGraph",
+    "context": {
+      "trace_id": "0xaabbccdd112233440000000000000001",
+      "span_id": "0x997704f49a5ff50b",
+      "trace_state": "[]"
+    },
+    "kind": "SpanKind.INTERNAL",
+    "parent_id": null,
+    "start_time": "2026-07-30T16:18:34.544578Z",
+    "end_time": "2026-07-30T16:18:34.589102Z",
+    "status": {
+      "status_code": "StatusCode.OK",
+      "description": null
+    },
+    "attributes": {
+      "input.value": "{\"messages\": [[\"user\", \"Find info about Claude Opus 4.7.\"]]}",
+      "input.mime_type": "application/json",
+      "output.value": "{\"messages\": [{\"type\": \"human\", \"data\": {\"content\": \"Find info about Claude Opus 4.7.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"0c7a274e-7902-42f6-8cb6-da409ce835e6\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09b7-71b3-98f9-8441fab7a801-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_1\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"fcbc0b37-98a3-47a9-8474-67361102963d\", \"tool_call_id\": \"call_1\", \"artifact\": null, \"status\": \"success\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09c7-74b3-a7d7-baa5be7a7fbc-0\", \"tool_calls\": [{\"name\": \"search_web\", \"args\": {\"query\": \"Claude Opus 4.7 release\"}, \"id\": \"call_2\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": null}}, {\"type\": \"tool\", \"data\": {\"content\": \"Result 1: Anthropic launches Claude Opus 4.7 — official announcement.\\nResult 2: Anthropic pricing page updated for Sonnet 4.6.\\nResult 3: Claude Code CLI adds MCP server catalog integration.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_web\", \"id\": \"a96fe0ce-5ee9-47a8-8779-5b02d329812b\", \"tool_call_id\": \"call_2\", \"artifact\": null, \"status\": \"success\"}}, {\"type\": \"ai\", \"data\": {\"content\": \"Done.\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"ai\", \"name\": null, \"id\": \"lc_run--019fb3d2-09d5-7f43-94d3-20b6181c8005-0\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": null}}]}",
+      "output.mime_type": "application/json",
+      "llm.input_messages.0.message.role": "user",
+      "llm.input_messages.0.message.content": "Find info about Claude Opus 4.7.",
+      "metadata": "{\"ls_integration\": \"langgraph\"}",
+      "openinference.span.kind": "CHAIN"
+    },
+    "events": [],
+    "links": [],
+    "resource": {
+      "attributes": {},
+      "schema_url": ""
+    }
+  }
+]
