@@ -349,7 +349,7 @@ def render_markdown(
     # (b) category breakdown / per-pair rendering below.
     enrichment = enrich(trace, details, user_tools)
     cov = coverage_stats(trace, enrichment.enriched, user_tools)
-    id_bridge = scan_id_bridge_candidates(trace)
+    id_bridge = scan_id_bridge_candidates(trace, user_tools)
 
     if not cr.wasteful:
         lines.append("## Result: no waste detected")

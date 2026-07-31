@@ -58,7 +58,7 @@ def render_json(
 
     enrichment = enrich(trace, details, user_tools)
     cov = coverage_stats(trace, enrichment.enriched, user_tools)
-    id_bridge = scan_id_bridge_candidates(trace)
+    id_bridge = scan_id_bridge_candidates(trace, user_tools)
     ev_by_sid = {ev.span_id: ev for ev in amplification.events} if amplification else {}
 
     waste_details_list = []
@@ -162,6 +162,7 @@ def render_json(
                 "verdict": c.verdict,
                 "origin_id": c.origin_id,
                 "candidate_id": c.candidate_id,
+                "source": c.source,
             }
             for c in id_bridge
         ],

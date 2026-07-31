@@ -597,12 +597,26 @@ def _dig_id_bridge(obj: Any, path_parts: list[str]) -> Any:
     return cur
 
 
-def extract_entity_id(tool: str, output_text: str) -> str | None:
-    """Return extracted ID string, or None if the tool is not in the mapping
-    or the specific JSONPath fails on this response. Deterministic; no LLM."""
-    if tool not in _ID_BRIDGE_MAPPING:
+def extract_entity_id(
+    tool: str,
+    output_text: str,
+    user_entity_id_map: dict[str, str] | None = None,
+) -> str | None:
+    """Return extracted ID string, or None if the tool is not in either mapping
+    or the specific path fails on this response. Deterministic; no LLM.
+
+    Precedence: built-in `_ID_BRIDGE_MAPPING` first, then user-registered
+    `user_entity_id_map` (Phase 2). Built-in overlap is prevented at config
+    load time (see clew.config.user_tools.resolve_user_tools), so this
+    fallback is unambiguous when reached.
+    """
+    if tool in _ID_BRIDGE_MAPPING:
+        kind, spec = _ID_BRIDGE_MAPPING[tool]
+    elif user_entity_id_map is not None and tool in user_entity_id_map:
+        # User-registered dot-path only (grammar enforced at load time).
+        kind, spec = "path", user_entity_id_map[tool]
+    else:
         return None
-    kind, spec = _ID_BRIDGE_MAPPING[tool]
     body = _unwrap_id_bridge_output(output_text)
     if not body:
         return None
@@ -632,27 +646,48 @@ class IdBridgeCandidate:
     verdict: str  # "differ" | "same" | "no_id"
     origin_id: str | None
     candidate_id: str | None
+    source: str = "built-in"  # "built-in" | "user"  (Phase 2)
 
 
-def scan_id_bridge_candidates(trace: Trace) -> list[IdBridgeCandidate]:
+def scan_id_bridge_candidates(
+    trace: Trace,
+    tools: "ResolvedTools | None" = None,
+) -> list[IdBridgeCandidate]:
     """Same-input side-effect pair scan. Independent of cascade.
 
     Pool = find_candidates(trace, 2) filtered to cand.span_kind == "tool"
-    and cand.agent_or_node_id in _SIDE_EFFECT_TOOLS. For each pair, extract
+    and cand.agent_or_node_id in the side_effect set. For each pair, extract
     IDs from origin and candidate outputs and classify three ways.
+
+    Phase 2: when `tools` is provided, the side_effect set is the user-extended
+    frozenset, and each candidate's `source` is set to "built-in" if the tool
+    has a built-in ID mapping, else "user". Extraction uses both mappings.
 
     Does NOT feed waste_span_ids. Does NOT feed between_window_counts.
     Purely additive report layer.
     """
+    side_effect_pool = _SIDE_EFFECT_TOOLS if tools is None else tools.side_effect
+    user_map = tools.user_entity_id_map if tools is not None else None
+
     out: list[IdBridgeCandidate] = []
     for origin, cand in find_candidates(trace, 2):
         if cand.span_kind != "tool":
             continue
         tool = cand.agent_or_node_id
-        if tool not in _SIDE_EFFECT_TOOLS:
+        if tool not in side_effect_pool:
             continue
-        o_id = extract_entity_id(tool, origin.output_text)
-        c_id = extract_entity_id(tool, cand.output_text)
+        # Pool = every side_effect tool (matches built-in behavior for tools
+        # without an ID mapping — they land as `no_id`). `source` is "user"
+        # only when the tool is user-registered AND not in the built-in map;
+        # built-in overlap is prevented at config-load time.
+        if tool in _ID_BRIDGE_MAPPING:
+            source = "built-in"
+        elif user_map is not None and tool in user_map:
+            source = "user"
+        else:
+            source = "built-in"  # no ID mapping either side → still built-in bucket
+        o_id = extract_entity_id(tool, origin.output_text, user_map)
+        c_id = extract_entity_id(tool, cand.output_text, user_map)
         if o_id is None or c_id is None:
             verdict = "no_id"
         elif o_id == c_id:
@@ -666,8 +701,46 @@ def scan_id_bridge_candidates(trace: Trace) -> list[IdBridgeCandidate]:
             verdict=verdict,
             origin_id=o_id,
             candidate_id=c_id,
+            source=source,
         ))
     return out
+
+
+def compute_user_extraction_ratios(
+    candidates: list[IdBridgeCandidate],
+) -> dict[str, tuple[int, int]]:
+    """Per-user-tool (failed_extractions, total_extractions).
+
+    An extraction is counted per side of each candidate pair (2 per pair).
+    A side is "failed" when extract_entity_id returned None (verdict piece).
+
+    Only tools with `source == "user"` are included.
+    """
+    stats: dict[str, list[int]] = {}
+    for c in candidates:
+        if c.source != "user":
+            continue
+        acc = stats.setdefault(c.tool, [0, 0])
+        # Total: 2 extractions per pair (origin + candidate).
+        acc[1] += 2
+        acc[0] += int(c.origin_id is None) + int(c.candidate_id is None)
+    return {tool: (f, t) for tool, (f, t) in stats.items()}
+
+
+def format_extraction_ratios(ratios: dict[str, tuple[int, int]]) -> str | None:
+    """Q5 confirmed format. Returns a multi-line string or None (all-success)."""
+    lines: list[str] = []
+    for tool, (failed, total) in sorted(ratios.items()):
+        if failed == 0:
+            continue  # No line — noise reduction.
+        if failed == total:
+            label = "path likely misconfigured"
+        else:
+            label = "partial — response variance"
+        lines.append(f"  {tool}: {failed}/{total} extractions failed  ({label})")
+    if not lines:
+        return None
+    return "clew: entity_id extraction ratios\n" + "\n".join(lines)
 
 
 def enrich(
