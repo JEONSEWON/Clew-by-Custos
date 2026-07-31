@@ -92,7 +92,9 @@
 assert "llm" not in kinds  # verify collapse
 ```
 
-**정정**: 어댑터는 pingpong 을 열지 않는다. `graph.node.id` 확보는 별개 데이터 축을 준비할 뿐. Pingpong 실데이터 발동은 **detector 재설계 + preprocess 조정** 이 필요하며, 이는 별도 사전등록 대상.
+**정정**: 어댑터는 pingpong 을 열지 않는다 (강한 표현 유지: "즉시 열지 않는다" 는 시간이 지나면 저절로 열린다는 함의가 있으나 실제로는 탐지기 재설계가 별도로 필요하다). `graph.node.id` 확보는 별개 데이터 축을 준비할 뿐. Pingpong 실데이터 발동은 **detector 재설계** 가 필요하며, 이는 별도 사전등록 대상.
+
+**유력 방향** (§8.2 상세): `collapse_llm_spans` 는 llm 만 제거하고 agent 는 보존하므로, pingpong 을 AGENT 스팬 대상으로 재정의하는 것이 preprocess 를 건드리지 않는 경로다. 별도 사전등록에서 다룬다.
 
 이 정정을 기록으로 남기는 이유: 근거 없이 넘겨짚어 판단한 사례. 코드 확인이 판단에 선행해야 한다는 원칙 (`memory/feedback_thorough_investigation.md`, `feedback_no_hypothetical_case_judgment.md`) 재확인.
 
@@ -145,6 +147,8 @@ def _agent_or_node_id_of(span_kind: SpanKind, span_name: str, attrs: dict[str, A
 **pingpong 이 요구하는 A ≠ B 판정에 미치는 영향**:
 - Pingpong 은 LLM span 대상 → LLM 매핑 유지 결정과 정합.
 - AGENT span 대상 재설계 시에는 `graph.node.id` 로 A ≠ B 판정 가능 (§8 참조).
+
+**§5 게이트 실패 시 대응 (사전 확정)**: §5.2 참조. LangGraph 트레이스에도 `graph.node.id` 가 존재해 매핑 결과가 바뀌면 source 판별로 분기해 LangGraph 경로는 기존 매핑을 유지한다. 결과 보고 정하지 않는다.
 
 ### §4.3 `output_text` 추출 shim
 
@@ -203,9 +207,15 @@ def _extract_tool_output(attrs: dict[str, Any]) -> str:
 - 기존 `tests/test_otel_json_ingest.py::MINIMAL_SDK_JSON` fixture (LangGraph pipeline / researcher / claude 스팬) 를 수정 전 · 후 두 버전으로 ingest.
 - 두 Trace 의 span 집합 `(span_id, span_kind, agent_or_node_id)` 이 **완전 동일** 해야 통과.
 
-### §5.2 실패 시 조치
+### §5.2 실패 시 대응 (사전 확정)
 
-- 게이트 실패 = fallback 이 부정확. 매핑 규칙에 예외 케이스 추가 (LangChain 트레이스의 `tool.name` 유무 등) 또는 우선순위 재설계 후 재테스트.
+**★ 결과 보고 정하지 않는다. 아래 대응을 지금 사전등록에 확정한다.**
+
+- 게이트 실패 시나리오 = LangGraph 트레이스에도 `graph.node.id` 가 존재해 새 매핑이 기존 결과를 바꾸는 경우.
+- 대응: **기존 동작 보존을 채택** (option (가)). `otel_spans_to_trace` 안에서 source 판별로 분기해 LangGraph 경로는 기존 매핑 (`s.name` 우선) 을 유지한다.
+- 근거: 이번 스코프는 CrewAI/LangChain 지원이지 기존 매핑 개선이 아니다. 기존 결과가 바뀌면 그것이 개선인지 회귀인지 판정할 근거가 없다. 매핑 개선은 별도 사전등록에서 다룬다 (§9 참조).
+- Source 판별 후보: OTel resource attribute `service.name`, 또는 `crew_id` 등 **실패 시나리오와 독립인 필드**. 구현 시 실측 → 게이트 통과할 최소 판별식 선택.
+- **★ `graph.node.id` 는 판별식으로 쓸 수 없다** — 게이트 실패 조건 자체가 그 필드가 LangGraph 트레이스에도 존재하는 것이므로 순환이다.
 - 게이트 통과 없이는 어댑터 매핑 변경 merge 금지.
 
 ### §5.3 신규 테스트
@@ -278,10 +288,18 @@ def test_ingest_openinference_crewai_fixture():
     assert all(s.output_text.startswith("Result 1:") for s in tool_spans)
 ```
 
-### §7.3 fixture 정리 원칙
+### §7.3 fixture sanitize 범위 (frozen)
 
-- 로컬 경로 (`C:/Users/User/...`), machine hostname, 실 사용자 email 등 sensitive metadata 제거.
-- 유효성: cleaning 후에도 `openinference.span.kind`, `input.value`, `output.value`, `tool.name`, `graph.node.id`, `start_time`, `end_time` 이 남아 있어야 함.
+**제거 대상**:
+- 절대 경로 (`C:/Users/User/...` 등) → `/PATH/` placeholder.
+- OTel resource attributes: `service.name`, `host.name`, `process.command_line`.
+- 자격증명 · API 키 · 실 사용자 email (FakeChatModel 기반이라 없을 것으로 예상하나 dump 재확인 필수).
+
+**유지 대상 (필수)**:
+- 타임스탬프 (`start_time`, `end_time`) — `between_window_counts` 가 요구.
+- `openinference.span.kind`, `input.value`, `output.value`, `output.mime_type`, `tool.name`, `graph.node.id`.
+
+**★ 타임스탬프는 유지한다.** 삭제 시 between_window 계산 축이 무너진다.
 
 ---
 
@@ -346,11 +364,13 @@ def test_ingest_openinference_crewai_fixture():
 
 ## §11 — 커밋 체인 (Rule 8)
 
-승인 후:
+승인 후 4 커밋 체인:
 1. `docs(prereg): openinference adapter — mapping + shim` — 본 문서 확정판 (판정 반영).
 2. `feat(ingest): agent_or_node_id per span_kind + defensive output shim` — `src/clew/ingest/langgraph.py` 수정 만.
 3. `test(ingest): fixture regression + backward compat gate` — `tests/fixtures/openinference_{langchain,crewai}.json` 추가 + §5.3 + §7.2 신규 테스트.
 4. `docs(readme): openinference framework coverage` — README 에 OpenInference 로 커버하는 프레임워크 목록과 검증 상태 (LangChain · CrewAI 두 개 확증, 나머지 26개는 추정) 서브섹션 추가.
+
+**4 커밋 유지 근거**: README 가 현재 "프레임워크별 실측 검증은 진행 중" 으로 hedge 중. LangChain · CrewAI 실측 후 미갱신 시 낡은 채 남음. v0.3.2 · (b-2-1) 에서 README 낡음 사고 두 번 재발 이력.
 
 **★ 판정 없이 코드 작성 금지.** 이 draft 는 사전등록 · 판정 재료 제출까지.
 
