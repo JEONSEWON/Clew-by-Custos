@@ -248,6 +248,45 @@ Auto-instrumented agent frameworks emit spans through the OpenInference schema (
 
 Pre-registration and mapping details: [`docs/OPENINFERENCE_ADAPTER_PREREG.md`](docs/OPENINFERENCE_ADAPTER_PREREG.md).
 
+### Registering your own tools (`clew.yaml`)
+
+LangChain / CrewAI users typically name their tools inside application code (`search_web`, `create_ticket`, …). Those names are not in Clew's built-in mapping, so a fresh trace shows `0 of N tools recognized` in the coverage banner and every waste pair drops into `unclassified`. Drop a `clew.yaml` next to your trace (or into `~/.clew/config.yaml`) to register them:
+
+```yaml
+version: 1
+
+tools:
+  search_web:
+    category: read_only
+  create_ticket:
+    category: side_effect
+  run_python:
+    category: payload_dependent
+  finalize:
+    category: declarative
+```
+
+Four categories, matching the report labels:
+
+| YAML value | Report category | Interval-scan role |
+|---|---|---|
+| `read_only` | `idempotent` | tool is treated as read-only when it appears between two calls |
+| `side_effect` | `side_effect` | tool counts as state-changing between two calls |
+| `payload_dependent` | `unclassified` (like `Bash`) | tool *might* have changed state; only observable from the payload |
+| `declarative` | `idempotent` (declarative bucket) | interval between calls not examined; repeating is not a waste question |
+
+Discovery order: `--config PATH` > `clew.yaml` walking up from the trace file (max 5 levels or git root) > `~/.clew/config.yaml`. First found wins — no merging.
+
+**User registration wins over built-in.** If you register `Bash: read_only`, that's the classification Clew uses. Three guardrails keep this visible rather than silent:
+
+1. A one-line stderr warning on every load: `clew.yaml overrides built-in mappings: Bash`. It lists tool names, not counts — so drift stays legible.
+2. The coverage banner splits `recognized` into `built-in / user / user-overriding-built-in`. The three counts always sum to `recognized`.
+3. The banner adds one line — *Precision bounds were measured on built-in mappings; user-registered tools are unverified.* — because the 88.43% Clopper–Pearson lower bound on `no_side_effect` was measured on Clew's own mapping. That number does not transfer to tools we haven't seen.
+
+Validation is fail-fast: unknown categories, missing `version` / `tools`, duplicate tool names, or Phase 2 fields (e.g. `id_field:`, reserved for a future release) all abort with a clear message. No silent path.
+
+Not in scope for this release: user-registered entity-ID extraction (for the duplicate-creation check) — that requires per-tool response-schema validation and is a separate design.
+
 ---
 
 ## How we keep ourselves honest
@@ -260,7 +299,7 @@ This repo treats anti-self-deception as a working discipline, not a slogan:
 - **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues that no synthetic test caught: session mid-run abort (3/28 crashes → recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false-positives across 269 error responses → gated at the report layer, cascade unchanged). Both are recorded in `docs/CC_TRANSCRIPT.md` §29.
 - **Disclosed limits.** The semantic embedding layer does not cleanly separate same-topic real-world outputs — the `sha256` structural gate carries the precision result, not the embedding. We say so rather than imply the model is doing the work.
 
-**343 tests**, CI on every PR, frozen parameters enforced as failing tests.
+**384 tests**, CI on every PR, frozen parameters enforced as failing tests.
 
 ---
 
