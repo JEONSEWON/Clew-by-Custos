@@ -231,6 +231,34 @@ def _render_id_bridge_section(candidates: list[IdBridgeCandidate]) -> list[str]:
     lines.append(f"  - {differ} with different entity IDs")
     lines.append(f"  - {same} with the same entity ID")
     lines.append(f"  - {no_id} without extractable entity ID")
+    # Phase 2 provenance split. Rendered only when a user-registered
+    # candidate is present in the pool.
+    user_present = any(c.source == "user" for c in candidates)
+    if user_present:
+        bi_differ = sum(1 for c in candidates if c.verdict == "differ" and c.source == "built-in")
+        bi_same = sum(1 for c in candidates if c.verdict == "same" and c.source == "built-in")
+        bi_no = sum(1 for c in candidates if c.verdict == "no_id" and c.source == "built-in")
+        u_differ = differ - bi_differ
+        u_same = same - bi_same
+        u_no = no_id - bi_no
+        bi_total = bi_differ + bi_same + bi_no
+        u_total = u_differ + u_same + u_no
+        lines.append(
+            f"  - built-in: {bi_total} pairs "
+            f"({bi_differ} differ, {bi_same} same, {bi_no} no_id)"
+        )
+        lines.append(
+            f"  - user-registered: {u_total} pairs "
+            f"({u_differ} differ, {u_same} same, {u_no} no_id)"
+        )
+        lines.append("")
+        lines.append(
+            "  _Precision bounds on the built-in mappings were measured on "
+            "Toolathlon (28-30/30 hand-labeled per bucket, Clopper-Pearson "
+            "lower ≈ 77.93%). User-registered mappings are unverified — the "
+            "numbers above are the observed extraction result, not a "
+            "validated precision claim._"
+        )
     lines.append("")
     for i, cand in enumerate(candidates, 1):
         lines.append(f"### {i}. {cand.tool}")

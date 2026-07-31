@@ -211,6 +211,20 @@ def _analyze(args: argparse.Namespace) -> int:
         from clew.cost.amplification import estimate_amplification
         amp = estimate_amplification(cr, trace)
 
+    # Phase 2: user entity_id extraction ratios — one-shot stderr summary.
+    # Only emitted when clew.yaml declared any entity_id path.
+    if user_tools is not None and user_tools.has_user_entity_ids:
+        from clew.report._enrich import (  # noqa: PLC0415
+            compute_user_extraction_ratios,
+            format_extraction_ratios,
+            scan_id_bridge_candidates,
+        )
+        candidates_for_ratio = scan_id_bridge_candidates(trace, user_tools)
+        ratios = compute_user_extraction_ratios(candidates_for_ratio)
+        ratio_report = format_extraction_ratios(ratios)
+        if ratio_report is not None:
+            print(ratio_report, file=sys.stderr)
+
     # Markdown report
     from clew.report.markdown import render_markdown
     md = render_markdown(
