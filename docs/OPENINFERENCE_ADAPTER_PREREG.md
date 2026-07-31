@@ -214,9 +214,12 @@ def _extract_tool_output(attrs: dict[str, Any]) -> str:
 - 게이트 실패 시나리오 = LangGraph 트레이스에도 `graph.node.id` 가 존재해 새 매핑이 기존 결과를 바꾸는 경우.
 - 대응: **기존 동작 보존을 채택** (option (가)). `otel_spans_to_trace` 안에서 source 판별로 분기해 LangGraph 경로는 기존 매핑 (`s.name` 우선) 을 유지한다.
 - 근거: 이번 스코프는 CrewAI/LangChain 지원이지 기존 매핑 개선이 아니다. 기존 결과가 바뀌면 그것이 개선인지 회귀인지 판정할 근거가 없다. 매핑 개선은 별도 사전등록에서 다룬다 (§9 참조).
-- Source 판별 후보: OTel resource attribute `service.name`, 또는 `crew_id` 등 **실패 시나리오와 독립인 필드**. 구현 시 실측 → 게이트 통과할 최소 판별식 선택.
-- **★ `graph.node.id` 는 판별식으로 쓸 수 없다** — 게이트 실패 조건 자체가 그 필드가 LangGraph 트레이스에도 존재하는 것이므로 순환이다.
-- 게이트 통과 없이는 어댑터 매핑 변경 merge 금지.
+- **판별식 선택은 구현 시 실측 판단**. 사전등록이 막는 것은 판정 기준을 결과 보고 바꾸는 것이다. 대응(기존 동작 보존)은 이미 확정됐고, 어느 필드로 분기하느냐는 구현 세부다. 게이트 자체가 판별식의 검증이므로 자기교정된다.
+- 단 다음 제약은 사전등록에 명시:
+  - **★ `graph.node.id` 는 판별식으로 사용 불가** — 게이트 실패 조건 자체가 그 필드가 LangGraph 트레이스에도 존재하는 것이므로 순환.
+  - 판별식 선택의 통과 조건은 **§5.1 게이트** (기존 LangGraph fixture 출력 `(span_id, span_kind, agent_or_node_id)` 집합 완전 동일).
+  - 게이트 통과 없이는 어댑터 매핑 변경 merge 금지.
+- 실측 후보 (참고, 확정 아님): OTel resource attribute `service.name`, span attribute `crew_id` 등 실패 시나리오와 독립인 필드.
 
 ### §5.3 신규 테스트
 
@@ -293,13 +296,37 @@ def test_ingest_openinference_crewai_fixture():
 **제거 대상**:
 - 절대 경로 (`C:/Users/User/...` 등) → `/PATH/` placeholder.
 - OTel resource attributes: `service.name`, `host.name`, `process.command_line`.
-- 자격증명 · API 키 · 실 사용자 email (FakeChatModel 기반이라 없을 것으로 예상하나 dump 재확인 필수).
+- 자격증명 · API 키 · 실 사용자 email (FakeChatModel 기반이라 없을 것으로 예상하나 **가정이므로 기계 검사 필수**).
 
 **유지 대상 (필수)**:
 - 타임스탬프 (`start_time`, `end_time`) — `between_window_counts` 가 요구.
 - `openinference.span.kind`, `input.value`, `output.value`, `output.mime_type`, `tool.name`, `graph.node.id`.
 
 **★ 타임스탬프는 유지한다.** 삭제 시 between_window 계산 축이 무너진다.
+
+### §7.4 기계 sanitize 스캔 (필수)
+
+fixture 커밋 전에 아래를 자동 스캔한다. **검출 0건이어도 결과를 사전등록 검증
+재료로 함께 보고한다** (검출 0건 = 통과 확증, 미보고 = 확증 없음).
+
+**자격증명 패턴** (grep -Ei):
+- `sk-` (OpenAI-style key prefix)
+- `Bearer ` (Authorization header)
+- `api[_-]?key` (case-insensitive)
+- `token=` (query string / env)
+- `secret` (환경변수 · 헤더)
+- `password`
+
+**OTel resource attributes 전량 나열**:
+- fixture JSON 을 파싱해 resource block 내 attribute 를 전부 dump → 육안 확인.
+- 근거: OTel exporter endpoint URL 에 토큰이 붙거나 환경변수가 새어 들어가는 경로가 존재.
+
+**절대 경로 패턴** (grep):
+- `C:/Users/`, `C:\Users\`
+- `/home/`
+- `/Users/`
+
+**보고 형식**: `field_test/diagnostics/openinference_fixture_sanitize_scan.md` (uncommitted, 규칙: 진단 스크립트 커밋 금지) 에 각 패턴별 검출 라인 + resource attribute 전량 dump. 검출 0건이면 "0 hits" 명시.
 
 ---
 
