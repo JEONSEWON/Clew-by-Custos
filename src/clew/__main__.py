@@ -166,6 +166,30 @@ def _analyze(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
+    # Optional user tool config (clew.yaml). When neither --config nor a
+    # discovered file exists, user_tools stays None and downstream behavior
+    # is bit-identical to pre-clew.yaml releases (§3 gate).
+    user_tools = None
+    try:
+        from clew.config import (  # noqa: PLC0415
+            emit_load_warnings,
+            find_clew_yaml,
+            load_user_config,
+            UserToolConfigError,
+        )
+        explicit = Path(args.config) if args.config else None
+        yaml_path = find_clew_yaml(trace_path, explicit=explicit)
+        if yaml_path is not None:
+            user_tools = load_user_config(yaml_path)
+            emit_load_warnings(user_tools)
+    except UserToolConfigError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 2
+    except ImportError:
+        # pyyaml missing while --config also missing: proceed with no config.
+        # If --config was set, load_user_config would have raised.
+        pass
+
     # Detector initialization
     try:
         from clew.detect.cascade import cascade
@@ -189,7 +213,10 @@ def _analyze(args: argparse.Namespace) -> int:
 
     # Markdown report
     from clew.report.markdown import render_markdown
-    md = render_markdown(trace, cr, details, no_snippets=no_snippets, amplification=amp)
+    md = render_markdown(
+        trace, cr, details,
+        no_snippets=no_snippets, amplification=amp, user_tools=user_tools,
+    )
 
     if args.out:
         out_path = Path(args.out)
@@ -201,7 +228,10 @@ def _analyze(args: argparse.Namespace) -> int:
     # JSON report (optional)
     if args.json_out:
         from clew.report.json_report import render_json
-        jstr = render_json(trace, cr, details, no_snippets=no_snippets, amplification=amp)
+        jstr = render_json(
+            trace, cr, details,
+            no_snippets=no_snippets, amplification=amp, user_tools=user_tools,
+        )
         json_path = Path(args.json_out)
         json_path.write_text(jstr, encoding="utf-8")
         print(f"json report written → {json_path}")
@@ -218,6 +248,15 @@ def main() -> None:
     p.add_argument("--out", metavar="report.md", help="write markdown report to file")
     p.add_argument("--json", dest="json_out", metavar="out.json", help="write JSON report to file")
     p.add_argument("--no-snippets", action="store_true", help="exclude output_text snippets from report")
+    p.add_argument(
+        "--config",
+        metavar="clew.yaml",
+        default=None,
+        help=(
+            "path to user tool config (clew.yaml). "
+            "Overrides trace-file walk-up and ~/.clew/config.yaml discovery."
+        ),
+    )
 
     args = parser.parse_args()
     if args.cmd == "analyze":

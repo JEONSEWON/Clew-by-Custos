@@ -12,11 +12,14 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from clew.detect.structural import find_candidates
 from clew.model import Span, Trace
 from clew.report._model import WasteDetail
+
+if TYPE_CHECKING:
+    from clew.config import ResolvedTools
 
 _EDIT_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 _FILE_KEYS = ("file_path", "path", "filename", "notebook_path")
@@ -280,14 +283,26 @@ _BW_BLACKBOX_TOOLS = frozenset({
 _BW_CONTEXT_LIMIT = 20  # PREREG §1.2 high_volume threshold
 
 
-def _classify_between_window(trace: Trace, origin: Span, cand: Span) -> str:
+def _classify_between_window(
+    trace: Trace,
+    origin: Span,
+    cand: Span,
+    tools: "ResolvedTools | None" = None,
+) -> str:
     """PREREG §1.3 Rule V2 priority. Only called when category == 'idempotent'.
 
     Scan window: `origin.end_time < s.start_time < cand.start_time`
     (matches diagnostics `spans_between` exactly — the source of the frozen
     §4.1 counts). Tool spans only.
+
+    `tools` (optional): user-tool resolution from clew.yaml. When None, uses
+    built-in frozensets exactly — §3 gate preserves parity.
     """
-    if cand.agent_or_node_id in _BW_DECLARATIVE_TOOLS:
+    bw_decl = _BW_DECLARATIVE_TOOLS if tools is None else tools.bw_declarative
+    bw_side = _BW_SIDE_EFFECT_TOOLS if tools is None else tools.bw_side_effect
+    bw_bb = _BW_BLACKBOX_TOOLS if tools is None else tools.bw_blackbox
+
+    if cand.agent_or_node_id in bw_decl:
         return "declarative"
     between_tools = [
         s for s in trace.spans
@@ -295,11 +310,11 @@ def _classify_between_window(trace: Trace, origin: Span, cand: Span) -> str:
         and s.span_id not in (origin.span_id, cand.span_id)
         and origin.end_time < s.start_time < cand.start_time
     ]
-    if not any(s.agent_or_node_id in _BW_SIDE_EFFECT_TOOLS for s in between_tools):
+    if not any(s.agent_or_node_id in bw_side for s in between_tools):
         return "no_side_effect"
     if len(between_tools) >= _BW_CONTEXT_LIMIT:
         return "high_volume"
-    if any(s.agent_or_node_id in _BW_BLACKBOX_TOOLS for s in between_tools):
+    if any(s.agent_or_node_id in bw_bb for s in between_tools):
         return "payload_dependent"
     return "targeted_writes"
 
@@ -313,20 +328,25 @@ def _output_head(text: str, limit: int = 400) -> str:
     return s[:limit]
 
 
-def _classify_category(cand: Span) -> str:
+def _classify_category(cand: Span, tools: "ResolvedTools | None" = None) -> str:
     """Report-side label. Order: error → idempotent → side-effect → unclassified.
 
     Tool-name based only — never infer effect from name substrings (e.g. "put"
     in "tooloutput" is not a write). Unknown tools and payload-dependent tools
     (Bash, PowerShell, local-python-execute, terminal-run_command,
     bigquery_run_query) stay unclassified.
+
+    `tools` (optional): user-tool resolution from clew.yaml. When None, uses
+    built-in frozensets exactly — §3 gate preserves parity.
     """
     if _ERROR_RE.search(_output_head(cand.output_text)):
         return "error_repeat"
+    idem = _IDEMPOTENT_TOOLS if tools is None else tools.idempotent
+    side = _SIDE_EFFECT_TOOLS if tools is None else tools.side_effect
     name = cand.agent_or_node_id
-    if name in _IDEMPOTENT_TOOLS:
+    if name in idem:
         return "idempotent"
-    if name in _SIDE_EFFECT_TOOLS:
+    if name in side:
         return "side_effect"
     return "unclassified"
 
@@ -354,7 +374,11 @@ class EnrichmentResult:
     n_skipped_error: int
 
 
-def coverage_stats(trace: Trace, enriched: list["EnrichedDetail"]) -> dict:
+def coverage_stats(
+    trace: Trace,
+    enriched: list["EnrichedDetail"],
+    tools: "ResolvedTools | None" = None,
+) -> dict:
     """Tool mapping coverage stats for a single trace.
 
     Definitions (frozen, docs/COVERAGE_TRANSPARENCY_PREREG.md §1.1):
@@ -371,13 +395,25 @@ def coverage_stats(trace: Trace, enriched: list["EnrichedDetail"]) -> dict:
     unrecognized_tool_names (docs/COVERAGE_BANNER_AMEND_PREREG.md §3.1 / §4):
     full list of unrecognized names sorted by span-occurrence desc,
     alphabetic tie-break (deterministic). Empty list if none.
+
+    When `tools` is not None (clew.yaml loaded), the returned dict also carries
+    three provenance counts summing to `recognized_tools`:
+      built_in_count, user_count, user_overriding_built_in_count.
+    When `tools` is None, those keys are absent — §3 gate preserves parity.
     """
+    if tools is None:
+        idem = _IDEMPOTENT_TOOLS
+        bw_side = _BW_SIDE_EFFECT_TOOLS
+        bw_decl = _BW_DECLARATIVE_TOOLS
+    else:
+        idem = tools.idempotent
+        bw_side = tools.bw_side_effect
+        bw_decl = tools.bw_declarative
+
     tool_names = {s.agent_or_node_id for s in trace.spans if s.span_kind == "tool"}
     recognized = {
         t for t in tool_names
-        if t in _BW_SIDE_EFFECT_TOOLS
-        or t in _BW_DECLARATIVE_TOOLS
-        or t in _IDEMPOTENT_TOOLS
+        if t in bw_side or t in bw_decl or t in idem
     }
     unrecognized = tool_names - recognized
 
@@ -407,7 +443,7 @@ def coverage_stats(trace: Trace, enriched: list["EnrichedDetail"]) -> dict:
                 pairs_affected += 1
                 break
 
-    return {
+    stats: dict[str, Any] = {
         "unique_tools_in_trace": len(tool_names),
         "recognized_tools": len(recognized),
         "coverage_ratio": (len(recognized) / len(tool_names)) if tool_names else 1.0,
@@ -415,6 +451,24 @@ def coverage_stats(trace: Trace, enriched: list["EnrichedDetail"]) -> dict:
         "pairs_with_unrecognized_in_between": pairs_affected,
         "unrecognized_tool_names": unrecognized_tool_names,
     }
+
+    if tools is not None and tools.has_user_tools:
+        # §2.5 banner extension: 3-count provenance breakdown for recognized tools.
+        # user-overriding-built-in beats plain user (same name).
+        override = recognized & tools.override_names
+        user_only = (recognized & tools.user_names) - override
+        built_in = recognized - tools.user_names
+        stats["built_in_count"] = len(built_in)
+        stats["user_count"] = len(user_only)
+        stats["user_overriding_built_in_count"] = len(override)
+        assert (
+            stats["built_in_count"]
+            + stats["user_count"]
+            + stats["user_overriding_built_in_count"]
+            == stats["recognized_tools"]
+        ), "banner 3-count sum must equal recognized_tools"
+
+    return stats
 
 
 def _parse_input(text: str) -> Any:
@@ -616,13 +670,20 @@ def scan_id_bridge_candidates(trace: Trace) -> list[IdBridgeCandidate]:
     return out
 
 
-def enrich(trace: Trace, details: list[WasteDetail]) -> EnrichmentResult:
+def enrich(
+    trace: Trace,
+    details: list[WasteDetail],
+    tools: "ResolvedTools | None" = None,
+) -> EnrichmentResult:
     """Enrich WasteDetails; skip pairs whose origin or candidate is an error-response span.
 
     §29.2 tool-error gate: `trace.metadata["error_span_ids"]` (populated by the CC adapter
     from Anthropic `is_error: true` structural flag) marks tool_result spans that failed.
     Cosine similarity between two "File has not been read yet" outputs is not waste — it's
     tool infrastructure repeatedly emitting the same error. Skips are counted, not silent.
+
+    `tools` (optional): user-tool resolution from clew.yaml. When None, uses
+    built-in frozensets exactly — §3 gate preserves parity.
     """
     turn_index: dict[str, int] = trace.metadata.get("cc_turn_index") or {}
     total_turns: int | None = trace.metadata.get("cc_total_turns")
@@ -641,9 +702,11 @@ def enrich(trace: Trace, details: list[WasteDetail]) -> EnrichmentResult:
         modified = _has_intervening_edit(trace, o, c, fp) if fp else False
         uncertain = fp is None  # cannot verify state change without a file target
         summary = fp or cmd or (c.input_text[:60] + ("…" if len(c.input_text) > 60 else ""))
-        category = _classify_category(c)
+        category = _classify_category(c, tools)
         between_window = (
-            _classify_between_window(trace, o, c) if category == "idempotent" else None
+            _classify_between_window(trace, o, c, tools)
+            if category == "idempotent"
+            else None
         )
         out.append(EnrichedDetail(
             detail=wd,

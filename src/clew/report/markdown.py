@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from clew.cost.amplification import AmplificationEstimate, AmplificationEvent
 from clew.detect.cascade import CascadeResult
@@ -15,6 +16,9 @@ from clew.report._enrich import (
     scan_id_bridge_candidates,
 )
 from clew.report._model import WasteDetail
+
+if TYPE_CHECKING:
+    from clew.config import ResolvedTools
 
 _PHI = 0.514345
 _N = 2
@@ -130,6 +134,39 @@ def _format_coverage_line_c(unrecognized_tool_names: list[str]) -> str | None:
         names=", ".join(shown),
         more=more,
     )
+
+
+# Provenance line (rendered only when clew.yaml is loaded and has user tools).
+# Format: "built-in: 12, user: 16, user-overriding-built-in: 12"
+_COVERAGE_LINE_D = (
+    "**Mapping source**: built-in: {built_in}, user: {user}, "
+    "user-overriding-built-in: {override}."
+)
+# Q2 footnote (2026-07-31): rendered on the line right after Line D. One line,
+# no elaboration in the banner. Detail belongs in the README.
+_COVERAGE_PRECISION_FOOTNOTE = (
+    "_Precision bounds were measured on built-in mappings; "
+    "user-registered tools are unverified._"
+)
+
+
+def _format_coverage_provenance(cov: dict) -> list[str] | None:
+    """Render Line D + precision footnote when clew.yaml provenance is present.
+
+    Depends on coverage_stats emitting the 3-count keys (only when user tools
+    were loaded — otherwise this function returns None and the banner is
+    identical to before, preserving §3 gate parity.)
+    """
+    if "built_in_count" not in cov:
+        return None
+    return [
+        _COVERAGE_LINE_D.format(
+            built_in=cov["built_in_count"],
+            user=cov["user_count"],
+            override=cov["user_overriding_built_in_count"],
+        ),
+        _COVERAGE_PRECISION_FOOTNOTE,
+    ]
 
 # ─── PREREG docs/ID_BRIDGE_PRODUCTION_PREREG.md §1.4 (frozen) ───────────────
 # "Duplicate creation check" section. Renders alongside — not in place of —
@@ -288,11 +325,15 @@ def render_markdown(
     no_snippets: bool = False,
     snippet_len: int = _SNIPPET_LEN,
     amplification: AmplificationEstimate | None = None,
+    user_tools: "ResolvedTools | None" = None,
 ) -> str:
     """CascadeResult + WasteDetail list -> markdown string.
 
     Per-pair rendering enriches with file_path/command, turn numbers,
     intervening-edit check, and pattern label.
+
+    `user_tools` (optional): ResolvedTools from clew.yaml. When None,
+    behavior is bit-identical to pre-clew.yaml releases (§3 gate).
     """
     lines: list[str] = []
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -306,8 +347,8 @@ def render_markdown(
 
     # Enrich once. Used by (a) coverage banner in the waste-0 branch too,
     # (b) category breakdown / per-pair rendering below.
-    enrichment = enrich(trace, details)
-    cov = coverage_stats(trace, enrichment.enriched)
+    enrichment = enrich(trace, details, user_tools)
+    cov = coverage_stats(trace, enrichment.enriched, user_tools)
     id_bridge = scan_id_bridge_candidates(trace)
 
     if not cr.wasteful:
@@ -325,6 +366,10 @@ def render_markdown(
                 unique_in_trace=cov["unique_tools_in_trace"],
                 pct=cov["coverage_ratio"],
             ))
+            provenance = _format_coverage_provenance(cov)
+            if provenance is not None:
+                for line in provenance:
+                    lines.append("- " + line)
             line_c = _format_coverage_line_c(cov["unrecognized_tool_names"])
             if line_c is not None:
                 lines.append("- " + line_c)
@@ -362,6 +407,10 @@ def render_markdown(
                 unique_in_trace=cov["unique_tools_in_trace"],
                 pct=cov["coverage_ratio"],
             ))
+            provenance = _format_coverage_provenance(cov)
+            if provenance is not None:
+                for line in provenance:
+                    lines.append("- " + line)
         # Coverage line B — only when there is at least one idempotent pair.
         # Zero-context number is confusing without pairs to point at.
         idem_count = cat_counts.get("idempotent", 0)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from clew.cost.amplification import AmplificationEstimate
 from clew.detect.cascade import CascadeResult
@@ -11,11 +12,28 @@ from clew.model import Trace
 from clew.report._enrich import coverage_stats, enrich, scan_id_bridge_candidates
 from clew.report._model import WasteDetail
 
+if TYPE_CHECKING:
+    from clew.config import ResolvedTools
+
 _PHI = 0.514345
 _N = 2
 _MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 
 _SNIPPET_LEN = 80
+
+
+def _user_tools_block(tools: "ResolvedTools | None") -> dict | None:
+    """§2.5 audit block for JSON reports. None when clew.yaml not loaded."""
+    if tools is None or not tools.has_user_tools:
+        return None
+    return {
+        "user_names": sorted(tools.user_names),
+        "override_names": sorted(tools.override_names),
+        "overrides": [
+            {"tool": name, "built_in": built_in, "user": user_cat}
+            for name, built_in, user_cat in tools.override_details
+        ],
+    }
 
 
 def render_json(
@@ -26,16 +44,20 @@ def render_json(
     no_snippets: bool = False,
     snippet_len: int = _SNIPPET_LEN,
     amplification: AmplificationEstimate | None = None,
+    user_tools: "ResolvedTools | None" = None,
 ) -> str:
     """CascadeResult + WasteDetail list -> JSON string (indent=2).
 
     Snippet: output_text[:snippet_len] by default (excludes the key entirely if no_snippets=True).
     Includes frozen parameters (phi, N, model) at the report header.
+
+    `user_tools` (optional): ResolvedTools from clew.yaml. When None,
+    output is bit-identical to pre-clew.yaml releases (§3 gate).
     """
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    enrichment = enrich(trace, details)
-    cov = coverage_stats(trace, enrichment.enriched)
+    enrichment = enrich(trace, details, user_tools)
+    cov = coverage_stats(trace, enrichment.enriched, user_tools)
     id_bridge = scan_id_bridge_candidates(trace)
     ev_by_sid = {ev.span_id: ev for ev in amplification.events} if amplification else {}
 
@@ -144,6 +166,7 @@ def render_json(
             for c in id_bridge
         ],
         "waste_details": waste_details_list,
+        "user_tools_applied": _user_tools_block(user_tools),
         "note": (
             "Detection thresholds were calibrated on synthetic traces; "
             "real-trace calibration is in progress. Borderline matches "
