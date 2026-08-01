@@ -453,6 +453,56 @@ def test_builtin_tools_matches_module_frozensets():
     assert not bt.has_user_tools
 
 
+# ─────────────── §5.6 URL grep regression (openinference §2.4) ─────────────
+
+def test_no_local_docs_path_left_in_user_facing_messages():
+    """§5.6: no user-facing message in src/ still references docs/ID_BRIDGE_SCOPE_PRINCIPLE
+    as a local path. pip-install users have no docs/ tree. Comments in the
+    codebase (`# docs/…`) are allowed; the guard scans string literals only."""
+    import re
+    from pathlib import Path
+    src_root = Path(__file__).resolve().parents[1] / "src"
+    string_literal = re.compile(r'"docs/ID_BRIDGE_SCOPE_PRINCIPLE|\'docs/ID_BRIDGE_SCOPE_PRINCIPLE|`docs/ID_BRIDGE_SCOPE_PRINCIPLE')
+    offenders = []
+    for py in src_root.rglob("*.py"):
+        text = py.read_text(encoding="utf-8")
+        for lineno, line in enumerate(text.splitlines(), 1):
+            stripped = line.lstrip()
+            if stripped.startswith("#"):
+                continue
+            if string_literal.search(line):
+                offenders.append(f"{py.relative_to(src_root)}:{lineno}: {line.strip()}")
+    assert not offenders, (
+        "docs/ID_BRIDGE_SCOPE_PRINCIPLE.md must not appear in user-facing strings — "
+        "use the GitHub URL constant instead. Offenders:\n" + "\n".join(offenders)
+    )
+
+
+def test_entity_id_messages_use_github_url_and_one_line_summary():
+    """§5.6 companion: the three affected messages carry the GitHub URL and
+    surface a one-line 요지 before the URL. Failing this test signals someone
+    stripped the summary back to a bare URL (which was the anti-pattern
+    called out in the design doc)."""
+    from clew.config.user_tools import _ID_BRIDGE_URL, _suspicious_warn_for
+    assert _ID_BRIDGE_URL.startswith("https://github.com/JEONSEWON/Clew-by-Custos")
+    # CREATE-only error uses the same URL and carries "NEWLY CREATES" summary.
+    p = Path("clew.yaml.dummy")
+    from clew.config.user_tools import _validate_entity_id
+    try:
+        _validate_entity_id(p, "get_x", "read_only", "id")
+        raise AssertionError("expected raise")
+    except UserToolConfigError as exc:
+        msg = str(exc)
+        assert "NEWLY CREATES" in msg
+        assert _ID_BRIDGE_URL in msg
+    # Suspicious tail warn (generic) carries the one-line "identify calls" summary.
+    warn = _suspicious_warn_for("log_x", "response.request_id")
+    assert warn is not None and "identify calls" in warn and _ID_BRIDGE_URL in warn
+    # Transaction tail carries the payment nuance + URL.
+    tx = _suspicious_warn_for("pay_x", "response.transaction_id")
+    assert tx is not None and "payment_id or ticket_id" in tx and _ID_BRIDGE_URL in tx
+
+
 def test_enrich_with_none_tools_matches_baseline():
     """Explicit assertion that tools=None reproduces default behavior."""
     from clew.report._model import WasteDetail

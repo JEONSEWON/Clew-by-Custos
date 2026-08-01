@@ -22,6 +22,13 @@ _ALLOWED_CATEGORIES = ("read_only", "side_effect", "payload_dependent", "declara
 _SUPPORTED_VERSIONS = frozenset({1})
 _WALK_UP_LIMIT = 5
 
+# User-facing messages reference the ID bridge scope doc via URL rather than
+# a local docs/ path — `pip install clew-custos` users have no docs/ tree.
+# The message body still carries the one-line summary so the URL is only for
+# extra context, not required reading.
+_GITHUB_BASE = "https://github.com/JEONSEWON/Clew-by-Custos/blob/main"
+_ID_BRIDGE_URL = f"{_GITHUB_BASE}/docs/ID_BRIDGE_SCOPE_PRINCIPLE.md"
+
 # Phase 2 entity_id validation
 # Suspicious tail segments — Q3 confirmed frozen list. Message_id/event_id
 # excluded because they are legitimate entity IDs for email `send` and
@@ -259,10 +266,9 @@ def _validate_entity_id(path: Path, name: str, category: str, value: Any) -> Non
     if category != "side_effect":
         raise UserToolConfigError(
             f"{path}: tool {name!r} has entity_id but category={category!r}. "
-            f"entity_id is only valid on category='side_effect' — it must point "
-            f"to the ID of an entity your tool NEWLY CREATES, not to an ID of "
-            f"an existing entity that was queried, opened, or listed. See "
-            f"docs/ID_BRIDGE_SCOPE_PRINCIPLE.md §1."
+            f"entity_id is for tools whose call NEWLY CREATES an entity, not "
+            f"for tools that returned an entity that was queried, opened, or "
+            f"listed. Full context: {_ID_BRIDGE_URL}"
         )
     if not isinstance(value, str):
         raise UserToolConfigError(
@@ -314,14 +320,18 @@ def _suspicious_warn_for(name: str, path_str: str) -> str | None:
         return None
     if normalized in _AMBIGUOUS_TAIL_PATTERNS:
         return (
-            f"clew: entity_id path for {name!r} ends in {tail!r} — this is often "
-            f"a request identifier, but in payment/financial domains a transaction "
-            f"can be a first-class entity. Verify against your response schema."
+            f"clew: entity_id path for {name!r} ends in {tail!r} — transaction "
+            f"identifiers are ambiguous: in payment/financial domains a "
+            f"transaction can be a first-class entity, but elsewhere it names "
+            f"the call, not what was created. Prefer payment_id or ticket_id "
+            f"when the entity is what you want to dedupe. "
+            f"Full context: {_ID_BRIDGE_URL}"
         )
     return (
-        f"clew: entity_id path for {name!r} ends in {tail!r} — this often names "
-        f"a request/transaction/session identifier rather than a created entity. "
-        f"Verify against docs/ID_BRIDGE_SCOPE_PRINCIPLE.md §1 before relying on it."
+        f"clew: entity_id path for {name!r} ends in {tail!r} — correlation IDs "
+        f"identify calls, not entities, so pinning entity_id to them will not "
+        f"detect duplicate creation. "
+        f"Full context: {_ID_BRIDGE_URL}"
     )
 
 

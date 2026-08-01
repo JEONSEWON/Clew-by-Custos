@@ -202,6 +202,62 @@ def test_ingest_openinference_crewai_fixture_tool_output_starts_with_result():
         )
 
 
+# ── §5.4 raw_output_text regression: dict-return TOOL fixture (ux_agent.py실측) ────
+
+FIXT_DICT_RAW = Path(__file__).parent / "fixtures" / "openinference_dict_tool_raw.json"
+
+
+def _create_ticket_spans(trace):
+    return [s for s in trace.spans if s.span_kind == "tool" and s.agent_or_node_id == "create_ticket"]
+
+
+def test_dict_tool_raw_fixture_ingests():
+    """Fixture parses cleanly and contains the expected create_ticket pair."""
+    trace = ingest_from_otel_json(FIXT_DICT_RAW)
+    tickets = _create_ticket_spans(trace)
+    assert len(tickets) == 2, f"expected 2 create_ticket spans, got {len(tickets)}"
+
+
+def test_dict_tool_raw_preserves_original_payload_in_raw_output_text():
+    """T-1: preprocess extracts 'Login broken' into output_text but keeps the
+    original dict-return JSON in raw_output_text. AGENT/CHAIN spans stay None
+    on raw_output_text because the tool-branch is what populates it."""
+    trace = ingest_from_otel_json(FIXT_DICT_RAW)
+    tickets = _create_ticket_spans(trace)
+
+    for span in tickets:
+        assert span.output_text == "Login broken", (
+            f"processed leaf should be the title, got {span.output_text!r}"
+        )
+        assert span.raw_output_text is not None, (
+            f"raw_output_text should preserve original JSON for tool spans, got None"
+        )
+        assert '"ticket"' in span.raw_output_text and '"id"' in span.raw_output_text
+    ids = sorted(json.loads(s.raw_output_text)["ticket"]["id"] for s in tickets)
+    assert ids == ["T-1041", "T-1042"], ids
+
+    # Non-tool spans (chain) do not populate raw_output_text.
+    non_tool = [s for s in trace.spans if s.span_kind != "tool"]
+    assert non_tool, "fixture should include chain spans"
+    for s in non_tool:
+        assert s.raw_output_text is None, (
+            f"non-tool span {s.agent_or_node_id!r} unexpectedly has raw_output_text set"
+        )
+
+
+def test_dict_tool_raw_cascade_sha256_still_matches_across_pair():
+    """T-2: cascade continues to hash the processed output_text — both
+    create_ticket spans hash to the same value ("Login broken"), so the
+    waste flag stays. raw_output_text is not on cascade's read path."""
+    trace = ingest_from_otel_json(FIXT_DICT_RAW)
+    tickets = _create_ticket_spans(trace)
+    hashes = {hashlib.sha256(s.output_text.encode("utf-8")).hexdigest() for s in tickets}
+    assert len(hashes) == 1, (
+        f"cascade sha256 (on output_text, processed) should collapse the pair, "
+        f"got {len(hashes)} distinct hashes"
+    )
+
+
 # ── shim symbol imports (guard against accidental deletion) ─────────────────
 
 def test_agent_or_node_id_helper_symbol_exists():

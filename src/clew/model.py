@@ -34,6 +34,12 @@ class Span(BaseModel):
     token_count: int | None = None
     model: str | None = None
     cost_rate: float | None = None
+    # Original tool response before extract_output_text mutation.
+    # Populated only when preprocess_trace's (1) stage rewrote output_text
+    # on a tool span. Consumers that need the untouched payload
+    # (e.g. id_bridge entity_id extraction) read `raw_output_text or output_text`.
+    # See openinference_output_text_fix_PREREG.md §2.1.
+    raw_output_text: str | None = None
 
     @field_validator("output_text")
     @classmethod
