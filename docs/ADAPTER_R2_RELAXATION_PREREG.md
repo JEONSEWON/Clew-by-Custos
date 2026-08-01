@@ -377,8 +377,79 @@ if candidate.span_kind != "tool":
 
 ---
 
-## §11 — Verdict (재판정 후 채움, 이번 draft 에는 비어 있음)
+## §11 — Verdict (2026-08-01 실행 후 기록)
 
-이 섹션은 완화 · 재판정 후 결과를 기록한다. 형태 참조: `docs/REREAD_DETECTOR_PREREG.md` §11.
+**실행 커밋**: `feat/r2-relaxation` 브랜치, commit `421bfbf` (feat(model+cascade): scope R2 to tool spans).
 
-**Draft 상태에서는 비어 있음. 승인 후 완화 실행 · 재판정 후 채운다.**
+### §11.1 §3 예측 대조 (전부 일치)
+
+| 축 | 예측 | 실제 |
+|---|---|---|
+| §3.a cascade sha256 (tool) | 무변 (`5c0c94d6…` / `742b51a7…`) | ✓ 일치 (`test_waste_span_ids_bit_identical_post_id_bridge` PASS) |
+| §3.b cascade φ (non-tool) | 무변 (skip 삽입으로 empty pair 판정 대상 제외) | ✓ 일치 (dev-7 FPR 0.0 유지 · 신규 cascade skip 3 test PASS) |
+| §3.c 리포트 스니펫 | 렌더 실패 없음 | ✓ 일치 (report render test PASS) |
+| §3.d amplification | 값 무변 | ✓ 일치 |
+| §3.e between_window | 무변 (1226/888/405/248/1024) | ✓ 일치 |
+| §3.f id_bridge | 무변 (159/76/3197) | ✓ 일치 |
+
+### §11.2 §4 KILL 6 축 (전부 통과)
+
+1. `waste_span_ids sha256` cand=5c0c94d6… / pair=742b51a7… — 무변.
+2. `between_window_counts` 1226/888/405/248/1024 — 무변.
+3. `id_bridge_candidates` 159/76/3197 — 무변.
+4. `eval/set_manifest.json` sha `a205a3d6…` — 무변.
+5. dev-7 trace-level FPR — **0.0 유지**.
+6. 전체 pytest — 455 passed (451 baseline + 4 신규), 실패 0.
+
+### §11.3 ★ §5 재판정 목표 — 미달 (adapter 층 gate 발견)
+
+**T1.2 · T1.4 재판정 결과**: R2 완화 후에도 **FAIL 유지**.
+
+원인: `src/clew/ingest/langgraph.py:169-173` 에 **세 번째 empty-check** 이 존재. Non-tool span 이 ingest 단계에서 이 check 로 거부되어 cascade layer 에 도달하지 못한다.
+
+```python
+# langgraph.py:169-173 — 사전등록 §2.5 목록에 없던 지점
+if not output_text.strip():
+    raise ValueError(
+        f"span {s.name!r} ... has empty output.value — adapter refuses to construct invalid Span"
+    )
+```
+
+**T1.2 재-ingest 시도** (기존 dump 재사용 · §5.2):
+- OA-primitive: `probe_workflow has empty output.value` → FAIL at adapter layer.
+- OA-Runner: `turn has empty output.value` → FAIL at adapter layer.
+
+**T1.4 재-ingest 시도**:
+- AutoGen: `TicketAgent.on_messages_stream has empty output.value` → FAIL at adapter layer.
+
+**T1.1 · T1.3**:
+- T1.1 LlamaIndex: OK (5 spans) — 이미 PASS 였으므로 변화 없음.
+- T1.3 Anthropic: FAIL — R5 (multi trace_id) 원인, R2 무관. 예상대로.
+
+### §11.4 ★ 완화가 실제로 발동했는가 — 확인 결과
+
+사용자 지적: `§3.b~§3.g` 의 "무변" 확증이 "skip 이 작동해서" 인지 "빈 non-tool span 이 애초에 파이프라인에 없어서" 인지 구분 필요.
+
+**실측 카운트** (3 코퍼스, R2 완화 후 · adapter 통과 이후):
+
+| 코퍼스 | 총 spans | 빈 output_text (non-tool) | 빈 output_text (tool) |
+|---|---|---|---|
+| dev-7 (checked-in Trace JSON) | 480 | **0** | 0 |
+| Toolathlon (66 files) | 183,050 | **0** | 0 |
+| CC (3 files) | 356 | **0** | 0 |
+
+★ **결론**: **완화는 발동한 적 없다.** §11.1 의 §3.b-g "무변" 확증은 skip 로직이 안전함을 증명하지 않는다. **skip 로직 자체의 유효성은 3 개 신규 cascade test 만이 보장** (`test_non_tool_empty_pair_skipped_before_cosine`, `test_non_tool_empty_vs_value_pair_skipped`, `test_non_tool_non_empty_pair_still_evaluated` — 합성 데이터로 skip 경로 직접 exercise).
+
+이 사실은 §5 재판정 미달 (§11.3) 과 인과 관계가 있다: **어댑터 층 gate 가 빈 non-tool span 을 이전부터 이미 막고 있었다**. 우리가 완화한 두 layer (Span validator · cascade skip) 는 실 데이터로는 한 번도 발동 안 함.
+
+### §11.5 후속
+
+- **별건 사전등록 필요**: `docs/ADAPTER_R2_RELAXATION_PART2_PREREG.md` (or similar).
+  - 스코프: `langgraph.py:169-173` adapter-layer empty check 를 tool-only 로 scope.
+  - 그 사전등록에서 §3 다시 짜라 — 어댑터 층 gate 를 열면 실제로 빈 non-tool span 이 cascade 까지 도달하게 되므로, dev-7 FPR 실측이 skip 유효성 실증이 될 수 있다.
+  - 이번 사전등록에서 이 지점을 놓친 것은 실측 확증 부재 때문. Part 2 는 어댑터 코드 실측 후 작성.
+- **이번 커밋 revert 하지 않음**: §4 KILL 6축 전부 통과, §3 예측 전부 일치. 완화가 발동 안 했다 = 완화가 실패했다는 뜻이 아님. Part 2 에서 어댑터 layer 를 열면 이 layer 의 skip 이 정확히 필요해진다.
+
+### §11.6 요약 한 줄
+
+**Prereg 자체는 성공: §4 6축 통과, §3 예측 일치. 재판정 목표는 미달 — 사전등록이 어댑터 층 gate 존재를 놓쳤다. 완화가 실 데이터로는 발동 안 함 (skip 유효성은 합성 test 만 보장). 별건 Part 2 로 진행.**
