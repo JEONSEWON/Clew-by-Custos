@@ -735,8 +735,23 @@ def compute_user_extraction_ratios(
     return {tool: (f, t) for tool, (f, t) in stats.items()}
 
 
+_ENVELOPE_PREFIX_HINT = (
+    "  hint: if your OpenInference instrumentor wraps the return in an "
+    "envelope, the path needs the envelope prefix — e.g. LlamaIndex serializes "
+    "returns as `{\"blocks\":[...], \"raw_output\":<orig>, ...}`, so a "
+    "`ticket.id` path needs to be written as `raw_output.ticket.id`. See "
+    "docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md §5.2 for the measured "
+    "framework table."
+)
+
+
 def format_extraction_ratios(ratios: dict[str, tuple[int, int]]) -> str | None:
-    """Q5 confirmed format. Returns a multi-line string or None (all-success)."""
+    """Q5 confirmed format. Returns a multi-line string or None (all-success).
+
+    When any tool reports failures, an envelope-prefix hint line is appended
+    after the per-tool lines (Tier 1 finding: entity_id path varies by
+    OpenInference instrumentor).
+    """
     lines: list[str] = []
     for tool, (failed, total) in sorted(ratios.items()):
         if failed == 0:
@@ -748,6 +763,7 @@ def format_extraction_ratios(ratios: dict[str, tuple[int, int]]) -> str | None:
         lines.append(f"  {tool}: {failed}/{total} extractions failed  ({label})")
     if not lines:
         return None
+    lines.append(_ENVELOPE_PREFIX_HINT)
     return "clew: entity_id extraction ratios\n" + "\n".join(lines)
 
 

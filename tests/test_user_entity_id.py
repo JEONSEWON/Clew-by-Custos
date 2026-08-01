@@ -458,6 +458,37 @@ def test_format_ratios_omits_zero_failure_line():
     assert out is None
 
 
+def test_format_ratios_includes_envelope_prefix_hint_on_failure():
+    """Tier 1 §5.2 hint: any failure line triggers an envelope-prefix hint
+    that names LlamaIndex explicitly (measured envelope) and points to the
+    Tier 1 results doc. See docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md §5.2."""
+    out = format_extraction_ratios({"create_x": (4, 4)})
+    assert out is not None
+    # Existing lines must still be present (unchanged).
+    assert "4/4" in out
+    assert "path likely misconfigured" in out
+    # New hint line.
+    assert "hint:" in out
+    assert "LlamaIndex" in out
+    assert "raw_output" in out
+    assert "OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md" in out
+
+
+def test_format_ratios_hint_absent_when_no_failures():
+    """The hint is meaningful only alongside a failure line. When all-success
+    the output stays None (no line at all), so the hint doesn't leak into an
+    unrelated context."""
+    out = format_extraction_ratios({"clean_x": (0, 6)})
+    assert out is None
+
+
+def test_format_ratios_hint_appears_once_regardless_of_tool_count():
+    """Multiple failing tools still emit a single hint line at the end."""
+    out = format_extraction_ratios({"a_tool": (3, 3), "b_tool": (2, 4)})
+    assert out is not None
+    assert out.count("hint:") == 1
+
+
 def test_format_ratios_multi_tool_sorted():
     out = format_extraction_ratios({
         "zebra": (2, 2),
