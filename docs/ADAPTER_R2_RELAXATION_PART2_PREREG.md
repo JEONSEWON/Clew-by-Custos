@@ -421,6 +421,14 @@ Part 1 근거 4 축 그대로:
 | §3.e Format A fixture 회귀 | 무변 | ✓ (LangChain / CrewAI fixture regression PASS) |
 | §3.f span 수 증가 | 재판정 대상 dump 에서 증가 | ✓ T1.2 OA-primitive: FAIL → 5 spans / OA-Runner: FAIL → 7 spans / T1.4 AutoGen: FAIL → 9 spans |
 
+**★ 예측 못 한 항목**:
+
+`test_missing_output_value_raises_clear_error` 가 Part 2 완화로 실패했다. 이 테스트는 어댑터가 빈 `output.value` 에 raise 하는 계약을 검증하던 것으로, Part 2 가 그 계약을 의도적으로 제거했다. 따라서 §4.1 6번 (pytest 회귀 = KILL) 의 '회귀' 가 아니라 **'의도한 계약 변경에 따른 테스트 갱신'** 이다.
+
+★ 다만 사전등록 §3 이 이 항목을 예측하지 않았다. 계약을 바꾸면 그 계약을 검증하던 테스트가 깨진다는 것은 예측 가능했다. 다음 사전등록에서는 **"변경으로 깨질 기존 테스트"** 를 §3 예측에 포함한다.
+
+★ §4.1 6번 문면과의 관계도 사전등록에 조항 없이 어긋난 상태다: 문면 그대로 읽으면 이번 실패는 KILL 이어야 했다. "의도한 계약 변경" 을 예외로 두는 조항이 §4.1 에 명시돼 있지 않다. Part 3 사전등록에서는 §4 에 이 예외를 명시하고, 어느 기존 테스트가 계약 변경으로 갱신될지 §3 에 미리 열거한다.
+
 ### §11.2 §4 KILL 8 축 (전부 통과)
 
 1. `waste_span_ids sha256` cand=`5c0c94d6…` / pair=`742b51a7…` — 무변.
