@@ -144,11 +144,11 @@ def otel_spans_to_trace(
     """OTel ReadableSpan list -> canonical `Trace`.
 
     Empty ``output.value`` on non-tool spans is now allowed through — the
-    adapter no longer refuses such spans (Part 2 relaxation, see
-    ``docs/ADAPTER_R2_RELAXATION_PART2_PREREG.md`` §2.2). Tool spans with
-    empty output are still rejected downstream by ``Span``'s validator
-    (Part 1: cascade sha256 gate constraint). The cascade layer handles
-    empty non-tool output by skipping the pair before cosine (Part 1).
+    adapter no longer refuses such spans (R2 relaxation Part 2 prereg in
+    this repo). Tool spans with empty output are still rejected downstream
+    by ``Span``'s validator (Part 1: cascade sha256 gate constraint). The
+    cascade layer handles empty non-tool output by skipping the pair
+    before cosine (Part 1).
 
     Raises:
         ValueError: spans empty / multiple trace_ids / multiple roots.
