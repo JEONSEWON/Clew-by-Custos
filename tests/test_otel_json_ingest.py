@@ -235,20 +235,45 @@ def test_g4_equivalence(tmp_path):
 
 # ── 6. Error cases ──────────────────────────────────────────────────────────
 
-def test_missing_output_value_raises_clear_error(tmp_path):
-    """Span missing output.value → ValueError, message contains the span name."""
-    bad_span = _sdk_span("bad_node", _TID, _S1, None, "CHAIN",
-                         {"input.value": "x"})  # output.value missing
-    good_span = _sdk_span("good_node", _TID, _S2, _S1, "CHAIN",
-                          {"input.value": "x", "output.value": "ok"})
+def test_missing_output_value_on_non_tool_is_now_allowed(tmp_path):
+    """R2 relaxation Part 2: the adapter used to raise when any span had
+    an empty output.value; it no longer does. Non-tool spans (CHAIN,
+    AGENT, LLM) may be empty — the cascade layer skips empty output in
+    its non-tool branch. Empty tool spans are still rejected, but at the
+    Span field validator (see test_missing_output_value_on_tool_still_raises).
+    """
+    root_empty = _sdk_span("bad_node", _TID, _S1, None, "CHAIN",
+                           {"input.value": "x"})  # output.value missing
+    tool_span = _sdk_span("worker_tool", _TID, _S2, _S1, "TOOL",
+                          {"input.value": "x",
+                           "output.value": "tool ran",
+                           "output.mime_type": "text/plain",
+                           "tool.name": "worker_tool"})
 
     p = tmp_path / "trace.json"
-    p.write_text(json.dumps([bad_span, good_span]), encoding="utf-8")
+    p.write_text(json.dumps([root_empty, tool_span]), encoding="utf-8")
 
-    with pytest.raises(ValueError) as exc_info:
+    trace = ingest_from_otel_json(p)
+    # Root CHAIN with empty output_text is preserved (Part 2 relaxation).
+    root_spans = [s for s in trace.spans
+                  if s.parent_span_id is None and s.span_kind == "chain"]
+    assert len(root_spans) == 1
+    assert root_spans[0].agent_or_node_id == "bad_node"
+    assert root_spans[0].output_text == ""
+
+
+def test_missing_output_value_on_tool_still_raises(tmp_path):
+    """R2 relaxation kept tool spans non-empty: cascade sha256 would
+    match empty-vs-empty. The Span field validator raises with a message
+    identifying the offending span."""
+    bad_tool = _sdk_span("bad_tool", _TID, _S1, None, "TOOL",
+                         {"input.value": "x", "output.mime_type": "text/plain",
+                          "tool.name": "bad_tool"})  # output.value missing
+    p = tmp_path / "trace.json"
+    p.write_text(json.dumps([bad_tool]), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="tool span output_text must be non-empty"):
         ingest_from_otel_json(p)
-
-    assert "bad_node" in str(exc_info.value)
 
 
 def test_format_b_resource_spans_error(tmp_path):

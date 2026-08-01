@@ -32,16 +32,29 @@
 
 ### §1.1 사전등록 §3 기준 그대로
 
-| # | 프레임워크 | 판정 | 핵심 사유 |
-|---|---|---|---|
-| 기존 (fixture) | LangChain | PASS | 봉투 `{"type":"tool","data":{"content":…}}` — `_extract_tool_output` 인식. `raw_output_text` 안전망 무관 (기존 fixture 는 이 결함 미노출). |
-| 기존 (fixture) | CrewAI | PASS | 봉투 없음, text/plain raw. |
-| T1.1 | LlamaIndex | **PASS** | R1-R5 일치. `raw_output_text` 안전망 실전 작동 확인 (신규 봉투 `{"blocks":[…],"raw_output":<orig>,…}`). O1 부재이나 저하 아님 (§3.2 예시). |
-| T1.2 | OpenAI Agents SDK | **FAIL** | R2 위반 — non-TOOL span (CHAIN 3 · AGENT 2 · root 1) `output.value` 부재. Runner-based 재-dump 로 probe 아티팩트 아님 확증. |
-| T1.3 | Anthropic (direct SDK) | **FAIL** | R5 위반 — 3 개 별도 trace_id. instrumentor 가 TOOL span 자체 미emit. |
-| T1.4 | AutoGen | **FAIL** | R2 위반 — AGENT 5 개 (`on_messages_stream`) `output.value` 부재. T1.2 와 원인 코드 경로 다름, 증상 동일. |
+| # | 프레임워크 | 판정 (사전등록 시점) | Part 1 재판정 (2026-08-01) | Part 2 재판정 (2026-08-01) | 핵심 사유 |
+|---|---|---|---|---|---|
+| 기존 (fixture) | LangChain | PASS | PASS 유지 | PASS 유지 | 봉투 `{"type":"tool","data":{"content":…}}` — `_extract_tool_output` 인식. |
+| 기존 (fixture) | CrewAI | PASS | PASS 유지 | PASS 유지 | 봉투 없음, text/plain raw. |
+| T1.1 | LlamaIndex | **PASS** | PASS 유지 | PASS 유지 | R1-R5 일치. `raw_output_text` 안전망 실전 작동. O1 부재이나 저하 아님. |
+| T1.2 | OpenAI Agents SDK | **FAIL** | FAIL 유지 (어댑터 층 gate) | **★ PASS** | Part 2 로 `langgraph.py:169` empty-check 제거 → non-TOOL AGENT/CHAIN 통과. R1-R5 재판정 모두 일치 (OA-primitive 5 spans · OA-Runner 7 spans, single trace_id, 1 root). |
+| T1.3 | Anthropic (direct SDK) | **FAIL** | FAIL 유지 (R2 무관) | **FAIL 유지** | R5 위반 — 3 개 별도 trace_id. instrumentor 가 TOOL span 자체 미emit. R2 완화 무관 지점 (예상대로). |
+| T1.4 | AutoGen | **FAIL** | FAIL 유지 (어댑터 층 gate) | **★ PASS** | Part 2 로 non-TOOL AGENT 5 개 통과. R1-R5 재판정 모두 일치 (9 spans, single trace_id, 1 root). ★ **cascade non-tool skip 이 실 데이터에서 처음 발동** (Part 1 §11.4 확증 축 해소, 2 개 candidate pair 가 empty side 로 skip). |
 
-**최종**: **PASS 3 / FAIL 3.**
+**Part 2 완화 후 최종**: **PASS 5 / FAIL 1.** (T1.3 만 FAIL 유지 · R5 원인, R2 무관.)
+
+**★ 원 판정 (사전등록 시점) 은 덮어쓰지 않았다.** 컬럼 병기.
+**★ Part 1 재판정 유지**. Part 2 재판정 결과만 새 컬럼 추가.
+**★ 사전등록 §3 판정 기준 그대로 · 완화·강화 없음** (`ADAPTER_R2_RELAXATION_PART2_PREREG.md` §5, §11).
+
+### §1.2 Part 1 §11.4 미확증 축 — 이번에 해소
+
+Part 1 §11.4 는 실측으로 dev-7 / Toolathlon / CC 세 코퍼스에서 빈 non-tool span 카운트 0 임을 확증했으나, **"skip 로직이 실 데이터로 발동했다" 는 확증이 없었다** (합성 test 3 개만이 유효성 보장).
+
+Part 2 재판정 실행 시:
+- T1.2 OA-Runner: **1 개 non-tool candidate pair 가 empty side** → cascade non-tool skip 발동.
+- T1.4 AutoGen: **2 개 non-tool candidate pair 가 empty side** → skip 발동.
+- 즉 Part 2 재판정이 Part 1 skip 유효성의 **첫 실 데이터 실증**.
 
 ### §1.2 판정 규칙 자기 검증 (§3.2 재적용)
 

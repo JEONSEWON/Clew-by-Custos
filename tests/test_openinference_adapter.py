@@ -97,6 +97,52 @@ def test_extract_tool_output_none_returns_empty():
     assert _extract_tool_output({}) == ""
 
 
+# ── Part 2 R2 relaxation: adapter-layer empty-check removed ─────────────────
+# See docs/ADAPTER_R2_RELAXATION_PART2_PREREG.md §2.2 (3-a): the langgraph
+# adapter used to raise on any span with empty output.value; that check is
+# now gone. Empty non-tool spans (chain/agent/llm) pass through; the cascade
+# layer skips them before cosine. Empty tool spans still fail at Span
+# validation (Part 1 tool-only invariant), so the adapter itself doesn't
+# need a duplicate gate.
+
+def test_adapter_allows_empty_non_tool_output_value(tmp_path):
+    from tests.test_otel_json_ingest import _sdk_span, _TID, _S1  # noqa: PLC0415
+
+    # Single CHAIN root span with an EMPTY output.value.
+    root_empty = _sdk_span(
+        "pipeline", _TID, _S1, None, "CHAIN",
+        {"input.value": "q", "output.value": ""},
+    )
+    p = tmp_path / "trace.json"
+    p.write_text(json.dumps([root_empty]), encoding="utf-8")
+
+    trace = ingest_from_otel_json(p)
+    assert len(trace.spans) == 1
+    assert trace.spans[0].span_kind == "chain"
+    assert trace.spans[0].output_text == ""
+
+
+def test_adapter_still_rejects_empty_tool_output_value(tmp_path):
+    """Tool spans keep the Part 1 structural constraint: the Span field
+    validator raises so the adapter doesn't need to double-check."""
+    from tests.test_otel_json_ingest import _sdk_span, _TID, _S1  # noqa: PLC0415
+
+    tool_empty = _sdk_span(
+        "search_web", _TID, _S1, None, "TOOL",
+        {
+            "input.value": "q",
+            "output.value": "",
+            "output.mime_type": "text/plain",
+            "tool.name": "search_web",
+        },
+    )
+    p = tmp_path / "trace.json"
+    p.write_text(json.dumps([tool_empty]), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="tool span output_text must be non-empty"):
+        ingest_from_otel_json(p)
+
+
 # ── §5.1 gate: MINIMAL_SDK_JSON stable under new mapping ─────────────────────
 # The prereg calls out tests/test_otel_json_ingest.py::MINIMAL_SDK_JSON, which
 # has no TOOL / AGENT spans — so the new mapping is a trivial no-op on it.
