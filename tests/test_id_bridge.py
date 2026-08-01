@@ -591,3 +591,40 @@ def test_readme_has_duplicate_creation_check_subsection():
     )
     # sanity: no 'provable' in the README section
     assert "provable" not in readme.lower()
+
+
+def test_readme_has_entity_id_path_per_framework_table():
+    """Tier 1 Results §5.2 → README: users need to know entity_id path
+    depends on the OpenInference instrumentor. Only measured framework
+    paths are locked here; unmeasured frameworks must not be added
+    without a probe."""
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    # Section header presence
+    assert "Path depends on the OpenInference instrumentor you use" in readme, (
+        "README must document that entity_id path varies by instrumentor "
+        "(per docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md §5.2)."
+    )
+    # Measured instrumentors — must be listed
+    for name in (
+        "openinference-instrumentation-langchain",
+        "openinference-instrumentation-crewai",
+        "openinference-instrumentation-openai-agents",
+        "openinference-instrumentation-llama-index",
+    ):
+        assert name in readme, f"README missing measured instrumentor {name!r}"
+    # LlamaIndex envelope prefix must be shown explicitly
+    assert "raw_output.ticket.id" in readme, (
+        "README must show LlamaIndex envelope prefix explicitly."
+    )
+    # Guardrail: unmeasured framework paths must not be advertised.
+    assert "Anthropic" not in readme.split("Path depends on the OpenInference")[1].split("Runtime signals")[0], (
+        "README table must not list Anthropic (FAIL — no tool span emitted)."
+    )
+    assert "AutoGen" not in readme.split("Path depends on the OpenInference")[1].split("Runtime signals")[0], (
+        "README table must not list AutoGen (FAIL — Python str(dict) is invalid JSON)."
+    )
+    # Fallback guidance must point users at the trace JSON when their
+    # instrumentor isn't in the table.
+    assert "output.value" in readme.split("Path depends on the OpenInference")[1].split("Runtime signals")[0]
