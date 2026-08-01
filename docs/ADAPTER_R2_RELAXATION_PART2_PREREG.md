@@ -404,13 +404,62 @@ Part 1 근거 4 축 그대로:
 
 ---
 
-## §11 — Verdict (완화 · 재판정 후 채움, draft 상태 비어 있음)
+## §11 — Verdict (2026-08-01 실행 후 기록)
 
-이 섹션은 완화 · 재판정 후 결과를 기록한다. 형태 참조: Part 1 §11 · `docs/REREAD_DETECTOR_PREREG.md` §11.
+**실행 커밋**: `feat/r2-relaxation-part2` 브랜치, commits `74157b9` (langgraph drop) + `22b261d` (test 회귀).
 
-**Draft 상태에서는 비어 있음. 승인 후 완화 실행 · 재판정 후 채운다.**
+### §11.1 §3 예측 대조 (전부 일치)
 
-★ Part 1 §11.4 에서 미확증이었던 축 (실 데이터로 완화가 발동하는가) 이 이번에 확증 대상이다. **재판정 시 cascade skip 발동 여부 · 이전 대비 span 수 증가 여부 · 재판정 결과** 셋을 모두 §11 에 기록한다.
+| 축 | 예측 | 실제 |
+|---|---|---|
+| §3.a Part 1 skip 발동 확증 | Tier 1 재판정 시 발동 예상 | ✓ 실증 — T1.2 OA-Runner 1 pair, T1.4 AutoGen 2 pair 가 empty side → cascade skip 발동 (embedder 호출 없이 pass) |
+| §3.b dev-7 FPR | 0.0 유지 (Format A 어댑터만 · dev-7 무관) | ✓ 0.0 유지 (`test_per_pattern_dev_direct` PASS) |
+| §3.c 리포트 렌더 | 빈 span 은 waste/id_bridge/between_window 모두 등장 안 함 | ✓ 확인 (Format A fixture 회귀 통과) |
+| §3.d.1 between_window | 무변 (1226/888/405/248/1024) | ✓ 유지 |
+| §3.d.2 id_bridge | 무변 (159/76/3197) | ✓ 유지 |
+| §3.d.3 amplification | 값 무변 | ✓ 유지 |
+| §3.e Format A fixture 회귀 | 무변 | ✓ (LangChain / CrewAI fixture regression PASS) |
+| §3.f span 수 증가 | 재판정 대상 dump 에서 증가 | ✓ T1.2 OA-primitive: FAIL → 5 spans / OA-Runner: FAIL → 7 spans / T1.4 AutoGen: FAIL → 9 spans |
+
+### §11.2 §4 KILL 8 축 (전부 통과)
+
+1. `waste_span_ids sha256` cand=`5c0c94d6…` / pair=`742b51a7…` — 무변.
+2. `between_window_counts` `1226/888/405/248/1024` — 무변.
+3. `id_bridge_candidates` `differ/same/no_id = 159/76/3197` — 무변.
+4. `eval/set_manifest.json` sha `a205a3d6…` — 무변.
+5. dev-7 trace-level FPR — **0.0 유지** (완화 없음, Q2b 기각 준수).
+6. 전체 pytest — 458 passed (기존 455 baseline + 신규 3), 실패 0.
+7. Format A fixture 회귀 — LangChain / CrewAI fixture 무변.
+8. Tier 1 부작용 — T1.1 LlamaIndex PASS 유지, T1.3 Anthropic FAIL 유지 (예상대로 · R5 원인, R2 무관).
+
+### §11.3 §5 재판정 (Part 1 §11.3 미달 목표 달성)
+
+**★ T1.2 OA-primitive · T1.2 OA-Runner · T1.4 AutoGen 세 케이스 모두 FAIL → PASS.**
+
+Ingest 결과:
+- T1.2 OA-primitive: 5 spans (agent 1 · tool 4). Non-tool empty = 1 (probe_workflow AGENT). single trace_id · 1 root.
+- T1.2 OA-Runner: 7 spans (chain 3 · agent 2 · tool 2). Non-tool empty = 5. single trace_id · 1 root.
+- T1.4 AutoGen: 9 spans (chain 1 · agent 4 · tool 4). Non-tool empty = 4 (`on_messages_stream` 4). single trace_id · 1 root.
+
+**R1-R5 재판정**: 모두 일치. **O1-O5 관측**: O1 `graph.node.id` 는 OA-Runner 에서 존재 (probe_agent) · AutoGen 에서 존재. Tier 1 §3.2 원칙 그대로 (선택 축 부재 자체 저하 아님).
+
+**T1.3 Anthropic**: FAIL 유지 (R5 · multi trace_id, R2 무관 · 예상대로).
+
+### §11.4 ★ Part 1 §11.4 확증 축 해소
+
+Part 1 §11.4 는 실 데이터로 완화가 발동한 적 없다고 정직하게 기록했다. Part 2 로 어댑터 gate 를 여니 **처음으로 실 데이터가 cascade non-tool skip 을 발동**:
+
+| Dump | non-tool candidate pair with empty side | Part 1 skip 발동 |
+|---|---|---|
+| T1.2 OA-primitive | 0 | (해당 없음) |
+| T1.2 OA-Runner | **1** | ✓ 발동 |
+| T1.4 AutoGen | **2** | ✓ 발동 |
+
+즉 Part 1 skip 유효성은 이제 합성 test 3 개 + 실 데이터 3 pair 로 확증됨.
+
+### §11.5 Part 2 verdict 요약 한 줄
+
+**Part 2 성공**: 세 케이스 (T1.2 OA-primitive · OA-Runner · T1.4 AutoGen) FAIL → PASS. Part 1 skip 실 데이터 첫 실증. §4 KILL 8축 전부 통과. §3 예측 전부 일치. T1.3 Anthropic 만 FAIL 유지 (R5 · R2 무관, 예상대로). Part 3 는 `otel_json.py:241` + Part 1 (b'-넓게) 상호 의존 스코프로 별건 사전등록 대상 (§13).
 
 ---
 
