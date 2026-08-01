@@ -515,6 +515,69 @@ def test_no_over_claim_wording_in_rendered_output_with_id_bridge():
     assert "provable" not in low
 
 
+# ─────────────── raw_output_text fallback (openinference §5.4) ─────────────
+
+def test_id_bridge_fallback_reads_raw_output_text_on_langgraph_path():
+    """T-3: on the langgraph/openinference path, preprocess rewrites tool
+    span output_text to the processed leaf ("Login broken"), but raw_output_text
+    keeps the original dict. extract_entity_id via scan_id_bridge_candidates
+    reads `raw_output_text or output_text`, so a user-registered
+    `entity_id: ticket.id` recovers T-1041 / T-1042 → verdict "differ"."""
+    from pathlib import Path
+    from clew.config.user_tools import resolve_user_tools
+    from clew.ingest.otel_json import ingest_from_otel_json
+
+    fixture = Path(__file__).parent / "fixtures" / "openinference_dict_tool_raw.json"
+    trace = ingest_from_otel_json(fixture)
+    tools = resolve_user_tools(
+        {"create_ticket": "side_effect"},
+        {"create_ticket": "ticket.id"},
+    )
+
+    candidates = scan_id_bridge_candidates(trace, tools)
+    ticket_cands = [c for c in candidates if c.tool == "create_ticket"]
+    assert len(ticket_cands) == 1, (
+        f"expected exactly one create_ticket pair, got {len(ticket_cands)}: {ticket_cands}"
+    )
+    c = ticket_cands[0]
+    assert c.verdict == "differ", (
+        f"expected differ verdict from raw_output_text ID extraction, got {c.verdict}"
+    )
+    assert {c.origin_id, c.candidate_id} == {"T-1041", "T-1042"}, (
+        f"expected ID pair T-1041 / T-1042, got origin={c.origin_id} cand={c.candidate_id}"
+    )
+
+
+def test_id_bridge_fallback_uses_output_text_when_raw_is_none():
+    """T-4: on paths where preprocess did not run (CC / Toolathlon / RB),
+    raw_output_text stays None and the fallback `raw or output_text` reads
+    the untouched output_text. Verifies extract_entity_id still works."""
+    body_a = json.dumps({"id": "N-1"})
+    body_b = json.dumps({"id": "N-2"})
+    o = Span(
+        trace_id="t", span_id="o", parent_span_id="root",
+        agent_or_node_id="notion-API-post-page", span_kind="tool",
+        start_time=_ts(1), end_time=_ts(1),
+        input_text="{}", output_text=body_a, token_count=5,
+        model="fake", cost_rate=1e-6,
+        raw_output_text=None,
+    )
+    c = Span(
+        trace_id="t", span_id="c", parent_span_id="root",
+        agent_or_node_id="notion-API-post-page", span_kind="tool",
+        start_time=_ts(2), end_time=_ts(2),
+        input_text="{}", output_text=body_b, token_count=5,
+        model="fake", cost_rate=1e-6,
+        raw_output_text=None,
+    )
+    trace = _trace([o, c])
+    candidates = scan_id_bridge_candidates(trace, tools=None)
+    assert len(candidates) == 1
+    got = candidates[0]
+    assert got.verdict == "differ"
+    assert {got.origin_id, got.candidate_id} == {"N-1", "N-2"}
+
+
 # ────────────────────────── README subsection lock ──────────────────────────
 
 def test_readme_has_duplicate_creation_check_subsection():

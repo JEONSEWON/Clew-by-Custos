@@ -194,6 +194,17 @@ def test_raw_output_text_accepts_str():
     assert s.raw_output_text == '{"ticket":{"id":"T-1041","title":"processed leaf"}}'
 
 
+def test_span_serialized_json_includes_raw_output_text_key():
+    """T-5 (openinference §5.4): every serialized Span carries the raw_output_text
+    key, which is what makes old code with extra="forbid" reject the new format.
+    Guards against accidental removal of the field or silent exclude of None."""
+    import json
+    s = _span(output_text="ok")
+    payload = json.loads(s.model_dump_json())
+    assert "raw_output_text" in payload
+    assert payload["raw_output_text"] is None
+
+
 def test_raw_output_text_allows_empty_string():
     # Unlike output_text (non-empty constraint), raw_output_text has no such
     # rule — it is Optional and its purpose is to mirror whatever preprocess
