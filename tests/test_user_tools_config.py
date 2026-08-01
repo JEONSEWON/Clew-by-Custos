@@ -456,13 +456,22 @@ def test_builtin_tools_matches_module_frozensets():
 # ─────────────── §5.6 URL grep regression (openinference §2.4) ─────────────
 
 def test_no_local_docs_path_left_in_user_facing_messages():
-    """§5.6: no user-facing message in src/ still references docs/ID_BRIDGE_SCOPE_PRINCIPLE
-    as a local path. pip-install users have no docs/ tree. Comments in the
-    codebase (`# docs/…`) are allowed; the guard scans string literals only."""
+    """§5.6 (widened after friction #7 regression on 2026-08-01):
+    NO user-facing message in src/ may reference ANY `docs/*.md` file as a
+    local path. pip-install users have no docs/ tree. The previous version
+    of this guard only checked docs/ID_BRIDGE_SCOPE_PRINCIPLE.md, so when a
+    second such reference was added (docs/OPENINFERENCE_FRAMEWORK_EXPANSION_
+    RESULTS.md in _ENVELOPE_PREFIX_HINT), the guard didn't catch it. Widened
+    to any quoted docs/…/*.md pattern.
+
+    Comments in the codebase (`# docs/…`) remain allowed; the guard scans
+    string literals only (leading `#` lines skipped)."""
     import re
     from pathlib import Path
     src_root = Path(__file__).resolve().parents[1] / "src"
-    string_literal = re.compile(r'"docs/ID_BRIDGE_SCOPE_PRINCIPLE|\'docs/ID_BRIDGE_SCOPE_PRINCIPLE|`docs/ID_BRIDGE_SCOPE_PRINCIPLE')
+    # Widened pattern: any quoted docs/<anything>.md reference.
+    # Matches `"docs/...md"`, `'docs/...md'`, backtick `` `docs/...md` ``.
+    string_literal = re.compile(r'''['"`]docs/[A-Za-z0-9_/-]+\.md''')
     offenders = []
     for py in src_root.rglob("*.py"):
         text = py.read_text(encoding="utf-8")
@@ -473,8 +482,9 @@ def test_no_local_docs_path_left_in_user_facing_messages():
             if string_literal.search(line):
                 offenders.append(f"{py.relative_to(src_root)}:{lineno}: {line.strip()}")
     assert not offenders, (
-        "docs/ID_BRIDGE_SCOPE_PRINCIPLE.md must not appear in user-facing strings — "
-        "use the GitHub URL constant instead. Offenders:\n" + "\n".join(offenders)
+        "docs/*.md must not appear in user-facing string literals — pip-install "
+        "users have no docs/ tree. Use the GitHub URL constant (_GITHUB_BASE) "
+        "instead. Offenders:\n" + "\n".join(offenders)
     )
 
 

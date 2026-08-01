@@ -303,6 +303,19 @@ tools:
 - Dot-path only (`response.ticket.id`). Bracket notation (`response[0].id`), wildcards (`response.*.id`), JSONPath (`$.response.id`), and numeric segments (`response.0.id`) are all rejected. Array indices were intentionally excluded because they invite a specific misconfiguration — `results[0].id` on a query API returns the first *searched* entity, not a newly created one.
 - Registering a path on a tool Clew already has a built-in ID mapping for (e.g. `notion-API-post-page`) raises an error: the built-in mapping takes precedence and the frozen 159/76/3197 Toolathlon distribution stays bit-identical.
 
+**Path depends on the OpenInference instrumentor you use.**
+
+The path is whatever key structure lands in the tool span's `output.value`. Most instrumentors serialize your tool return value directly, so if `create_ticket` returns `{"ticket": {"id": "T-1"}}`, the path is `ticket.id`. Some instrumentors wrap the return in an envelope first, and the path needs the envelope prefix. Measured on Tier 1 investigation ([`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md`](docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md) §5.2):
+
+| Instrumentor | Path for a `{"ticket": {"id": ...}}` return |
+|---|---|
+| LangChain (`openinference-instrumentation-langchain`) | `ticket.id` |
+| CrewAI (`openinference-instrumentation-crewai`) | `ticket.id` |
+| OpenAI Agents (`openinference-instrumentation-openai-agents`) | `ticket.id` |
+| LlamaIndex (`openinference-instrumentation-llama-index`) | `raw_output.ticket.id` (SDK wraps returns in `{"blocks":[...], "raw_output":<orig>, ...}`) |
+
+Only instrumentors Clew has actually measured against a `dict`-returning tool are listed. If yours isn't here and the extraction ratio stderr line reports failures, open the trace JSON, find the tool span, and read the exact key path from its `output.value` — that's the entity_id.
+
 **Runtime signals:**
 
 - On every load, if the tail of your path looks like a request/session/trace identifier (`request_id`, `correlation_id`, `trace_id`, `span_id`, `session_id`, `call_id`, `run_id`, or `transaction_id`), Clew warns to stderr. `message_id` and `event_id` are legitimate entity IDs for email `send` and calendar `create_event` and are *not* flagged.

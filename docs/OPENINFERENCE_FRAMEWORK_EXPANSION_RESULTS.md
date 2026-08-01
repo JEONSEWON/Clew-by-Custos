@@ -178,7 +178,7 @@
 | 프레임워크 | path | 근거 |
 |---|---|---|
 | LangChain | `ticket.id` | 봉투 없음 (`@tool` dict 직행) |
-| CrewAI | (dict fixture 없음 · 미확인) | text/plain 반환만 실측 |
+| CrewAI | `ticket.id` | 봉투 없음, 원본 dict 유효 JSON. [S] probe 실측 (`crewai 1.15.9`, `field_test/diagnostics/framework_probe_crewai_dict.py` — 이 리포트 작성 시점에는 "미확인" 이었으나 README 표 작성을 위해 사후 실측 후 채움) |
 | LlamaIndex | **`raw_output.ticket.id`** | 봉투 prefix 필요 |
 | OpenAI Agents | `ticket.id` | 봉투 없음, 유효 JSON |
 | Anthropic (direct SDK) | **불가** | TOOL span 자체 없음 (§2.1 (3)) |

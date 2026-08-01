@@ -735,8 +735,33 @@ def compute_user_extraction_ratios(
     return {tool: (f, t) for tool, (f, t) in stats.items()}
 
 
+# User-facing messages must NOT reference local docs/*.md paths — pip-install
+# users have no docs/ tree. Same constant lives in clew/config/user_tools.py
+# as _GITHUB_BASE; consolidation to a shared module (e.g. `clew/_urls.py`) is
+# a candidate for a separate refactor commit — this file duplicates locally
+# for now to keep the scope of the friction-#7-regression fix minimal.
+_GITHUB_BASE = "https://github.com/JEONSEWON/Clew-by-Custos/blob/main"
+_FRAMEWORK_EXPANSION_URL = (
+    f"{_GITHUB_BASE}/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md"
+)
+
+
+_ENVELOPE_PREFIX_HINT = (
+    "  hint: if your OpenInference instrumentor wraps the return in an "
+    "envelope, the path needs the envelope prefix — e.g. LlamaIndex serializes "
+    "returns as `{\"blocks\":[...], \"raw_output\":<orig>, ...}`, so a "
+    "`ticket.id` path needs to be written as `raw_output.ticket.id`. "
+    f"Full context: {_FRAMEWORK_EXPANSION_URL}"
+)
+
+
 def format_extraction_ratios(ratios: dict[str, tuple[int, int]]) -> str | None:
-    """Q5 confirmed format. Returns a multi-line string or None (all-success)."""
+    """Q5 confirmed format. Returns a multi-line string or None (all-success).
+
+    When any tool reports failures, an envelope-prefix hint line is appended
+    after the per-tool lines (Tier 1 finding: entity_id path varies by
+    OpenInference instrumentor).
+    """
     lines: list[str] = []
     for tool, (failed, total) in sorted(ratios.items()):
         if failed == 0:
@@ -748,6 +773,7 @@ def format_extraction_ratios(ratios: dict[str, tuple[int, int]]) -> str | None:
         lines.append(f"  {tool}: {failed}/{total} extractions failed  ({label})")
     if not lines:
         return None
+    lines.append(_ENVELOPE_PREFIX_HINT)
     return "clew: entity_id extraction ratios\n" + "\n".join(lines)
 
 
