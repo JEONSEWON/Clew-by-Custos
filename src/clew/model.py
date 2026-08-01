@@ -1,12 +1,20 @@
 """Canonical span tree model - Clew Stage 1 canonical data model.
 
-Enforces every field and validation convention from SPEC.md §8 1.1.
+Enforces every field and validation convention originally set out in
+SPEC.md §8 1.1, with the `output_text` non-empty rule scoped in v0.4+ to
+tool spans only (R2 relaxation — see the ADAPTER_R2_RELAXATION prereg
+in this repo's docs/ for the rationale).
 
 - Span: a single OTel/OpenInference-aligned span.
 - Trace: list of spans bound under one trace_id (exactly one root, no cycles, no orphans).
 - SpanNode: parent->children tree (result of Trace.build_tree()).
 
-output_text is required and non-empty (length > 0 after strip). Input to Stage 2 semantic comparison.
+`output_text` is required for every span; on tool spans it must be
+non-empty after strip (structural invariant: a tool call with no output
+is invalid data). Non-tool spans (chain / agent / llm) may carry an
+empty `output_text` — the cascade layer skips empty output in the
+non-tool branch as an explicit judgment decision (absence is not an
+expression, so cosine on absence is a malformed question).
 """
 
 from __future__ import annotations
@@ -41,12 +49,6 @@ class Span(BaseModel):
     # See openinference_output_text_fix_PREREG.md §2.1.
     raw_output_text: str | None = None
 
-    @field_validator("output_text")
-    @classmethod
-    def _output_text_non_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("output_text must be non-empty after strip (★ SPEC §8 1.1)")
-        return v
 
     @field_validator("start_time", "end_time")
     @classmethod
@@ -73,6 +75,21 @@ class Span(BaseModel):
     def _end_after_start(self) -> Span:
         if self.end_time < self.start_time:
             raise ValueError("end_time must be >= start_time")
+        return self
+
+    @model_validator(mode="after")
+    def _output_text_non_empty_on_tool(self) -> Span:
+        # Structural invariant (R2 relaxation, `docs/ADAPTER_R2_RELAXATION_PREREG.md`
+        # §2.4-2.5): a tool call with no output is invalid data — cascade
+        # sha256 gate would match empty-vs-empty as waste. Non-tool spans
+        # (chain / agent / llm) are allowed to be empty; the cascade layer
+        # skips empty output in the non-tool branch as an explicit judgment
+        # decision (see cascade.py :: non-tool empty skip).
+        if self.span_kind == "tool" and not self.output_text.strip():
+            raise ValueError(
+                "tool span output_text must be non-empty after strip "
+                "— structural invariant: a tool call with no output is invalid data"
+            )
         return self
 
 

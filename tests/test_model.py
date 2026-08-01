@@ -44,11 +44,28 @@ def _span(
     )
 
 
-def test_output_text_required_non_empty():
+def test_tool_span_output_text_required_non_empty():
+    """R2 relaxation (docs/ADAPTER_R2_RELAXATION_PREREG.md §2.4): tool
+    span empty output_text stays rejected — structural invariant, a tool
+    call with no output is invalid data and would fail cascade sha256."""
     with pytest.raises(ValidationError):
-        _span(output_text="")
+        _span(span_kind="tool", output_text="")
     with pytest.raises(ValidationError):
-        _span(output_text="   \n\t  ")
+        _span(span_kind="tool", output_text="   \n\t  ")
+
+
+def test_non_tool_span_allows_empty_output_text():
+    """R2 relaxation: chain / agent / llm may carry an empty output_text.
+    OpenInference instrumentors (OpenAI Agents, AutoGen, etc.) emit
+    non-TOOL wrapper spans without output.value; the cascade layer skips
+    them in the non-tool branch."""
+    for kind in ("chain", "agent", "llm"):
+        s = _span(span_kind=kind, output_text="")
+        assert s.output_text == ""
+        assert s.span_kind == kind
+    # strip-only whitespace also allowed on non-tool
+    s = _span(span_kind="chain", output_text="   \n\t  ")
+    assert s.output_text == "   \n\t  "
 
 
 def test_span_kind_rejects_unknown():

@@ -63,6 +63,15 @@ def cascade(trace: Trace, embedder: Embedder, n: int, phi: float) -> CascadeResu
                 waste_span_ids.append(candidate.span_id)
                 seen_candidates.add(candidate.span_id)
             continue
+        # ── non-tool branch ────────────────────────────────────────────
+        # R2 relaxation (docs/ADAPTER_R2_RELAXATION_PREREG.md §2.1 · §2.5):
+        # empty output_text is absence, not expression. cosine on absence is
+        # a malformed question — cosine(embed(""), embed("")) = 1.0 measured
+        # against phi=0.514345 would trigger a false waste flag. Skip both
+        # empty-vs-empty and empty-vs-value (§2.1 widened principle: absence
+        # on either side is not judgeable).
+        if not (origin.output_text.strip() and candidate.output_text.strip()):
+            continue
         if cosine(embedder.embed(origin.output_text), embedder.embed(candidate.output_text)) >= phi:
             waste_span_ids.append(candidate.span_id)
             seen_candidates.add(candidate.span_id)
