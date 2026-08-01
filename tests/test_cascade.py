@@ -238,6 +238,57 @@ def test_compact_gate_no_op_when_metadata_missing(embedder: Embedder):
     assert res.waste_span_ids == ["s3"]
 
 
+def test_non_tool_empty_pair_skipped_before_cosine(embedder: Embedder, monkeypatch):
+    """R2 relaxation (docs/ADAPTER_R2_RELAXATION_PREREG.md §2.5): the
+    non-tool cascade branch must skip an empty-vs-empty pair BEFORE
+    invoking the embedder. Two empty llm/chain outputs would otherwise
+    hit cosine(embed(""), embed("")) = 1.0 > phi and land a false waste
+    flag (the exact KILL scenario the prereg §3.b measured)."""
+    root = _span("root", None, "run", 0, "root_out")
+    a = _span("s-1", "root", "analyze", 1, "")
+    b = _span("s-2", "root", "analyze", 2, "")
+    trace = _trace([root, a, b])
+
+    def _explode(self, text):
+        raise AssertionError(
+            f"embedder called on empty non-tool output — skip missing "
+            f"(got text={text!r})"
+        )
+    monkeypatch.setattr(Embedder, "_compute", _explode)
+
+    result = cascade(trace, embedder, n=2, phi=0.5)
+    assert result.wasteful is False
+    assert result.waste_span_ids == []
+
+
+def test_non_tool_empty_vs_value_pair_skipped(embedder: Embedder):
+    """R2 relaxation §2.1 widened principle: absence on either side is
+    not judgeable. Even though `cosine(embed(''), embed(<text>))` was
+    measured under phi (safe by luck, §3.b samples 0.009 ~ 0.315), the
+    skip must fire on empty-vs-value too so that the running code matches
+    the documented rule ('absence on either side is not judgeable')."""
+    root = _span("root", None, "run", 0, "root_out")
+    a = _span("s-1", "root", "analyze", 1, "")
+    b = _span("s-2", "root", "analyze", 2, "some meaningful output text")
+    trace = _trace([root, a, b])
+    result = cascade(trace, embedder, n=2, phi=0.5)
+    assert result.wasteful is False
+    assert result.waste_span_ids == []
+
+
+def test_non_tool_non_empty_pair_still_evaluated(embedder: Embedder):
+    """R2 relaxation must not break normal non-tool cascade — two spans
+    with identical non-empty outputs must still be flagged. Guards
+    against over-broad skip."""
+    root = _span("root", None, "run", 0, "root_out")
+    a = _span("s-1", "root", "analyze", 1, "identical output")
+    b = _span("s-2", "root", "analyze", 2, "identical output")
+    trace = _trace([root, a, b])
+    result = cascade(trace, embedder, n=2, phi=0.5)
+    assert result.wasteful is True
+    assert "s-2" in result.waste_span_ids
+
+
 def test_compact_gate_does_not_affect_llm_kind(embedder: Embedder):
     """§22.11.2: gate targets tool kind only. llm path keeps phi judgment even with compact present."""
     spans = [

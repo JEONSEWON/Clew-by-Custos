@@ -64,7 +64,7 @@ SpanKind = Literal["llm", "tool", "chain", "agent"]
 | `start_time` | `datetime` | yes | UTC timezone-aware |
 | `end_time` | `datetime` | yes | UTC, >= start_time |
 | `input_text` | `str` | yes | may be empty |
-| `output_text` | `str` | yes | **non-empty after strip** (SPEC §8 1.1) |
+| `output_text` | `str` | yes | non-empty after strip **on tool spans only** (originally SPEC §8 1.1; scoped in v0.4+ per `docs/ADAPTER_R2_RELAXATION_PREREG.md`). Non-tool spans may be empty; cascade skips them. |
 | `token_count` | `int \| None` | no | >= 0 if set |
 | `model` | `str \| None` | no | LLM model name |
 | `cost_rate` | `float \| None` | no | >= 0 if set; USD per token |
