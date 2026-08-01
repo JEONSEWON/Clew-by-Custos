@@ -351,7 +351,11 @@ def test_suspicious_tails_produce_warn(tail: str):
     assert r.entity_id_warnings
     combined = " ".join(r.entity_id_warnings)
     assert tail in combined
-    assert "request/transaction/session" in combined
+    # New wording (openinference_output_text_fix_PREREG.md §2.4): one-line
+    # summary + Full context URL. The 요지 for correlation-style tails is
+    # "identify calls, not entities".
+    assert "identify calls" in combined
+    assert "https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/ID_BRIDGE_SCOPE_PRINCIPLE.md" in combined
 
 
 def test_transaction_id_uses_ambiguous_wording():
@@ -362,6 +366,9 @@ def test_transaction_id_uses_ambiguous_wording():
     assert r.entity_id_warnings
     warn = r.entity_id_warnings[0]
     assert "payment/financial" in warn
+    # Payment-domain 요지 + URL.
+    assert "payment_id or ticket_id" in warn
+    assert "https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/ID_BRIDGE_SCOPE_PRINCIPLE.md" in warn
 
 
 def test_message_id_produces_no_warn():
