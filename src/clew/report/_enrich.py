@@ -686,8 +686,16 @@ def scan_id_bridge_candidates(
             source = "user"
         else:
             source = "built-in"  # no ID mapping either side → still built-in bucket
-        o_id = extract_entity_id(tool, origin.output_text, user_map)
-        c_id = extract_entity_id(tool, cand.output_text, user_map)
+        # Fallback: raw_output_text preserves the pre-preprocess payload for
+        # tool spans on the langgraph path (openinference_output_text_fix_PREREG.md §2.2).
+        # On CC/Toolathlon/RB paths preprocess is not called so raw is None;
+        # in that case output_text is already the untouched adapter output.
+        o_id = extract_entity_id(
+            tool, origin.raw_output_text or origin.output_text, user_map,
+        )
+        c_id = extract_entity_id(
+            tool, cand.raw_output_text or cand.output_text, user_map,
+        )
         if o_id is None or c_id is None:
             verdict = "no_id"
         elif o_id == c_id:

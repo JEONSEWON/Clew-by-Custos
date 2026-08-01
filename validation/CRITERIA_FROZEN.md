@@ -14,8 +14,8 @@
 - Freeze: git tag `stage1-freeze` (pinned to this commit)
 - Labeled set: `eval/labels.jsonl` (seed=42, 4 patterns × 10 pairs = positive 40 / negative 40)
 - `eval/set_manifest.json` sha256:
-  `12ad33bb3b412bbc8ff1639775a9b264c9bcc6ad938a073c0eb07acf23551b52`
-  <!-- Re-frozen after LF normalization (CRLF→LF, OS-independent reproducibility). Detection parameters and trace contents unchanged, only serialization line-ending bytes changed. Previous value (Windows CRLF): 6d4efdb05e8b6de3931c965353ad78e9632d94a308d82c996ff43d3b018d4e01. Stage1 original: f3369b7cf598d4aa6f764ec2f56fa9aa437f4603d4ea84a88cb114ec7eb9069b (tag stage1-freeze 0fa25e0) -->
+  `a205a3d62e8310f67f0ab1a7faa957504b9f486a8c5a68cebeadf010aff42952`
+  <!-- Re-frozen after Span schema addition (optional `raw_output_text` field, default null). Detection parameters and trace contents unchanged, only serialization bytes added: each span JSON now contains `"raw_output_text":null` because pydantic emits the field. Verified byte-for-byte via `field_test/diagnostics/probe_lm.py` [L] — stripping the added literal from all 80 new trace files produces sha identical to the pre-change files (80/80). labels.jsonl bytes unchanged (`f9bc2c2f3960fa6482b92287ec313649c338b705cf8cfa744a8e16e9358544a9`); manifest labels_sha unchanged; only `artifacts_sha256.traces_combined` shifted (`135ba7b98a2af33993a01f14327a5b60394e47241264e8de15848abb2892281c` → `411e110124a3a239080a1ffd66ecd223745d6109b76f0f2cc7d29c0616c1794c`). Previous value (post-LF normalization): 12ad33bb3b412bbc8ff1639775a9b264c9bcc6ad938a073c0eb07acf23551b52. Prior (Windows CRLF): 6d4efdb05e8b6de3931c965353ad78e9632d94a308d82c996ff43d3b018d4e01. Stage1 original: f3369b7cf598d4aa6f764ec2f56fa9aa437f4603d4ea84a88cb114ec7eb9069b (tag stage1-freeze 0fa25e0) -->
 - Length distribution: min=5, max=7, mean=6.0 (paired structural matching —
   positive/clean twins share identical topology)
 

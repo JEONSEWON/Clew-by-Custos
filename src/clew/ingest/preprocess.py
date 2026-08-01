@@ -178,11 +178,17 @@ def preprocess_trace(trace: Trace) -> Trace:
     Order guarantee: (2) is before (3) (llm spans disappear after collapse); (3) is before (4).
     """
     # (1) JSON extraction - update Span.output_text
+    # For tool spans, preserve the original payload in raw_output_text so
+    # downstream consumers (id_bridge) can traverse the original structure.
+    # Non-tool spans do not populate raw_output_text (fallback reads output_text).
     spans: list[Span] = []
     for s in trace.spans:
         extracted = extract_output_text(s.output_text)
         if extracted != s.output_text:
-            s = s.model_copy(update={"output_text": extracted})
+            update: dict[str, Any] = {"output_text": extracted}
+            if s.span_kind == "tool":
+                update["raw_output_text"] = s.output_text
+            s = s.model_copy(update=update)
         spans.append(s)
 
     # (2) Compute worker set (based on topology before collapse)

@@ -120,3 +120,31 @@ def test_metadata_roundtrips():
         metadata={"source": "langgraph_adapter", "schema_version": "1.0", "nested": {"k": [1, 2]}},
     )
     _assert_roundtrip(trace)
+
+
+def test_roundtrip_raw_output_text_default_none():
+    trace = Trace(trace_id="t-1", spans=[_span("s-0", None, 0)])
+    restored = Trace.model_validate_json(trace.model_dump_json())
+    assert restored.spans[0].raw_output_text is None
+
+
+def test_roundtrip_raw_output_text_populated_on_tool_span():
+    raw_json = '{"ticket":{"id":"T-1041","title":"Login broken"}}'
+    root = _span("s-0", None, 0, span_kind="chain")
+    tool = Span(
+        trace_id="t-1",
+        span_id="s-1",
+        parent_span_id="s-0",
+        agent_or_node_id="create_ticket",
+        span_kind="tool",
+        start_time=T0 + timedelta(seconds=1),
+        end_time=T0 + timedelta(seconds=2),
+        input_text="",
+        output_text="Login broken",
+        raw_output_text=raw_json,
+    )
+    trace = Trace(trace_id="t-1", spans=[root, tool])
+    restored = Trace.model_validate_json(trace.model_dump_json())
+    assert restored.spans[1].raw_output_text == raw_json
+    # idempotent
+    assert restored.model_dump_json() == trace.model_dump_json()

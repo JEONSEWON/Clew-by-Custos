@@ -175,3 +175,39 @@ def test_optional_fields_default_to_none():
     assert s.token_count is None
     assert s.model is None
     assert s.cost_rate is None
+    assert s.raw_output_text is None
+
+
+def test_raw_output_text_accepts_str():
+    s = Span(
+        trace_id="t-1",
+        span_id="s-1",
+        parent_span_id=None,
+        agent_or_node_id="root",
+        span_kind="tool",
+        start_time=T0,
+        end_time=T0 + timedelta(seconds=1),
+        input_text="",
+        output_text="processed leaf",
+        raw_output_text='{"ticket":{"id":"T-1041","title":"processed leaf"}}',
+    )
+    assert s.raw_output_text == '{"ticket":{"id":"T-1041","title":"processed leaf"}}'
+
+
+def test_raw_output_text_allows_empty_string():
+    # Unlike output_text (non-empty constraint), raw_output_text has no such
+    # rule — it is Optional and its purpose is to mirror whatever preprocess
+    # started with. Empty payload is a real possibility.
+    s = Span(
+        trace_id="t-1",
+        span_id="s-1",
+        parent_span_id=None,
+        agent_or_node_id="root",
+        span_kind="tool",
+        start_time=T0,
+        end_time=T0 + timedelta(seconds=1),
+        input_text="",
+        output_text="ok",
+        raw_output_text="",
+    )
+    assert s.raw_output_text == ""
