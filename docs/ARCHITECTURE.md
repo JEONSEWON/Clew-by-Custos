@@ -177,8 +177,8 @@ Principles specified in `CLAUDE.md §4` and `CRITERIA_FROZEN.md`:
 
 ```
 Custos - clwe project/
-├── src/clew/                          # package root (name="clew", version="0.1.0")
-│   ├── __init__.py                    # __version__ = "0.1.0"
+├── src/clew/                          # package root (name="clew", version derived from pyproject.toml)
+│   ├── __init__.py                    # __version__ (derived from pyproject.toml via importlib.metadata)
 │   ├── __main__.py                    # CLI entry point (python -m clew)
 │   ├── model.py                       # canonical data model (Span, SpanNode, Trace)
 │   ├── io.py                          # Trace ↔ JSON file serialization
