@@ -133,6 +133,8 @@ Part 2 재판정 실행 시:
 
 ★ 이번 리포트는 이 별건의 **필요성만 명시**. 실제 수정은 별도 승인 필요.
 
+> **[Addendum · 2026-08-02]** 이 결함은 후속 사전등록으로 개정됨 → `docs/OPENINFERENCE_JUDGMENT_AXES_REVISION_PREREG.md`.
+
 ---
 
 ## §4 — Upstream 상태 기록
