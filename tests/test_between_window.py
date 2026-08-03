@@ -549,9 +549,12 @@ def test_readme_example_matches_current_render_structure():
     root = Path(__file__).resolve().parents[1]
     readme = (root / "README.md").read_text(encoding="utf-8")
 
-    # Extract the first fenced code block that contains "Result: WASTE DETECTED".
-    m = re.search(r"```\s*\n(Result: WASTE DETECTED.*?)```", readme, re.S)
-    assert m, "README must contain a 'Result: WASTE DETECTED' fenced example"
+    # Extract the first fenced code block that starts with the "Result" banner
+    # and includes the "Waste detection: N wasteful span(s)." line.
+    m = re.search(r"```\s*\n(Result\s*\n.*?Waste detection:.*?)```", readme, re.S)
+    assert m, (
+        "README must contain a fenced 'Result / Waste detection:' example."
+    )
     example = m.group(1)
 
     # Current (b23) tier phrasing must be present.

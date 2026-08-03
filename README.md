@@ -14,7 +14,9 @@ Ran on 6,780 public benchmark traces: 8,042 duplicate calls detected — includi
 Real excerpt from a public Claude Code session (`09d9abe9`, 258 turns; local path abbreviated, numbers unchanged):
 
 ```
-Result: WASTE DETECTED
+Result
+
+- Waste detection: 1 wasteful span(s).
 
 - wasted spans: 1
 - category breakdown: 0 error_repeat, 0 side_effect, 1 idempotent, 0 unclassified

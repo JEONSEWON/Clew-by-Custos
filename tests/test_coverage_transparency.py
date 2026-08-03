@@ -87,14 +87,15 @@ def test_coverage_line_a_present_in_waste_zero():
 
 
 def test_coverage_line_a_present_in_waste_detected():
-    """Line A also renders in WASTE DETECTED, at category-breakdown → banner slot."""
+    """Line A also renders when waste is detected, at category-breakdown → banner slot."""
     origin = _tool_span("o", "filesystem-read_file", 1)
     cand = _tool_span("c", "filesystem-read_file", 100)
     trace = _trace([origin, cand])
     wd = WasteDetail(origin=origin, candidate=cand, cosine=1.0)
     cr = _cascade_result([origin, cand], ["c"])
     md = render_markdown(trace, cr, [wd])
-    assert "Result: WASTE DETECTED" in md
+    assert "## Result" in md
+    assert "wasteful span" in md
     assert "Tool mapping coverage for this trace" in md
 
 
@@ -322,8 +323,12 @@ def test_readme_example_has_coverage_banner():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
     readme = (root / "README.md").read_text(encoding="utf-8")
-    m = re.search(r"```\s*\n(Result: WASTE DETECTED.*?)```", readme, re.S)
-    assert m, "README must contain a 'Result: WASTE DETECTED' fenced example"
+    m = re.search(r"```\s*\n(Result\s*\n.*?Waste detection:.*?)```", readme, re.S)
+    assert m, (
+        "README must contain a fenced 'Result / Waste detection:' example. "
+        "See docs/COVERAGE_TRANSPARENCY_PREREG.md §5 (regenerate from a "
+        "real render if the banner changes)."
+    )
     example = m.group(1)
     assert "Tool mapping coverage for this trace" in example, (
         "README example is missing the coverage banner. Regenerate it "
@@ -438,7 +443,8 @@ def test_coverage_line_c_renders_in_waste_detected():
     wd = WasteDetail(origin=origin, candidate=cand, cosine=1.0)
     cr = _cascade_result([origin, unmapped, cand], ["c"])
     md = render_markdown(trace, cr, [wd])
-    assert "Result: WASTE DETECTED" in md
+    assert "## Result" in md
+    assert "wasteful span" in md
     assert "Unrecognized tools in this trace" in md
     assert "some-brand-new-tool" in md
 
