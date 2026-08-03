@@ -212,6 +212,29 @@ _CATEGORY_NOTE = (
 )
 
 
+def _summary_duplicate_creation_line(candidates: list[IdBridgeCandidate]) -> list[str]:
+    """One-line summary of duplicate creation results, for the top Result section.
+
+    Rendered alongside the Waste-detection line, in both cascade branches, so
+    the top banner never contradicts the "Duplicate creation check" section
+    below. Framed as detection, not confirmed impact. differ/same/no_id are
+    kept as three separate numbers (never collapsed to a single "waste-like"
+    total).
+    """
+    if not candidates:
+        return []
+    differ = sum(1 for c in candidates if c.verdict == "differ")
+    same = sum(1 for c in candidates if c.verdict == "same")
+    no_id = sum(1 for c in candidates if c.verdict == "no_id")
+    return [
+        f"- **Duplicate creation check**: {len(candidates)} candidate pair(s) — "
+        f"{differ} with differing entity IDs, "
+        f"{same} with the same entity ID, "
+        f"{no_id} without extractable entity ID. "
+        f"Detection, not confirmed impact. See section below."
+    ]
+
+
 def _render_id_bridge_section(candidates: list[IdBridgeCandidate]) -> list[str]:
     """Duplicate creation check section (PREREG §1.4).
 
@@ -380,9 +403,10 @@ def render_markdown(
     id_bridge = scan_id_bridge_candidates(trace, user_tools)
 
     if not cr.wasteful:
-        lines.append("## Result: no waste detected")
+        lines.append("## Result")
         lines.append("")
-        lines.append("No wasteful patterns found (wasteful=False).")
+        lines.append("- **Waste detection**: no waste detected (wasteful=False).")
+        lines.extend(_summary_duplicate_creation_line(id_bridge))
         lines.append("")
         # Coverage line A — ALWAYS rendered, including waste-0.
         # PREREG §1.1 Q2 rationale: a low-coverage user seeing "no waste"
@@ -410,7 +434,10 @@ def render_markdown(
         lines.append(_FOOTER)
         return "\n".join(lines)
 
-    lines.append("## Result: WASTE DETECTED")
+    lines.append("## Result")
+    lines.append("")
+    lines.append(f"- **Waste detection**: {len(cr.waste_span_ids)} wasteful span(s).")
+    lines.extend(_summary_duplicate_creation_line(id_bridge))
     lines.append("")
     lines.append(f"- **wasted spans**: {len(cr.waste_span_ids)}")
     if enrichment.enriched:
