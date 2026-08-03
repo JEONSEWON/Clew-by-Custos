@@ -2,6 +2,36 @@
 
 All notable, user-visible changes to `clew-custos`. This file tracks releases going forward — earlier versions are not back-filled because the criteria for what qualifies as user-visible were not established at the time.
 
+## 0.4.1 — 2026-08-03
+
+### 변경
+
+- 리포트 상단 `## Result` 배너가 두 축을 함께 표시한다: **Waste detection** 과 **Duplicate creation check**. 이전에는 `wasteful=False` 일 때 상단이 `no waste detected` 만 찍고 duplicate creation 결과는 하단에만 있어서, 중복 생성이 탐지된 트레이스에서도 상단이 "낭비 없음" 으로 읽혔다. 이번 릴리스는 그 자기 모순을 없앤다.
+- `## Result: WASTE DETECTED` 헤더가 `## Result` + `Waste detection: N wasteful span(s).` 로 통일. cascade=True / cascade=False 두 브랜치가 같은 문면을 쓴다.
+- Duplicate creation check 요약은 항상 세 숫자 (`differ` / `same` / `no_id`) 를 분리 표시한다. 절대 하나의 합계로 접지 않는다.
+- Framed as **"Detection, not confirmed impact."** — cascade waste 와 duplicate creation 을 같은 신뢰도 층으로 취급하지 않는다.
+
+### 무변경 (sha256 검증)
+
+- 탐지 로직 — cascade / structural / semantic / `_ID_BRIDGE_MAPPING` / `scan_id_bridge_candidates` 무수정.
+- 동결 파라미터 — φ=0.514345, N=2, model rev `e8f8c211…`.
+- `waste_details` · `between_window_counts` · `id_bridge_candidates` · `waste_span_count` · `wasteful` 다섯 필드의 report.json sha256, 두 검증 트레이스 (grok-4_2 line 83, claude-4-sonnet-0514_1 line 4) 에서 전부 동일.
+- Duplicate creation check 섹션 본문 (`ID_BRIDGE_PRODUCTION_PREREG.md` §1.4 frozen) — 섹션 헤더, 서두 문단, per-candidate 3-way 문면 (`differ` / `same` / `no_id`) 무수정.
+- report.json 스키마 · CLI 인터페이스 무변경.
+- `tests/test_between_window.py` §3.2 금지어 가드 (`confirmed waste` / `verified waste` / `proven waste` / …) 유지. "provable" 단어 렌더러에 미사용 유지.
+
+### 테스트 갱신 (회귀 아님, 계약 변경)
+
+- `test_coverage_line_a_present_in_waste_detected` · `test_coverage_line_c_renders_in_waste_detected`: 배너 문자열이 `Result: WASTE DETECTED` → `## Result` + `wasteful span` 로 이동해서 assertion 업데이트.
+- `test_readme_example_has_coverage_banner` · README `Result:` fenced 예제: 새 문면에 맞게 regex 와 예제 텍스트 동시 갱신.
+- 사전등록 없이 진행된 변경이라 §3 예측 목록이 없었다. 다음부터 문면 변경 시 깨질 테스트를 먼저 열거한다.
+
+### 릴리스 이유
+
+pip-installed 사용자의 3-command 재현 시나리오 (`pip install clew-custos && ... && python -m clew analyze case.jsonl`) 가 정정된 배너를 보려면 새 배포가 필요하다. v0.4.0 이 이미 PyPI 에 있으므로 v0.4.1 로 올린다.
+
+---
+
 ## 0.4.0 — 2026-08-01
 
 ### ★ Breaking
