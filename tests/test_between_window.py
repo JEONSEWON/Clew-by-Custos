@@ -563,45 +563,61 @@ def test_readme_example_matches_current_render_structure():
     )
     example = m.group(1)
 
-    # Current (b23) tier phrasing must be present.
-    assert "with no state change indicated" in example
-    assert "indicated, by tool identity" in example
-    assert "indicated, by interval scan" in example
-
-    # Obsolete phrasings from earlier iterations must be gone.
-    # Pre-b21: "by tool identity" (without "indicated, ").
-    assert re.search(r"^\s+- by tool identity", example, re.M) is None, (
-        "README example uses pre-b21 aggregate wording; regenerate."
+    # v0.4.2+: hero fenced block can be either an idempotent-pair example
+    # (with the b23 tier-header phrasing) or a duplicate-creation example
+    # (Waste detection = no waste detected, but Duplicate creation check
+    # surfaces candidate pairs). Both are current render shapes.
+    is_idempotent_hero = "with no state change indicated" in example
+    is_duplicate_creation_hero = (
+        "Duplicate creation check" in example
+        and "candidate pair" in example
     )
-    # Pre-b21: "by interval scan" (without "indicated, ").
-    assert re.search(r"^\s+- by interval scan", example, re.M) is None, (
-        "README example uses pre-b21 aggregate wording; regenerate."
-    )
-    # Pre-b23: "not established:" line.
-    assert "not established: targeted_writes" not in example, (
-        "README example uses pre-b23 'not established' grouping; regenerate."
-    )
-    assert "not established: high_volume" not in example, (
-        "README example uses pre-b23 'not established' grouping; regenerate."
+    assert is_idempotent_hero or is_duplicate_creation_hero, (
+        "README hero fenced block must be either an idempotent-pair "
+        "example (with 'with no state change indicated' tier phrasing) or "
+        "a duplicate-creation example (with 'Duplicate creation check' and "
+        "'candidate pair(s)')."
     )
 
-    # Current per-pair wording variants must appear if the example flags any
-    # idempotent pair. (Loose check: at least one of the current 4 wordings.)
-    from clew.report.markdown import (
-        _BW_OBS_DECLARATIVE, _BW_OBS_NO_CHANGE,
-        _BW_OBS_TARGETED_WRITES, _BW_OBS_HIGH_VOLUME,
-    )
-    per_pair_line = re.search(r"between_window: `[^`]+`\s*—\s*(.+)", example)
-    if per_pair_line:
-        wording = per_pair_line.group(1).strip().rstrip(".")
-        current = {
-            _BW_OBS_DECLARATIVE.rstrip("."),
-            _BW_OBS_NO_CHANGE.rstrip("."),
-            _BW_OBS_TARGETED_WRITES.rstrip("."),
-            _BW_OBS_HIGH_VOLUME.rstrip("."),
-        }
-        assert any(wording.startswith(c) for c in current), (
-            f"README example's per-pair wording is not among current 4:\n"
-            f"  got: {wording!r}\n"
-            f"  expected one of (prefix match): {sorted(current)}"
+    if is_idempotent_hero:
+        # Current (b23) tier phrasing must be present.
+        assert "indicated, by tool identity" in example
+        assert "indicated, by interval scan" in example
+
+        # Obsolete phrasings from earlier iterations must be gone.
+        # Pre-b21: "by tool identity" (without "indicated, ").
+        assert re.search(r"^\s+- by tool identity", example, re.M) is None, (
+            "README example uses pre-b21 aggregate wording; regenerate."
         )
+        # Pre-b21: "by interval scan" (without "indicated, ").
+        assert re.search(r"^\s+- by interval scan", example, re.M) is None, (
+            "README example uses pre-b21 aggregate wording; regenerate."
+        )
+        # Pre-b23: "not established:" line.
+        assert "not established: targeted_writes" not in example, (
+            "README example uses pre-b23 'not established' grouping; regenerate."
+        )
+        assert "not established: high_volume" not in example, (
+            "README example uses pre-b23 'not established' grouping; regenerate."
+        )
+
+        # Current per-pair wording variants must appear if the example flags any
+        # idempotent pair. (Loose check: at least one of the current 4 wordings.)
+        from clew.report.markdown import (
+            _BW_OBS_DECLARATIVE, _BW_OBS_NO_CHANGE,
+            _BW_OBS_TARGETED_WRITES, _BW_OBS_HIGH_VOLUME,
+        )
+        per_pair_line = re.search(r"between_window: `[^`]+`\s*—\s*(.+)", example)
+        if per_pair_line:
+            wording = per_pair_line.group(1).strip().rstrip(".")
+            current = {
+                _BW_OBS_DECLARATIVE.rstrip("."),
+                _BW_OBS_NO_CHANGE.rstrip("."),
+                _BW_OBS_TARGETED_WRITES.rstrip("."),
+                _BW_OBS_HIGH_VOLUME.rstrip("."),
+            }
+            assert any(wording.startswith(c) for c in current), (
+                f"README example's per-pair wording is not among current 4:\n"
+                f"  got: {wording!r}\n"
+                f"  expected one of (prefix match): {sorted(current)}"
+            )

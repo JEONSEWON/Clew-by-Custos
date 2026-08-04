@@ -178,11 +178,11 @@ Part 2 재판정 실행 시:
 | CrewAI | ✓ | text/plain | 없음 (raw string) | ✓ (raw 반환) |
 | **LlamaIndex** (T1.1) | ✓ | application/json | `{"blocks":[{"text":"<rendered>"}], "tool_name":..., "raw_input":..., "raw_output":<orig>, "is_error":...}` | ✗ (미인식 · raw 반환, preprocess 가 leaf 추출) |
 | **OpenAI Agents** (T1.2) | ✓ | application/json (dict) / None (str) | **없음 — 반환값 직행 (유효 JSON)** | ✓ (raw 반환, 봉투 자체 없음) |
-| Anthropic (direct SDK) (T1.3) | ✗ (tool span 자체 없음) | — | **적용 불가** | — |
+| Anthropic (direct SDK) (T1.3) | ✗ (tool span 자체 없음) | — | **not extractable** | — |
 | **AutoGen** (T1.4) | ✓ | text/plain | **없음 — Python `str(dict)` 렌더링 (invalid JSON)** | ✓ (text/plain 분기, raw 반환) |
 
 **패턴 관찰**:
-- 봉투 종류 다양: 있음 (LangChain, LlamaIndex) / 없음 · 유효 JSON (OpenAI Agents) / 없음 · Python repr (AutoGen) / text/plain raw (CrewAI) / 적용 불가 (Anthropic).
+- 봉투 종류 다양: 있음 (LangChain, LlamaIndex) / 없음 · 유효 JSON (OpenAI Agents) / 없음 · Python repr (AutoGen) / text/plain raw (CrewAI) / not extractable (Anthropic).
 - LlamaIndex 는 봉투 안에 `raw_output` 필드로 유효 JSON 을 보존 → `raw_output_text` 안전망 유효.
 - AutoGen 은 `str(dict)` 렌더링으로 **유효 JSON 아님** → 안전망 원리적 커버 못 함.
 
@@ -196,8 +196,8 @@ Part 2 재판정 실행 시:
 | CrewAI | `ticket.id` | 봉투 없음, 원본 dict 유효 JSON. [S] probe 실측 (`crewai 1.15.9`, `field_test/diagnostics/framework_probe_crewai_dict.py` — 이 리포트 작성 시점에는 "미확인" 이었으나 README 표 작성을 위해 사후 실측 후 채움) |
 | LlamaIndex | **`raw_output.ticket.id`** | 봉투 prefix 필요 |
 | OpenAI Agents | `ticket.id` | 봉투 없음, 유효 JSON |
-| Anthropic (direct SDK) | **불가** | TOOL span 자체 없음 (§2.1 (3)) |
-| AutoGen | **불가** | Python `str(dict)` 이라 `json.loads` 실패 |
+| Anthropic (direct SDK) | **not extractable** | TOOL span 자체 없음 (§2.1 (3)) |
+| AutoGen | **not extractable** | Python `str(dict)` 이라 `json.loads` 실패 |
 
 **★ 사전등록 §2 가 예상 못 한 축**: entity_id path 가 프레임워크마다 다르다. "어댑터 하나로 여러 프레임워크" 전제 하에서 사용자가 `clew.yaml` 에 쓸 값이 프레임워크 의존. 이건 사전등록 §2 필수/선택 축에 없는 정보이며 **문서화 대상 (별건)**.
 

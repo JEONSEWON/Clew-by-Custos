@@ -595,51 +595,61 @@ def test_readme_has_duplicate_creation_check_subsection():
 
 def test_readme_has_entity_id_path_per_framework_table():
     """Tier 1 Results §5.2 → README: users need to know entity_id path
-    depends on the OpenInference instrumentor. Only measured framework
-    paths are locked here; unmeasured frameworks must not be added
-    without a probe."""
+    depends on the OpenInference instrumentor.
+
+    v0.4.2 restructure: the full per-instrumentor path table was moved
+    to docs. The README must still (a) surface the fact that path
+    depends on the framework (at minimum by showing LlamaIndex's
+    `raw_output.` envelope prefix in the framework coverage table),
+    (b) link to the results doc that has the full table, and (c) not
+    silently include FAILing frameworks (AutoGen, Anthropic) as if
+    entity_id extraction worked. Guard (c) is the restored morning
+    guard (commit 4abdab6 L621-642), re-scoped to the new
+    OpenInference framework coverage section.
+    """
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
     readme = (root / "README.md").read_text(encoding="utf-8")
-    # Section header presence
-    assert "Path depends on the OpenInference instrumentor you use" in readme, (
-        "README must document that entity_id path varies by instrumentor "
+    # (a) Path variance must be visible. LlamaIndex's envelope prefix is
+    # the canonical example (the framework where path != `ticket.id`).
+    assert "raw_output." in readme, (
+        "README must surface path variance by instrumentor; the LlamaIndex "
+        "`raw_output.` envelope prefix is the canonical example "
         "(per docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md §5.2)."
     )
-    # Measured instrumentors — must be listed
-    for name in (
-        "openinference-instrumentation-langchain",
-        "openinference-instrumentation-crewai",
-        "openinference-instrumentation-openai-agents",
-        "openinference-instrumentation-llama-index",
-    ):
-        assert name in readme, f"README missing measured instrumentor {name!r}"
-    # LlamaIndex envelope prefix must be shown explicitly
-    assert "raw_output.ticket.id" in readme, (
-        "README must show LlamaIndex envelope prefix explicitly."
+    # (b) The results doc that has the per-instrumentor path table must
+    # be linked so users clicking through can find it.
+    assert "OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md" in readme, (
+        "README must link to docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md "
+        "so users can find the per-instrumentor path table."
     )
-    # Guardrail: FAILing frameworks may appear in the table ONLY if they
-    # explicitly carry a "not extractable" marker (i.e. documented as
-    # unusable, not advertised as a working path). Silent inclusion of a
-    # framework name as if it were supported must fail.
-    section = readme.split("Path depends on the OpenInference")[1].split("Runtime signals")[0]
-    # Extract the entity_id table rows only (between the header row and the
-    # closing paragraph "Only instrumentors Clew has actually measured…").
-    table = section.split("Only instrumentors Clew has actually measured")[0]
-    for framework, reason in (
-        ("Anthropic", "no tool span emitted"),
-        ("AutoGen", "Python str(dict) is invalid JSON"),
-    ):
-        if framework in table:
-            # Must appear in a row that also says "not extractable".
-            rows = [r for r in table.splitlines() if framework in r]
-            assert rows, f"internal: expected row containing {framework}"
-            for r in rows:
+    # (c) Restored morning guard. FAILing frameworks (AutoGen, Anthropic)
+    # may appear in the OpenInference framework coverage table ONLY if
+    # they carry the standard "not extractable" marker in the same row.
+    # Silent inclusion (as if entity_id worked) must fail.
+    #
+    # Marker is standardized to the single string "not extractable" (see
+    # commit message; ambiguity across "not possible" / "적용 불가" /
+    # "불가" was the earlier leak point).
+    oi_section_match = re.search(
+        r"### OpenInference framework coverage\n(.*?)(?=\n###|\n## )",
+        readme,
+        re.S,
+    )
+    if oi_section_match:
+        oi_section = oi_section_match.group(1)
+        # Extract markdown table rows only (skip prose and section header).
+        table_rows = [r for r in oi_section.splitlines() if r.startswith("|")]
+        for framework, reason in (
+            ("Anthropic", "instrumentor emits no TOOL span"),
+            ("AutoGen", "output is Python str(dict), not valid JSON"),
+        ):
+            matching = [r for r in table_rows if framework in r]
+            for r in matching:
                 assert "not extractable" in r, (
-                    f"README entity_id table lists {framework} without a "
-                    f"'not extractable' marker (reason: {reason}). Either "
-                    f"remove the row or mark it as unsupported."
+                    f"README OpenInference framework coverage table lists "
+                    f"{framework!r} without the standard `not extractable` "
+                    f"marker (reason: {reason}). This risks advertising an "
+                    f"unmeasured entity_id path as if it worked. Remove "
+                    f"the row, or annotate it as `not extractable`."
                 )
-    # Fallback guidance must point users at the trace JSON when their
-    # instrumentor isn't in the table.
-    assert "output.value" in readme.split("Path depends on the OpenInference")[1].split("Runtime signals")[0]

@@ -1,238 +1,102 @@
 # Clew
 
-**Find where your coding agent wastes work — which file, which turn, why.**
+**Find where your coding agent wastes work: which file, which turn, why.**
 
 ```bash
-pip install "clew-custos[detect]"   # published as clew-custos, not clew
-python -m clew analyze ~/.claude/projects/<slug>/<uuid>.jsonl --out report.md
+pip install "clew-custos[detect]"
+python -m clew analyze <trace>.jsonl --out report.md
 ```
 
-> Package name is **`clew-custos`** (the bare name `clew` on PyPI is an unrelated placeholder). The module still imports as `clew`.
+> PyPI name is `clew-custos` (the bare name `clew` is an unrelated placeholder). The module still imports as `clew`.
 
-Ran on 6,780 public benchmark traces: 8,042 duplicate calls detected — including 459 same-argument email sends. (Detection, not confirmed impact.)
+**No instrumentation. No SDK. No code changes.** Clew reads trace files your agent already writes: Claude Code JSONL, OpenTelemetry SDK JSON, OpenInference (Phoenix / TRAIL), or its own native JSON.
 
-**No instrumentation. No SDK. No code changes.** Clew reads trace files your agent already writes — Claude Code JSONL, OpenTelemetry SDK JSON, OpenInference (Phoenix / TRAIL), or its own native JSON.
-
-Actual output on a public Claude Code session (`09d9abe9`, 258 turns; produced by `python -m clew analyze <path>.jsonl`, v0.4.1):
+Ran on 6,780 public benchmark trajectories. One Toolathlon Canvas session (`grok-4_2`, task `canvas-art-manager`) shows the shape of what falls out:
 
 ```
 ## Result
 
-- **Waste detection**: 1 wasteful span(s).
+- **Waste detection**: no waste detected (wasteful=False).
+- **Duplicate creation check**: 27 candidate pair(s) — 13 with differing entity IDs, 0 with the same entity ID, 14 without extractable entity ID. Detection, not confirmed impact. See section below.
 
-- **wasted spans**: 1
-- **category breakdown**: 0 error_repeat, 0 side_effect, 1 idempotent, 0 unclassified
-- **Tool mapping coverage for this trace**: 6 of 6 tools recognized (100.0%).
-- **Idempotent pairs with unrecognized tool in interval**: 0 of 1.
-- **Redundant-invocation candidates**: 1 idempotent pairs. No verdict is rendered — refer to context and judge whether each was intentional.
-  - idempotent 1 — 0 with no state change indicated, 0 with high tool volume, 1 with writes to other targets
-    - indicated, by tool identity: declarative 0
-    - indicated, by interval scan: no_side_effect 0; payload_dependent 0
-    - writes to other targets: targeted_writes 1
-      - Validated on Toolathlon: 28/30 hand-labeled TRUE (95% two-sided Clopper-Pearson lower ≈ 77.93%). Two write-then-revert observed.
-  - _Whether these were wasted invocations is a user judgment; the tool records only the observation._
-- **wasted output re-consumed across 200 subsequent turns** in total (amplification tokens = 87800)
-- **estimated cost impact**: $0.026340 ~ $0.263400 (cache-hit lower to cache-miss upper, estimated)
-- **events counted**: 1 (skipped 0 prev==next retry, 0 without metadata, 0 error-response spans)
+- **Tool mapping coverage for this trace**: 11 of 15 tools recognized (73.3%).
+- **Unrecognized tools in this trace (top 4)**: canvas-canvas_get_user_profile, canvas-canvas_health_check, canvas-canvas_list_sub_accounts, emails-download_attachment
 
-## Wasted Span Details
+## Duplicate creation check
 
-### 1. [idempotent] requery — Read on `d:\Pseudo-OS\src\ts\screen\boot.ts`
+The waste detector above requires both responses to be byte-identical. That is the right test for reads — a re-read that returns the same content is a redundant call. For creation tools it is reversed: if a document really was created twice, the two responses carry different entity IDs, so the waste detector excludes them by construction. This section scans that excluded pool separately.
 
-- **turns**: turn 50 → re-run at turn 58 (of 258 total)
-- **cosine**: 1.0000
-- **state**: No modification of this file in between — re-read output is unchanged.
-- **between_window**: `targeted_writes` — State-changing tools were invoked in the interval, targeting other resources; this reread's output is unchanged from the first call.
-- **re-consumed across 200 subsequent turns** (≈439 tokens/turn → 87800 amplification tokens)
-- **estimated cost impact**: $0.026340 ~ $0.263400 (cache-hit to cache-miss)
+- **candidates**: 27 pairs total
+  - 13 with different entity IDs
+  - 0 with the same entity ID
+  - 14 without extractable entity ID
+
+### 1. canvas-canvas_upload_file_from_path
+
+- origin span `call_79190340` → candidate span `call_52801306`
+- Both calls returned entity IDs, and they differ: 5 / 35.
+
+### 2. canvas-canvas_upload_file_from_path
+
+- origin span `call_94789037` → candidate span `call_89334053`
+- Both calls returned entity IDs, and they differ: 7 / 32.
 ```
 
-*(The bulleted `Duplicate creation check` line is rendered under `## Result` when a trace has candidates — this session has none, so it appears only in the section below.)*
+All 13 differing-ID pairs in this trace are the same tool, `canvas-canvas_upload_file_from_path`. The agent uploaded the same file 13 times, and each call created a distinct Canvas entity. The waste detector correctly did not flag them (the responses were not byte-identical, because each returned a different ID). The `Duplicate creation check` section catches exactly this reverse case.
 
-Deterministic, no LLM in the loop. Every span in the session was `200 OK`; the trace stayed green. Clew reads the finished session and points at the redundant step.
+Reproduce:
+
+```bash
+pip install "clew-custos[detect]"
+# Toolathlon corpus (CC-BY-4.0): huggingface.co/datasets/tsinghua-mars-lab/toolathlon
+python -m clew analyze grok-4_2.jsonl --out report.md
+```
+
+*(Yes, agents legitimately re-read files. That is why the cascade below has two gates: the structural group only becomes a flag when the state check confirms nothing changed between the two calls, and the tool output is byte-identical.)*
 
 ---
 
 ## Why diagnosis (and not another dashboard)
 
-Observability tools (Langfuse, Phoenix, LangSmith) **show you the trace**.
-Clew **tells you which spans are waste, and why** — the exact file, the turns, whether the file was modified in between.
+Observability tools (Langfuse, Phoenix, LangSmith) show you the trace. Clew tells you which spans are waste, and why: the exact file, the turns, whether the file was modified in between.
 
-**Clew diagnoses; it does not fix.** The output is a report you read. What to change in your agent — prompt, context caching, tool routing — is a call only you can make.
+Clew diagnoses; it does not fix. What to change in your agent (prompt, context caching, tool routing) is a call only you can make.
 
-Scope is deliberately narrow: **one working pattern (`repeat` / `requery`)**, done precisely. A second pattern for reasoning-level ping-pong (`pingpong`) is implemented but has not fired on any trace format we've validated (tool-span only) — we don't advertise what we haven't observed.
+Scope is deliberately narrow: one working pattern (`repeat` / `requery`), done precisely.
 
 ---
 
 ## How it works
 
-A two-stage cascade, fully deterministic:
+A two-stage cascade, fully deterministic. Every parameter is pinned to a git tag with a manifest sha256.
 
-1. **Structural gate** — group steps by `(node, normalized input)`; a group with ≥ 2 occurrences is a candidate.
-2. **Identity gate** — require `sha256(output_A) == sha256(output_B)`. If outputs differ (state changed, a retry succeeded where one failed), it is **not** flagged.
+**Stage 1: structural gate.** Group steps by `(node, normalized input)`. A group with `N ≥ 2` occurrences is a candidate.
 
-Frozen parameters (never hand-tuned): `phi = 0.514345`, `N = 2`, embedding model `paraphrase-multilingual-MiniLM-L12-v2`, pinned to a git tag with a manifest `sha256`. `N = 2` began as an arbitrary default; we later verified it is F1-optimal across `N ∈ {2, 3, 5, ∞}` on RedundancyBench (F1 decreases monotonically as N grows).
+**Stage 2: identity gate.** Compare the two outputs.
 
-A report entry also carries a per-file state check — "no modification in between" vs "**File was modified in between** — may be a legitimate re-read" — so you can tell forced re-reads (waste) from legitimate ones. Tool-error responses (`is_error: true` in Anthropic tool_result) are excluded from waste with an explicit count in the report.
+- **Tool spans**: require `sha256(output_A) == sha256(output_B)`. Byte-identical. This is the precision-carrying gate.
+- **Non-tool spans**: require cosine similarity `≥ φ` against a frozen embedding (`paraphrase-multilingual-MiniLM-L12-v2`).
 
-### Waste categories
+**Why sha256 for tools.** We cannot see inside a tool. We do not know whether `Bash: ls` had side effects, or whether `send_email` actually reached anyone. So we judge by result. Same input, same byte output, no state change in the interval: the second call was redundant. If outputs differ (a retry succeeded where one failed, an in-memory counter advanced), the pair is **not** flagged.
 
-Each waste pair also carries a report-only category label with a short note on what that category typically points to. The label does **not** affect detection — the cascade output is unchanged; the label is layered on top of it for the reader.
+**Reverse case: duplicate creation.** If two `notion-API-post-page` calls really did create two pages, the responses carry different entity IDs, so byte-identity fails and the waste detector correctly excludes them. The `Duplicate creation check` section scans that excluded pool separately, using per-tool entity-ID extraction (26 tools currently mapped, see [`docs/ID_BRIDGE_PRODUCTION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/ID_BRIDGE_PRODUCTION_PREREG.md) §1.1). This is what surfaced the 13 Canvas uploads above.
 
-- **`error_repeat`** — the response matches an error pattern (same call repeated after a failure). Usually the tool arguments are wrong and the agent re-runs with the same arguments without addressing the error message.
-- **`side_effect`** — a state-changing tool (`Edit`, `Write`, `github-create_pull_request`, …) was invoked twice with the same arguments. Beyond wasted tokens, real side effects may have occurred; the report flags this for review rather than confirming impact.
-- **`idempotent`** — a read-only or declarative tool (`Read`, `filesystem-list_directory`, …) was called repeatedly. This assumes the tool has no side effect **based on the tool name**, not a runtime guarantee. Whether that assumption holds in your setup — and whether state truly did not change between the two calls — needs verification against your execution context.
-- **`unclassified`** — the tool's effect depends on the payload (command text, code, query body). `Bash`, `PowerShell`, `local-python-execute`, `terminal-run_command`, and `bigquery_run_query` are kept here — the tool name alone cannot classify them, so we don't try. Human review needed.
+**Frozen parameters** (never hand-tuned): `φ = 0.514345`, `N = 2`. `N = 2` began as an arbitrary default; a later grid on `N ∈ {2, 3, 5, ∞}` on RedundancyBench found F1 decreases monotonically as `N` grows. F1-optimal, not tuned.
 
-The mapping is by **exact tool name**, never inferred from name substrings.
+**State check.** For tool-repeat pairs the report says either "no modification of this file in between" or "**File was modified in between**, may be a legitimate re-read". Tool-error responses (`is_error: true` in Anthropic `tool_result`) are excluded with an explicit count.
 
-### Idempotent sub-classification (`between_window`)
+**Report categories** (labels only; detection is unchanged):
 
-As of v0.4.1, the `idempotent` category is split into a 5-value `between_window` label — the report now tells you **which evidence supports** the "no state change between calls" claim, rather than lumping every idempotent re-run together.
+- **`error_repeat`**: same call after a failure, same arguments as before.
+- **`side_effect`**: state-changing tool invoked twice with the same arguments.
+- **`idempotent`**: read-only or declarative tool called repeatedly. Sub-classified into a 5-value evidence tier; see [`docs/GREYZONE_EXPANSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_EXPANSION_PREREG.md).
+- **`unclassified`**: payload-dependent tools (`Bash`, `PowerShell`, `bigquery_run_query`). Tool name alone cannot classify.
 
-Like the category labels, `between_window` is a report-only annotation — what gets flagged as waste is unchanged (verified bit-identical; see [`docs/GREYZONE_EXPANSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_EXPANSION_PREREG.md) §9.8).
-
-The 5 values, grouped by evidence:
-
-- **Grouped as "no state change indicated" in the report:**
-  - **`declarative`** — the tool itself is declarative or idempotent by name (`local-claim_done`, `filesystem-create_directory`); repeating it is not a waste question. The interval between calls is not examined.
-  - **`no_side_effect`** — no state-changing tool sits between the two calls. **Hand-labeled sample: 30/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 88.43%; see [`docs/GREYZONE_EXPANSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_EXPANSION_PREREG.md) §2.1).
-  - **`payload_dependent`** — a payload-dependent tool sits between (`Bash`, `terminal-run_command`, `snowflake-write_query`, …); the tool cannot infer from name whether it changed state. **Hand-labeled sample: 30/30 TRUE** (same CI note).
-- **Grouped as "high_volume" in the report:**
-  - **`high_volume`** — a state-changing tool is present AND ≥ 20 tool spans lie between the calls. **Hand-labeled sample: 29/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 82.78%). One case was a same-target repeated write with unchanged content (a `.tex` file rewritten three times with the same sha256). Grouped separately from `targeted_writes` (28/30, 77.93% lower bound) — its evidence is stronger, so it renders in a higher tier. **This tier has the highest mapping-coverage dependence of the five** — 51.4% of `high_volume` pairs on Toolathlon had at least one unrecognized tool in the interval (structural consequence of the ≥ 20 threshold: the wider the interval, the higher the chance an unrecognized tool appears). The 29/30 verdict itself is result-based (`sha256` identity) and unaffected by that dependence — see the Tool mapping coverage section below. Full details: [`docs/GREYZONE_B23_EXTENSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_B23_EXTENSION_PREREG.md), [`docs/COVERAGE_TRANSPARENCY_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/COVERAGE_TRANSPARENCY_PREREG.md).
-- **Grouped as "writes to other targets" in the report:**
-  - **`targeted_writes`** — a state-changing tool with a specific target is between the two calls. **Hand-labeled sample: 28/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 77.93%). Two cases were write-then-revert: a `.tex` file and a `.md` file each restored to origin content after intermediate modifications. Grouped separately from `no_side_effect` and `payload_dependent` (30/30 each, 88.43% lower bound) because the evidence strength differs — two of thirty sampled pairs were write-then-revert; neither of the other two categories showed any in their own 30-pair samples. See [`docs/GREYZONE_B21_EXTENSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_B21_EXTENSION_PREREG.md).
-
-Aggregate on Toolathlon (3,791 idempotent pairs):
-`declarative 1,226` / `no_side_effect 888` / `payload_dependent 405` / `targeted_writes 248` / `high_volume 1,024`.
-
-Report shows three top-level tiers rendered as four aggregate lines (the `indicated` tier splits into `by tool identity` and `by interval scan` sub-lines), ordered by evidence strength (`indicated` 88.43% → `high_volume` 82.78% → `writes to other targets` 77.93%); the tool does not render a final waste verdict. Whether a given idempotent re-run was actually wasted remains your judgment given your execution context. Pre-registration, priority rule (V2), and reproduction evidence: [`docs/GREYZONE_EXPANSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_EXPANSION_PREREG.md). Per-tier extensions: [`docs/GREYZONE_B21_EXTENSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_B21_EXTENSION_PREREG.md) (`targeted_writes`), [`docs/GREYZONE_B23_EXTENSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_B23_EXTENSION_PREREG.md) (`high_volume`).
-
-**Honest scope for Claude Code users:** on 28 real Claude Code sessions only **16 pairs land in `idempotent`, and 56% of those fall into `high_volume`** (long intervals between rereads push them past the ≥ 20 threshold). In practice this sub-classification's yield concentrates on multi-tool environments (Toolathlon-like); a single Claude Code session usually leaves most idempotent pairs in the `high_volume` tier. The 82.78% lower bound applies to the Toolathlon 30-pair hand-labeled sample, not to Claude Code sessions — cross-population inference is a separate measurement. Threshold-20 revisit reserved for a separate pre-registration.
-
-### Tool mapping coverage
-
-The `between_window` classification is **relative to Clew's tool mapping** — the set of tool names Clew recognizes as state-changing, read-only, or declarative. Tools that are not in any of these lists are counted as if they were absent from the interval. So a tier label of `no_side_effect` means "no state change via **mapped** tools", not "no state change" in the absolute sense.
-
-The report banner at the top of each waste report surfaces this: one line for the trace's mapping coverage, and (when there is at least one idempotent pair) a second line for how many of those pairs had an unrecognized tool in the interval.
-
-**On the Toolathlon benchmark** (2026-07-29 measurement, [`docs/COVERAGE_TRANSPARENCY_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/COVERAGE_TRANSPARENCY_PREREG.md)):
-- 138 of 523 unique tool names are recognized — **26.4% coverage**.
-- Of the 3,791 report-shown idempotent pairs, 1,376 (36.30%) had at least one unrecognized tool in the interval. Per tier: `declarative` 34.9%, `no_side_effect` 21.3%, `payload_dependent` 34.1%, `targeted_writes` 38.3%, **`high_volume` 51.4%** (highest, structural consequence of the ≥ 20 span threshold).
-
-**What this means for verdicts.** Verdicts are based on `sha256(output_A) == sha256(output_B)`, which is a **result-based** check ([`docs/GREYZONE_B21_EXTENSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_B21_EXTENSION_PREREG.md) §a inherited from (b-2-1)). If the reread output is unchanged, the pair is flagged regardless of whether an unrecognized tool sat between the calls. So the hand-labeled TRUE rates (30/30, 30/30, 28/30, 29/30) and their Clopper-Pearson lower bounds (88.43% / 88.43% / 77.93% / 82.78%) are unaffected by mapping coverage — they were always about result identity, not about tool inventory.
-
-**What this means for tier labels.** The tier a pair lands in *does* depend on mapping. A pair with an unrecognized state-changing tool in the interval will land in `no_side_effect` instead of `targeted_writes` or `payload_dependent`. That is a label-precision limitation, not a false verdict. The banner surfaces this so a user reading "no waste detected" on a low-coverage trace does not mistake it for "we are clean" — the reassurance is honest only within the mapped subset.
-
-**Coverage on your own trace.** The report banner shows this trace's coverage. If the number is low and matters to you, the missing tools need to be added to the mapping. A user-registration path (`clew.yaml`) is on the roadmap.
-
-### Duplicate creation check
-
-Clew ships two detectors with opposite logic:
-
-| Detector | Trigger | Meaning |
-|---|---|---|
-| **Waste detection** | Both responses byte-identical | Same result — the second call was redundant. Right for reads. |
-| **Duplicate creation check** | Two entity IDs differ | Different entities — two things really were created. Right for creation tools. |
-
-The waste detector excludes creation-tool pairs by design — if two `notion-API-post-page` calls create two different pages, they carry different IDs, so byte identity fails and the detector doesn't flag them. The `Duplicate creation check` section in the report scans that excluded pool separately, using per-tool entity-ID extraction (26 tools currently mapped, see [`docs/ID_BRIDGE_PRODUCTION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/ID_BRIDGE_PRODUCTION_PREREG.md) §1.1).
-
-**On the Toolathlon benchmark** (2026-07-29 measurement):
-- 3,432 same-input side-effect pairs scanned.
-- 159 (4.63%) had different entity IDs.
-- 76 (2.21%) had the same entity ID.
-- 3,197 (93.16%) had no extractable entity ID — reported as an audit blind spot rather than a verdict.
-
-The 93% `no_id` share is the honest scope: most tools do not return entity IDs in their responses (emails send success strings, SQL writes return row counts, filesystem operations return `ok`). This section makes that blind spot visible rather than hiding it. Mapping expansion is tracked separately.
-
----
-
-## Where it stands
-
-### RedundancyBench — labeled ground truth
-
-Human-labeled benchmark for redundant-step detection ([arXiv:2605.29893](https://arxiv.org/abs/2605.29893)):
-
-| | Clew (deterministic) | Best method in the paper (LLM-as-judge) |
-|---|---|---|
-| **Step-level F1** | **0.2642** | 0.2488 |
-| Precision | 0.826 | — |
-
-Same `evaluate.py` (imported directly from their repo), same scope (all four redundancy categories). Clew surpasses the paper's best reported method **without a single model call**.
-
-**Read this honestly — three caveats:**
-
-1. **0.2488 is the paper's reported number, not something we re-ran.** The repo ships the scorer we import, but not the baseline's prediction files, so we can't reproduce 24.88% in our environment. The scorer is identical; the comparison point is **cited, not reproduced**.
-2. **This is one benchmark.** A 0.0154 F1 margin on a single dataset is a signal, not a verdict. Recall is low (0.157) — Clew catches the one kind of waste it's built for and deliberately ignores the rest.
-3. **Precision 0.826 may be a lower bound.** Of the 22 false-positive spans, 21 were exact input-and-output repeats that no annotator labeled under any category, and 6 had zero state change in between — i.e. redundancies the annotators appear to have missed. Owner review pending; we don't claim all 22 are waste.
-
-### trace-commons — 28 real public Claude Code sessions
-
-Public dataset ([trace-commons/agent-traces](https://huggingface.co/datasets/trace-commons/agent-traces)), full scan on 2026-07-19:
-
-- **28 / 28** sessions processed, **0 crashes**.
-- **10 / 28** flagged as wasteful (34 waste spans in the cascade output; 32 kept after the tool-error gate).
-- Aggregate saving potential (across all wasteful sessions): **\$1.01 ~ \$10.12** (cache-hit lower to cache-miss upper).
-- Per-session range: \$0 (no waste) up to \$0.64 ~ \$6.40 (one session, 18 waste spans).
-
-**Honest scope:** trace-commons has **no step-level ground truth** — the 34 spans are cascade-flagged candidates plus a state-change check per file, not labeled as waste by a human annotator. Precision lives on RedundancyBench; scale on real data lives here.
-
-### Toolathlon — 6,780 trajectories, cross-model scale
-
-Beyond labeled and real-user data, Clew ran unmodified over **Toolathlon** — 22 frontier models × 3 runs ([arXiv:2510.25726](https://arxiv.org/abs/2510.25726), CC-BY-4.0). On 6,780 trajectories with 176,270 tool spans, Clew flagged **8,042 duplicate pairs**.
-
-Breaking those pairs down by the report-only category labels above:
-
-- **47% are the `idempotent` grey area** — read-only or completion-declaration re-runs whose "is this really waste?" answer depends on whether the underlying state changed between calls. Excluding this grey area leaves **4,249 pairs (2.41% of tool spans)** — roughly **3× the rate seen on Claude Code sessions (0.80%)**.
-- **1,195 pairs are `side_effect` — state-changing tools re-invoked with the same arguments**, including **459 duplicate email-send pairs**. This is a detection of duplicate invocations with matching arguments; whether a real side effect actually occurred is not confirmed by the trace.
-
-Toolathlon is benchmark trajectories, not real user sessions. The Toolathlon adapter provides no token information, so no cost estimate is produced for these traces.
-
-**Honest scope:** Toolathlon ships only pass/fail labels, not step-level ground truth. Candidate density varies 54× across models (0.157 – 8.463 per trajectory), but "model X wastes 54× more than model Y" would over-claim — no labels; task-mix and success-rate confounds uncontrolled.
-
----
-
-## Cost estimation
-
-Every wasted step in a Claude Code trace has a knock-on cost: the stale tool result stays in the trajectory and is **re-consumed as input on every subsequent turn**. Naive single-consumption math makes waste look trivial (~\$0.001); the real number is the wasted output *times the remaining turns*.[^cache]
-
-Formula per waste span:
-
-```
-amp_tokens_i  = waste_tokens_i × turns_after_i
-lower_i (USD) = amp_tokens_i × cache_read_price  (fully cached re-consumption)
-upper_i (USD) = amp_tokens_i × base_input_price  (uncached re-consumption)
-```
-
-Where `waste_tokens_i` comes directly from the vendor's `cache_creation_input_tokens` field on the assistant turn immediately after the waste, and `turns_after_i` is the number of assistant turns from the waste to the end of the session. Retry cascades where `prev.cache == next.cache` are filtered out with an explicit count.
-
-**Read the estimate honestly:**
-
-- It is **estimated saving potential, not measured cost.** The formula assumes the wasted output is re-consumed each subsequent turn (a structural upper bound).
-- The range spans cache-hit (lower) to cache-miss (upper); the exact split is not observable from Anthropic usage.
-- **Claude Code sessions only.** Other adapters (OTel, OpenInference, Toolathlon) still detect waste, but do not populate the cache-token fields the amplification calculator needs. Those reports show waste-detected without a dollar figure.
-- Attribution assumes Sonnet 4.5 pricing.
-- Clew reports **detected waste**, not intervention. Independent research on removing
-  redundant trajectory content — e.g. AgentDiet[^agentdiet] — reports downstream
-  savings in a different setup (21.1–35.9% total cost, 39.9–59.7% input tokens on two
-  coding benchmarks); those are that paper's numbers, not Clew's, and are cited only
-  to flag the detection→intervention gap that Clew's report leaves for the user.
-
-[^cache]: Prompt-cache economics in long-horizon agent workloads — including the
-41–80% cost reduction range from strategic cache placement — are measured empirically
-in Lumer et al., *Don't Break the Cache*
-([arXiv:2601.06007](https://arxiv.org/abs/2601.06007)). Those numbers describe optimal
-caching, not Clew's estimator; Clew's `lower_i`–`upper_i` bracket assumes the wasted
-output is re-consumed and prices it under the observed cache-hit vs cache-miss split.
-
-[^agentdiet]: Xiao et al., *Reducing Cost of LLM Agents with Trajectory Reduction
-(AgentDiet)*, [arXiv:2509.23586](https://arxiv.org/abs/2509.23586).
+Mapping is by exact tool name, never by substring.
 
 ---
 
 ## Reads your existing traces
-
-Clew is a **complement, not a replacement.** It doesn't store or visualize traces — it reads what your observability stack already produces and points at the waste. It also runs standalone on raw session logs.
 
 Auto-detected input formats:
 
@@ -240,174 +104,128 @@ Auto-detected input formats:
 |---|---|
 | Claude Code session logs (`.jsonl`) | `sessionId` |
 | OpenTelemetry SDK JSON | `context` |
-| OpenInference (Phoenix / TRAIL lineage) | `span_id` / nested `child_spans` |
+| OpenInference (Phoenix / TRAIL) | `span_id` + nested `child_spans` |
 | Clew native trace JSON | `trace_id` + `spans` |
 | Toolathlon trajectories | `modelname_run` + `task_status` |
 | RedundancyBench | `tasks` + `simulations` |
 
-*Cursor and Codex sessions are not supported yet — their local formats are under evaluation.*
+*Cursor and Codex sessions are not supported yet.*
 
-Because it ingests OpenTelemetry and OpenInference, it can read traces from Langfuse, Arize Phoenix, and any OTel-instrumented agent. *(OTLP protobuf-JSON is not yet supported; the error message points you to the SDK-JSON conversion.)*
+*OTLP protobuf-JSON is not yet supported; the error message points at the SDK-JSON conversion.*
 
 ### OpenInference framework coverage
 
-Auto-instrumented agent frameworks emit spans through the OpenInference schema (`openinference.span.kind`, `input.value`, `output.value`, `tool.name`, `graph.node.id`). Clew's adapter maps the shared schema to its canonical model:
+Measured PASS on Tier 1 and Tier 2:
 
-| Framework | Validated via fixture | Notes |
+| Framework | Fixture | Notes |
 |---|---|---|
-| LangChain / LangGraph | ✔ `tests/fixtures/openinference_langchain.json` | `TOOL` output arrives JSON-wrapped (`{"type":"tool","data":{"content":…}}`); the adapter unwraps to raw content. `AGENT` spans lack `graph.node.id` here, so `span_name` is used. |
-| CrewAI | ✔ `tests/fixtures/openinference_crewai.json` | `TOOL` `span_name` has a `.run` suffix (`search_web.run`); the adapter prefers `tool.name` (`search_web`). `AGENT` `span_name` has a `._execute_core` suffix; the adapter prefers `graph.node.id` (`Web Researcher`). |
-| LlamaIndex, OpenAI Agents SDK, AutoGen, Smolagents | schema-shared, not per-framework fixture (Tier 1–2 measured PASS) | Same envelope shim + `agent_or_node_id` rules apply. Case-by-case fixtures are added as dumps are validated. See [`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md) and [`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_TIER2_RESULTS.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_TIER2_RESULTS.md). |
+| LangChain / LangGraph | ✔ `tests/fixtures/openinference_langchain.json` | JSON-wrapped `TOOL` output unwrapped by adapter. |
+| CrewAI | ✔ `tests/fixtures/openinference_crewai.json` | `.run` / `._execute_core` suffixes stripped. |
+| LlamaIndex | schema-shared | SDK wraps returns in `{"blocks":[...], "raw_output":<orig>, ...}`; `entity_id` path needs `raw_output.` prefix. |
+| OpenAI Agents SDK | schema-shared | No envelope. |
+| AutoGen | schema-shared | `entity_id` not extractable (Python `str(dict)` is not valid JSON). |
+| Smolagents | schema-shared | `Tool.__call__` wrap; end-to-end cascade verified. |
 
-Pre-registration and mapping details: [`docs/OPENINFERENCE_ADAPTER_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_ADAPTER_PREREG.md).
+Full results and per-instrumentor path table: [`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md), [`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_TIER2_RESULTS.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_TIER2_RESULTS.md).
 
-### Registering your own tools (`clew.yaml`)
+### Registering your own tools
 
-LangChain / CrewAI users typically name their tools inside application code (`search_web`, `create_ticket`, …). Those names are not in Clew's built-in mapping, so a fresh trace shows `0 of N tools recognized` in the coverage banner and every waste pair drops into `unclassified`. Drop a `clew.yaml` next to your trace (or into `~/.clew/config.yaml`) to register them:
-
-```yaml
-version: 1
-
-tools:
-  search_web:
-    category: read_only
-  create_ticket:
-    category: side_effect
-  run_python:
-    category: payload_dependent
-  finalize:
-    category: declarative
-```
-
-Four categories, matching the report labels:
-
-| YAML value | Report category | Interval-scan role |
-|---|---|---|
-| `read_only` | `idempotent` | tool is treated as read-only when it appears between two calls |
-| `side_effect` | `side_effect` | tool counts as state-changing between two calls |
-| `payload_dependent` | `unclassified` (like `Bash`) | tool *might* have changed state; only observable from the payload |
-| `declarative` | `idempotent` (declarative bucket) | interval between calls not examined; repeating is not a waste question |
-
-Discovery order: `--config PATH` > `clew.yaml` walking up from the trace file (max 5 levels or git root) > `~/.clew/config.yaml`. First found wins — no merging.
-
-**User registration wins over built-in.** If you register `Bash: read_only`, that's the classification Clew uses. Three guardrails keep this visible rather than silent:
-
-1. A one-line stderr warning on every load: `clew.yaml overrides built-in mappings: Bash`. It lists tool names, not counts — so drift stays legible.
-2. The coverage banner splits `recognized` into `built-in / user / user-overriding-built-in`. The three counts always sum to `recognized`.
-3. The banner adds one line — *Precision bounds were measured on built-in mappings; user-registered tools are unverified.* — because the 88.43% Clopper–Pearson lower bound on `no_side_effect` was measured on Clew's own mapping. That number does not transfer to tools we haven't seen.
-
-Validation is fail-fast: unknown categories, missing `version` / `tools`, duplicate tool names, or reserved future-work fields (e.g. `id_regex_url:`, `entity_type:`) all abort with a clear message. No silent path.
-
-#### Registering entity-ID paths (`entity_id`)
-
-The report's *Duplicate creation check* section compares response IDs from two side-effect calls to distinguish "the tool ran twice but the same entity is referenced" (same ID) from "two different entities were created" (different IDs). Clew ships this for 26 built-in tools (notion / github / canvas / etc.). For your own side-effect tools, add an `entity_id` path so the same check works:
+LangChain / CrewAI apps typically name their tools inside application code (`search_web`, `create_ticket`). Register them so waste is not stuck in `unclassified`:
 
 ```yaml
 version: 1
 tools:
-  create_ticket:
-    category: side_effect
-    entity_id: response.ticket.id
+  search_web:    { category: read_only }
+  create_ticket: { category: side_effect, entity_id: response.ticket.id }
+  run_python:    { category: payload_dependent }
+  finalize:      { category: declarative }
 ```
 
-**Rules (fail-fast at load time):**
+Four categories, fail-fast validation, guardrails against advertising unmeasured paths. Details in [`docs/OPENINFERENCE_ADAPTER_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_ADAPTER_PREREG.md).
 
-- `entity_id` is only valid on `category: side_effect`. It must point to the ID of an entity your tool *newly creates* — not to an ID of an existing entity that was queried, opened, or listed. Registering `search_tickets` as `side_effect` just because it uses POST is a common misconfiguration.
-- Dot-path only (`response.ticket.id`). Bracket notation (`response[0].id`), wildcards (`response.*.id`), JSONPath (`$.response.id`), and numeric segments (`response.0.id`) are all rejected. Array indices were intentionally excluded because they invite a specific misconfiguration — `results[0].id` on a query API returns the first *searched* entity, not a newly created one.
-- Registering a path on a tool Clew already has a built-in ID mapping for (e.g. `notion-API-post-page`) raises an error: the built-in mapping takes precedence and the frozen 159/76/3197 Toolathlon distribution stays bit-identical.
+---
 
-**Path depends on the OpenInference instrumentor you use.**
+## Where it stands
 
-The path is whatever key structure lands in the tool span's `output.value`. Most instrumentors serialize your tool return value directly, so if `create_ticket` returns `{"ticket": {"id": "T-1"}}`, the path is `ticket.id`. Some instrumentors wrap the return in an envelope first, and the path needs the envelope prefix. Measured on Tier 1 investigation ([`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md) §5.2):
+### RedundancyBench (labeled ground truth)
 
-| Instrumentor | Path for a `{"ticket": {"id": ...}}` return |
-|---|---|
-| LangChain (`openinference-instrumentation-langchain`) | `ticket.id` |
-| CrewAI (`openinference-instrumentation-crewai`) | `ticket.id` |
-| OpenAI Agents (`openinference-instrumentation-openai-agents`) | `ticket.id` |
-| LlamaIndex (`openinference-instrumentation-llama-index`) | `raw_output.ticket.id` (SDK wraps returns in `{"blocks":[...], "raw_output":<orig>, ...}`) |
-| AutoGen (`openinference-instrumentation-autogen`) | **not extractable** — tool output is serialized as Python `str(dict)`, which is not valid JSON. `entity_id` registration cannot parse the response. |
-| Anthropic (direct SDK, `openinference-instrumentation-anthropic`) | **not extractable** — the instrumentor does not emit TOOL spans (Anthropic tool helpers are uninstrumented; see [Arize-ai/openinference#3392](https://github.com/Arize-ai/openinference/issues/3392)), so there is no `output.value` to read. |
+Human-labeled benchmark ([arXiv:2605.29893](https://arxiv.org/abs/2605.29893)). Same `evaluate.py` imported directly from the paper's repo, all four redundancy categories:
 
-Only instrumentors Clew has actually measured against a `dict`-returning tool are listed. If yours isn't here and the extraction ratio stderr line reports failures, open the trace JSON, find the tool span, and read the exact key path from its `output.value` — that's the entity_id.
+| | Clew (deterministic) | Best method in the paper (LLM-as-judge) |
+|---|---|---|
+| Step-level F1 | **0.2642** | 0.2488 |
+| Precision | 0.826 | n/a |
+| Recall | 0.157 | n/a |
 
-**Runtime signals:**
+F1 0.2642 vs the paper's best LLM-as-judge 0.2488, with zero model calls. Recall 0.157 is by design: one pattern (`repeat` / `requery`), precisely. The rest is deliberately out of scope; see *What Clew doesn't do*.
 
-- On every load, if the tail of your path looks like a request/session/trace identifier (`request_id`, `correlation_id`, `trace_id`, `span_id`, `session_id`, `call_id`, `run_id`, or `transaction_id`), Clew warns to stderr. `message_id` and `event_id` are legitimate entity IDs for email `send` and calendar `create_event` and are *not* flagged.
-- After the cascade runs, if any user-registered path failed to extract on some pairs, Clew prints per-tool ratios to stderr — `5/5 extractions failed (path likely misconfigured)` vs `1/8 extractions failed (partial — response variance)`. Silent extraction failures are not possible; every ratio > 0 shows up.
-- In the report's *Duplicate creation check*, results split into `built-in:` and `user-registered:` sub-lines when both are present, and a footnote appears: *Precision bounds on the built-in mappings were measured on Toolathlon; user-registered mappings are unverified.* Clew cannot statically verify that your path names the entity your tool creates — that is a claim you make.
+Precision 0.826 may be a lower bound on Clew's file-level precision: of the 22 false-positive spans against the human labels, 21 were exact input-and-output repeats that no annotator labeled under any category, and 6 had zero state change in between. We do not claim all 22 are true waste; the label is genuinely ambiguous there.
 
-Not in scope for this release: URL-tail regex, entity-type registration, and array-indexed paths.
+### trace-commons (28 real Claude Code sessions)
+
+Public dataset ([HF: trace-commons/agent-traces](https://huggingface.co/datasets/trace-commons/agent-traces)), full scan on 2026-07-19. **28 / 28** processed, **0 crashes**. **10 / 28** flagged (34 waste spans in the cascade output; 32 after the tool-error gate). Aggregate saving potential across the flagged sessions: **$1.01 to $10.12** (cache-hit lower to cache-miss upper). Per-session range: $0 (no waste) up to $0.64 to $6.40 (one 18-waste-span session).
+
+*Cost estimation is Claude Code only, and is estimated saving potential, not measured cost.* The formula is `amp_tokens_i = waste_tokens_i × turns_after_i`, with `lower_i = amp_tokens × cache_read_price` and `upper_i = amp_tokens × base_input_price`. The wasted output is re-consumed as input on every subsequent turn; that is where the number comes from. Other adapters (OTel, OpenInference, Toolathlon) still detect waste but do not populate the cache-token fields the amplification calculator needs.
+
+### Toolathlon (6,780 trajectories, cross-model scale)
+
+Clew ran unmodified over Toolathlon (22 frontier models × 3 runs, [arXiv:2510.25726](https://arxiv.org/abs/2510.25726), CC-BY-4.0). 176,270 tool spans, 8,042 duplicate pairs. Excluding the `idempotent` grey area leaves **4,249 pairs (2.41% of tool spans)**, roughly **3× the rate seen on Claude Code sessions (0.80%)**. The Canvas hero above is one of these.
+
+Duplicate creation check across the same corpus: **3,432 same-input side-effect pairs** scanned, **159 (4.63%) with differing entity IDs**, **76 (2.21%) with the same ID**, **3,197 (93.16%) without an extractable entity ID** (audit blind spot, not a verdict).
+
+Toolathlon ships pass/fail labels, not step-level ground truth. Per-model rates vary 54× (0.157 to 8.463 candidate density per trajectory). "Model X wastes N× more than model Y" is not a claim we make; task-mix and success-rate confounds are uncontrolled.
 
 ---
 
 ## What Clew doesn't do
 
-Explicit non-goals and known limits, in one place — some are pre-registered KILLs, others are scope decisions or blind spots surfaced by measurement:
-
-- **No fixes, only diagnosis.** The output is a report you read. Prompt changes, context caching, and tool-routing decisions are yours to make.
-- **No real-time interception.** The `args-only` real-time gate was retired after precision measured at 0.633 on labeled data (below the 0.70 threshold required for either auto-block or a confirm-prompt). Clew reads finished trace files, after the run.
-- **No `reread` detector.** Retired at 3.3% precision on the 30-pair RedundancyBench sample (see [`docs/REREAD_DETECTOR_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/REREAD_DETECTOR_PREREG.md) §11). The between-window sub-classification (above) is where reread-shape signal now lives, gated by sha256 identity rather than heuristic.
-- **Reasoning-level ping-pong (`pingpong`) is not shipped.** The code path exists but has fired only on synthetic traces — external corpora we've validated against surface no candidates, and the AGENT-span redefinition needed to open the LangGraph case is currently blocked pending data. Not KILLed; waiting for a corpus.
-- **Toolathlon is benchmark trajectories, not production sessions.** 22 frontier models × 3 runs is scale evidence, not user data. Per-model waste rates vary 54× across models, but "model X wastes N× more" would over-claim (no step-level labels, task-mix and success-rate confounds uncontrolled).
-- **Not all tools are mapped.** Coverage on Toolathlon is 26.4% (138 of 523 unique tool names). Unmapped tools reduce interval-scan tier precision and drop payload-dependent effects into `unclassified`. Coverage on your trace is surfaced in the report banner; the `clew.yaml` registration path is how you close the gap.
-- **Cost is estimated saving potential, not measured.** The amplification formula assumes wasted output is re-consumed each subsequent turn (structural upper bound); the range is cache-hit lower to cache-miss upper because the exact split is not observable from vendor usage.
+- **No fixes**, only diagnosis. The output is a report you read. Prompt changes, context caching, and tool routing are yours to make.
+- **No real-time interception.** The `args-only` real-time gate was retired at precision 0.633 on labeled data (below the 0.70 threshold required for either auto-block or a confirm-prompt). Clew reads finished trace files, after the run.
+- **No `reread` detector.** Retired at 3.3% precision on a 30-pair RedundancyBench sample: 29 of 30 same-path Read pairs were legitimate chunked reads at different `offset` / `limit` values. See [`docs/REREAD_DETECTOR_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/REREAD_DETECTOR_PREREG.md) §11.
+- **No reasoning-level `pingpong`.** Code path exists but has fired only on synthetic traces. Blocked pending an external corpus that surfaces it, not killed.
+- **Tool coverage is 26.4% on Toolathlon** (138 of 523 unique tool names). Unmapped tools drop into `unclassified` and reduce interval-scan tier precision. The banner shows coverage on your specific trace; `clew.yaml` closes the gap.
+- **Cost is estimated saving potential, not measured.** Amplification formula assumes wasted output is re-consumed each subsequent turn (structural upper bound). Cache-hit lower to cache-miss upper; the exact split is not observable from vendor usage. Sonnet pricing assumed.
+- **Toolathlon numbers are benchmark trajectories, not production sessions.** Scale evidence, not user data.
+- **459 same-argument `emails-send_email` pairs on Toolathlon are not proven duplicates.** The tool does not return an entity ID, so `Duplicate creation check` cannot resolve them. They sit in the 3,197 `no_id` blind spot, surfaced but not claimed as a finding.
+- **Semantic embedding does not carry the precision.** Same-topic real-world outputs do not cleanly separate in embedding space; the sha256 structural gate carries the precision result. We say so rather than imply the model is doing the work.
 
 ---
 
 ## How we keep ourselves honest
 
-This repo treats anti-self-deception as a working discipline, not a slogan:
+- **Pre-registration.** Every detection change is committed *before* results are run; predictions and stop-conditions are written first and not edited after.
+- **Frozen parameters.** `φ`, `N`, and the embedding model are pinned to a git tag; changing them requires a documented recalibration, never a post-hoc nudge.
+- **Published corrections.** Small-sample numbers that did not survive larger samples were retracted in the open (Toolathlon `1,343 → 1,195`, `4,251 → 4,249`; `"90% CI"` label corrected to `"95% two-sided"`). See [CHANGELOG.md](CHANGELOG.md).
+- **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues no synthetic test caught: session mid-run abort (3 / 28 crashes, recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false positives across 269 error responses, gated at the report layer). See [`docs/CC_TRANSCRIPT.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/CC_TRANSCRIPT.md) §29.
 
-- **Pre-registration.** Every detection change is committed *before* results are run, so the prediction carries an external timestamp. Predictions and stop-conditions are written first and not edited after seeing results.
-- **Frozen parameters.** `phi`, `N`, and the embedding model are pinned to a git tag; changing them requires a documented recalibration, never a post-hoc nudge.
-- **Published corrections.** When a small-sample number didn't survive a larger sample, we retracted it in the open. (An early "failed traces waste 2.6× more" held on 108 traces but collapsed across 7,116 — retracted. 18 of 22 models still show higher waste on failed traces, but no single multiplier holds.) The Toolathlon `side_effect` count was published as **1,343** in v0.3.0 — that number came from an earlier prototype classifier that included `terminal-run_command` and `local-python-execute` as side effects; the shipped `_enrich.py` treats those tools as `unclassified` (payload-dependent, effect not inferable from name), which produces **1,195**. Corrected here; `4,251` on the same line also adjusted to `4,249` for the same reason (2 additional pairs re-categorized as `idempotent`). The Clopper-Pearson lower bound for the 30/30 hand-labeled samples was printed as **"90% CI lower ≈ 88%"** — the value (88.43%) is correct but the label was wrong: it is the **95% two-sided** CI lower bound (2.5% each tail), not 90%. The direction was conservative (95% CI is wider), and this shipped convention is now standardized to "95% two-sided (2.5% each tail)" across all docs.
-- **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues that no synthetic test caught: session mid-run abort (3/28 crashes → recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false-positives across 269 error responses → gated at the report layer, cascade unchanged). Both are recorded in [`docs/CC_TRANSCRIPT.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/CC_TRANSCRIPT.md) §29.
-- **Disclosed limits.** The semantic embedding layer does not cleanly separate same-topic real-world outputs — the `sha256` structural gate carries the precision result, not the embedding. We say so rather than imply the model is doing the work.
-
-**459 tests**, CI on every PR, frozen parameters enforced as failing tests.
+459 tests, CI on every PR, frozen parameters enforced as failing tests.
 
 ---
 
 ## Install
 
-> **Note:** the bare name `clew` on PyPI is an unrelated placeholder — don't install that. This project is published as `clew-custos` (the module still imports as `clew`).
+`[detect]` (default, lightweight; no torch): sha256 structural gate. Covers Claude Code, Toolathlon, RedundancyBench, and any OTel / OpenInference trace whose duplicated work sits at the tool layer. This is where every empirically validated detection so far comes from.
 
-```bash
-pip install "clew-custos[detect]"
-```
-
-**What `[detect]` covers vs. what `[semantic]` adds:**
-
-- **`[detect]`** (default, lightweight — no torch): tool-call repeat / requery
-  detection via the sha256 structural gate. Works on Claude Code JSONL, Toolathlon,
-  RedundancyBench, and any OTel/OpenInference trace whose duplicated work sits at the
-  tool layer. This is where every empirically validated detection so far comes from.
-- **`[semantic]`** (optional, ~2 GB with CUDA torch): adds the cosine gate for
-  non-tool spans (cos ≥ φ), required for LangGraph chain-node paraphrase duplication
-  (same node running twice with reworded but semantically overlapping output). The
-  pingpong code path also flows through this gate — see the honesty note above; it has
-  fired only on synthetic traces so far.
+`[semantic]` (optional, ~2 GB with CUDA torch): adds the cosine gate for non-tool spans. Required for LangGraph chain-node paraphrase duplication.
 
 ```bash
 pip install "clew-custos[semantic]"
 ```
 
-On Linux, PyPI's default torch wheel pulls the CUDA stack (~2 GB). To use CPU-only
-torch, install it first from the PyTorch CPU index:
+CPU-only torch on Linux:
 
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install "clew-custos[semantic]"
 ```
 
-Or from source:
+From source:
 
 ```bash
 pip install "clew-custos[detect] @ git+https://github.com/JEONSEWON/Clew-by-Custos.git"
 ```
 
-Requires Python ≥ 3.12.
+Requires Python `≥ 3.12`.
 
 ## Use
 
@@ -417,9 +235,9 @@ python -m clew analyze path/to/trace.jsonl --out report.md
 
 - Input: any auto-detected format from the table above.
 - `--out` writes Markdown; `--json` writes structured output; `--no-snippets` omits output excerpts.
-- Exit `0` whether or not waste is found; `1` on missing file / schema error / missing detect dependencies.
+- Exit `0` whether or not waste is found; `1` on missing file, schema error, or missing detect dependencies.
 
-For your own Claude Code sessions, transcripts live at `~/.claude/projects/<slug>/<uuid>.jsonl`.
+Your Claude Code transcripts are at `~/.claude/projects/<slug>/<uuid>.jsonl`.
 
 ---
 
@@ -427,4 +245,4 @@ For your own Claude Code sessions, transcripts live at `~/.claude/projects/<slug
 
 MIT. Built under **Custos**.
 
-External datasets referenced here (Toolathlon CC-BY-4.0, RedundancyBench MIT, trace-commons per its HF card) are analyzed locally and never redistributed in this repo.
+External datasets referenced here (Toolathlon CC-BY-4.0, RedundancyBench MIT, trace-commons per its HF card) are analyzed locally and never redistributed.
