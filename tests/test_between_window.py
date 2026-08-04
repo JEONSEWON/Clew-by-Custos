@@ -551,7 +551,13 @@ def test_readme_example_matches_current_render_structure():
 
     # Extract the first fenced code block that starts with the "Result" banner
     # and includes the "Waste detection: N wasteful span(s)." line.
-    m = re.search(r"```\s*\n(Result\s*\n.*?Waste detection:.*?)```", readme, re.S)
+    # v0.4.1: fenced example now pastes the actual renderer output verbatim,
+    # so it may include `## ` heading prefix and `**bold**` markers.
+    m = re.search(
+        r"```\s*\n((?:##\s+)?Result\s*\n.*?\*{0,2}Waste detection\*{0,2}:.*?)```",
+        readme,
+        re.S,
+    )
     assert m, (
         "README must contain a fenced 'Result / Waste detection:' example."
     )

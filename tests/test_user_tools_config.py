@@ -488,6 +488,28 @@ def test_no_local_docs_path_left_in_user_facing_messages():
     )
 
 
+def test_no_local_docs_path_left_in_readme():
+    """§5.6 companion: README.md is `readme = "README.md"` in pyproject.toml,
+    so it becomes the PyPI project description — pip users see it without a
+    docs/ tree. Any `docs/*.md` reference inside a link URL (i.e. the target
+    of a Markdown link `](docs/...)`) breaks for those users.
+
+    Guard: no `](docs/<...>.md` sequence may appear in README.md. Bare
+    references like ``docs/CC_TRANSCRIPT.md §29`` outside a link are allowed
+    (they are locators, not links)."""
+    import re
+    from pathlib import Path
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    # Match markdown link URL that points at a relative docs/*.md path.
+    offenders = re.findall(r"\]\(docs/[A-Za-z0-9_/-]+\.md[^)]*\)", readme)
+    assert not offenders, (
+        "README.md contains relative `](docs/...)` links — pip users see this "
+        "as PyPI long_description and have no docs/ tree. Use the GitHub URL "
+        "(https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/...) "
+        "instead. Offenders:\n" + "\n".join(offenders)
+    )
+
+
 def test_entity_id_messages_use_github_url_and_one_line_summary():
     """§5.6 companion: the three affected messages carry the GitHub URL and
     surface a one-line 요지 before the URL. Failing this test signals someone

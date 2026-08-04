@@ -618,13 +618,28 @@ def test_readme_has_entity_id_path_per_framework_table():
     assert "raw_output.ticket.id" in readme, (
         "README must show LlamaIndex envelope prefix explicitly."
     )
-    # Guardrail: unmeasured framework paths must not be advertised.
-    assert "Anthropic" not in readme.split("Path depends on the OpenInference")[1].split("Runtime signals")[0], (
-        "README table must not list Anthropic (FAIL — no tool span emitted)."
-    )
-    assert "AutoGen" not in readme.split("Path depends on the OpenInference")[1].split("Runtime signals")[0], (
-        "README table must not list AutoGen (FAIL — Python str(dict) is invalid JSON)."
-    )
+    # Guardrail: FAILing frameworks may appear in the table ONLY if they
+    # explicitly carry a "not extractable" marker (i.e. documented as
+    # unusable, not advertised as a working path). Silent inclusion of a
+    # framework name as if it were supported must fail.
+    section = readme.split("Path depends on the OpenInference")[1].split("Runtime signals")[0]
+    # Extract the entity_id table rows only (between the header row and the
+    # closing paragraph "Only instrumentors Clew has actually measured…").
+    table = section.split("Only instrumentors Clew has actually measured")[0]
+    for framework, reason in (
+        ("Anthropic", "no tool span emitted"),
+        ("AutoGen", "Python str(dict) is invalid JSON"),
+    ):
+        if framework in table:
+            # Must appear in a row that also says "not extractable".
+            rows = [r for r in table.splitlines() if framework in r]
+            assert rows, f"internal: expected row containing {framework}"
+            for r in rows:
+                assert "not extractable" in r, (
+                    f"README entity_id table lists {framework} without a "
+                    f"'not extractable' marker (reason: {reason}). Either "
+                    f"remove the row or mark it as unsupported."
+                )
     # Fallback guidance must point users at the trace JSON when their
     # instrumentor isn't in the table.
     assert "output.value" in readme.split("Path depends on the OpenInference")[1].split("Runtime signals")[0]
