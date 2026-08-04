@@ -11,32 +11,43 @@ python -m clew analyze ~/.claude/projects/<slug>/<uuid>.jsonl --out report.md
 
 Ran on 6,780 public benchmark traces: 8,042 duplicate calls detected — including 459 same-argument email sends. (Detection, not confirmed impact.)
 
-Real excerpt from a public Claude Code session (`09d9abe9`, 258 turns; local path abbreviated, numbers unchanged):
+**No instrumentation. No SDK. No code changes.** Clew reads trace files your agent already writes — Claude Code JSONL, OpenTelemetry SDK JSON, OpenInference (Phoenix / TRAIL), or its own native JSON.
+
+Actual output on a public Claude Code session (`09d9abe9`, 258 turns; produced by `python -m clew analyze <path>.jsonl`, v0.4.1):
 
 ```
-Result
+## Result
 
-- Waste detection: 1 wasteful span(s).
+- **Waste detection**: 1 wasteful span(s).
 
-- wasted spans: 1
-- category breakdown: 0 error_repeat, 0 side_effect, 1 idempotent, 0 unclassified
-- Tool mapping coverage for this trace: 6 of 6 tools recognized (100.0%).
-- Idempotent pairs with unrecognized tool in interval: 0 of 1.
-- Redundant-invocation candidates: 1 idempotent pairs. No verdict is rendered — refer to context and judge whether each was intentional.
+- **wasted spans**: 1
+- **category breakdown**: 0 error_repeat, 0 side_effect, 1 idempotent, 0 unclassified
+- **Tool mapping coverage for this trace**: 6 of 6 tools recognized (100.0%).
+- **Idempotent pairs with unrecognized tool in interval**: 0 of 1.
+- **Redundant-invocation candidates**: 1 idempotent pairs. No verdict is rendered — refer to context and judge whether each was intentional.
   - idempotent 1 — 0 with no state change indicated, 0 with high tool volume, 1 with writes to other targets
     - indicated, by tool identity: declarative 0
     - indicated, by interval scan: no_side_effect 0; payload_dependent 0
     - writes to other targets: targeted_writes 1
       - Validated on Toolathlon: 28/30 hand-labeled TRUE (95% two-sided Clopper-Pearson lower ≈ 77.93%). Two write-then-revert observed.
-  - Whether these were wasted invocations is a user judgment; the tool records only the observation.
+  - _Whether these were wasted invocations is a user judgment; the tool records only the observation._
+- **wasted output re-consumed across 200 subsequent turns** in total (amplification tokens = 87800)
+- **estimated cost impact**: $0.026340 ~ $0.263400 (cache-hit lower to cache-miss upper, estimated)
+- **events counted**: 1 (skipped 0 prev==next retry, 0 without metadata, 0 error-response spans)
 
-### 1. [idempotent] requery — Read on `.../boot.ts`
-- turns: turn 50 → re-run at turn 58 (of 258 total)
-- state: No modification of this file in between — re-read output is unchanged.
-- between_window: `targeted_writes` — State-changing tools were invoked in the interval, targeting other resources; this reread's output is unchanged from the first call.
-- re-consumed across 200 subsequent turns (≈439 tokens/turn → 87800 amplification tokens)
-- estimated cost impact: $0.026340 ~ $0.263400 (cache-hit to cache-miss)
+## Wasted Span Details
+
+### 1. [idempotent] requery — Read on `d:\Pseudo-OS\src\ts\screen\boot.ts`
+
+- **turns**: turn 50 → re-run at turn 58 (of 258 total)
+- **cosine**: 1.0000
+- **state**: No modification of this file in between — re-read output is unchanged.
+- **between_window**: `targeted_writes` — State-changing tools were invoked in the interval, targeting other resources; this reread's output is unchanged from the first call.
+- **re-consumed across 200 subsequent turns** (≈439 tokens/turn → 87800 amplification tokens)
+- **estimated cost impact**: $0.026340 ~ $0.263400 (cache-hit to cache-miss)
 ```
+
+*(The bulleted `Duplicate creation check` line is rendered under `## Result` when a trace has candidates — this session has none, so it appears only in the section below.)*
 
 Deterministic, no LLM in the loop. Every span in the session was `200 OK`; the trace stayed green. Clew reads the finished session and points at the redundant step.
 
@@ -77,25 +88,25 @@ The mapping is by **exact tool name**, never inferred from name substrings.
 
 ### Idempotent sub-classification (`between_window`)
 
-Since v0.3.2, the `idempotent` category is split further into a 5-value `between_window` label — the report now tells you **which evidence supports** the "no state change between calls" claim, rather than lumping every idempotent re-run together.
+As of v0.4.1, the `idempotent` category is split into a 5-value `between_window` label — the report now tells you **which evidence supports** the "no state change between calls" claim, rather than lumping every idempotent re-run together.
 
-Like the category labels, `between_window` is a report-only annotation — what gets flagged as waste is unchanged (verified bit-identical; see [`docs/GREYZONE_EXPANSION_PREREG.md`](docs/GREYZONE_EXPANSION_PREREG.md) §9.8).
+Like the category labels, `between_window` is a report-only annotation — what gets flagged as waste is unchanged (verified bit-identical; see [`docs/GREYZONE_EXPANSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_EXPANSION_PREREG.md) §9.8).
 
 The 5 values, grouped by evidence:
 
 - **Grouped as "no state change indicated" in the report:**
   - **`declarative`** — the tool itself is declarative or idempotent by name (`local-claim_done`, `filesystem-create_directory`); repeating it is not a waste question. The interval between calls is not examined.
-  - **`no_side_effect`** — no state-changing tool sits between the two calls. **Hand-labeled sample: 30/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 88.43%; see [`docs/GREYZONE_EXPANSION_PREREG.md`](docs/GREYZONE_EXPANSION_PREREG.md) §2.1).
+  - **`no_side_effect`** — no state-changing tool sits between the two calls. **Hand-labeled sample: 30/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 88.43%; see [`docs/GREYZONE_EXPANSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_EXPANSION_PREREG.md) §2.1).
   - **`payload_dependent`** — a payload-dependent tool sits between (`Bash`, `terminal-run_command`, `snowflake-write_query`, …); the tool cannot infer from name whether it changed state. **Hand-labeled sample: 30/30 TRUE** (same CI note).
 - **Grouped as "high_volume" in the report:**
-  - **`high_volume`** — a state-changing tool is present AND ≥ 20 tool spans lie between the calls. **Hand-labeled sample: 29/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 82.78%). One case was a same-target repeated write with unchanged content (a `.tex` file rewritten three times with the same sha256). Grouped separately from `targeted_writes` (28/30, 77.93% lower bound) — its evidence is stronger, so it renders in a higher tier. **This tier has the highest mapping-coverage dependence of the five** — 51.4% of `high_volume` pairs on Toolathlon had at least one unrecognized tool in the interval (structural consequence of the ≥ 20 threshold: the wider the interval, the higher the chance an unrecognized tool appears). The 29/30 verdict itself is result-based (`sha256` identity) and unaffected by that dependence — see the Tool mapping coverage section below. Full details: [`docs/GREYZONE_B23_EXTENSION_PREREG.md`](docs/GREYZONE_B23_EXTENSION_PREREG.md), [`docs/COVERAGE_TRANSPARENCY_PREREG.md`](docs/COVERAGE_TRANSPARENCY_PREREG.md).
+  - **`high_volume`** — a state-changing tool is present AND ≥ 20 tool spans lie between the calls. **Hand-labeled sample: 29/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 82.78%). One case was a same-target repeated write with unchanged content (a `.tex` file rewritten three times with the same sha256). Grouped separately from `targeted_writes` (28/30, 77.93% lower bound) — its evidence is stronger, so it renders in a higher tier. **This tier has the highest mapping-coverage dependence of the five** — 51.4% of `high_volume` pairs on Toolathlon had at least one unrecognized tool in the interval (structural consequence of the ≥ 20 threshold: the wider the interval, the higher the chance an unrecognized tool appears). The 29/30 verdict itself is result-based (`sha256` identity) and unaffected by that dependence — see the Tool mapping coverage section below. Full details: [`docs/GREYZONE_B23_EXTENSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_B23_EXTENSION_PREREG.md), [`docs/COVERAGE_TRANSPARENCY_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/COVERAGE_TRANSPARENCY_PREREG.md).
 - **Grouped as "writes to other targets" in the report:**
-  - **`targeted_writes`** — a state-changing tool with a specific target is between the two calls. **Hand-labeled sample: 28/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 77.93%). Two cases were write-then-revert: a `.tex` file and a `.md` file each restored to origin content after intermediate modifications. Grouped separately from `no_side_effect` and `payload_dependent` (30/30 each, 88.43% lower bound) because the evidence strength differs — two of thirty sampled pairs were write-then-revert; neither of the other two categories showed any in their own 30-pair samples. See [`docs/GREYZONE_B21_EXTENSION_PREREG.md`](docs/GREYZONE_B21_EXTENSION_PREREG.md).
+  - **`targeted_writes`** — a state-changing tool with a specific target is between the two calls. **Hand-labeled sample: 28/30 TRUE** (95% two-sided Clopper-Pearson lower bound ≈ 77.93%). Two cases were write-then-revert: a `.tex` file and a `.md` file each restored to origin content after intermediate modifications. Grouped separately from `no_side_effect` and `payload_dependent` (30/30 each, 88.43% lower bound) because the evidence strength differs — two of thirty sampled pairs were write-then-revert; neither of the other two categories showed any in their own 30-pair samples. See [`docs/GREYZONE_B21_EXTENSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_B21_EXTENSION_PREREG.md).
 
 Aggregate on Toolathlon (3,791 idempotent pairs):
 `declarative 1,226` / `no_side_effect 888` / `payload_dependent 405` / `targeted_writes 248` / `high_volume 1,024`.
 
-Report shows three top-level tiers rendered as four aggregate lines (the `indicated` tier splits into `by tool identity` and `by interval scan` sub-lines), ordered by evidence strength (`indicated` 88.43% → `high_volume` 82.78% → `writes to other targets` 77.93%); the tool does not render a final waste verdict. Whether a given idempotent re-run was actually wasted remains your judgment given your execution context. Pre-registration, priority rule (V2), and reproduction evidence: [`docs/GREYZONE_EXPANSION_PREREG.md`](docs/GREYZONE_EXPANSION_PREREG.md). Per-tier extensions: [`docs/GREYZONE_B21_EXTENSION_PREREG.md`](docs/GREYZONE_B21_EXTENSION_PREREG.md) (`targeted_writes`), [`docs/GREYZONE_B23_EXTENSION_PREREG.md`](docs/GREYZONE_B23_EXTENSION_PREREG.md) (`high_volume`).
+Report shows three top-level tiers rendered as four aggregate lines (the `indicated` tier splits into `by tool identity` and `by interval scan` sub-lines), ordered by evidence strength (`indicated` 88.43% → `high_volume` 82.78% → `writes to other targets` 77.93%); the tool does not render a final waste verdict. Whether a given idempotent re-run was actually wasted remains your judgment given your execution context. Pre-registration, priority rule (V2), and reproduction evidence: [`docs/GREYZONE_EXPANSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_EXPANSION_PREREG.md). Per-tier extensions: [`docs/GREYZONE_B21_EXTENSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_B21_EXTENSION_PREREG.md) (`targeted_writes`), [`docs/GREYZONE_B23_EXTENSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_B23_EXTENSION_PREREG.md) (`high_volume`).
 
 **Honest scope for Claude Code users:** on 28 real Claude Code sessions only **16 pairs land in `idempotent`, and 56% of those fall into `high_volume`** (long intervals between rereads push them past the ≥ 20 threshold). In practice this sub-classification's yield concentrates on multi-tool environments (Toolathlon-like); a single Claude Code session usually leaves most idempotent pairs in the `high_volume` tier. The 82.78% lower bound applies to the Toolathlon 30-pair hand-labeled sample, not to Claude Code sessions — cross-population inference is a separate measurement. Threshold-20 revisit reserved for a separate pre-registration.
 
@@ -105,11 +116,11 @@ The `between_window` classification is **relative to Clew's tool mapping** — t
 
 The report banner at the top of each waste report surfaces this: one line for the trace's mapping coverage, and (when there is at least one idempotent pair) a second line for how many of those pairs had an unrecognized tool in the interval.
 
-**On the Toolathlon benchmark** (2026-07-29 measurement, `docs/COVERAGE_TRANSPARENCY_PREREG.md`):
+**On the Toolathlon benchmark** (2026-07-29 measurement, [`docs/COVERAGE_TRANSPARENCY_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/COVERAGE_TRANSPARENCY_PREREG.md)):
 - 138 of 523 unique tool names are recognized — **26.4% coverage**.
 - Of the 3,791 report-shown idempotent pairs, 1,376 (36.30%) had at least one unrecognized tool in the interval. Per tier: `declarative` 34.9%, `no_side_effect` 21.3%, `payload_dependent` 34.1%, `targeted_writes` 38.3%, **`high_volume` 51.4%** (highest, structural consequence of the ≥ 20 span threshold).
 
-**What this means for verdicts.** Verdicts are based on `sha256(output_A) == sha256(output_B)`, which is a **result-based** check ([`docs/GREYZONE_B21_EXTENSION_PREREG.md`](docs/GREYZONE_B21_EXTENSION_PREREG.md) §a inherited from (b-2-1)). If the reread output is unchanged, the pair is flagged regardless of whether an unrecognized tool sat between the calls. So the hand-labeled TRUE rates (30/30, 30/30, 28/30, 29/30) and their Clopper-Pearson lower bounds (88.43% / 88.43% / 77.93% / 82.78%) are unaffected by mapping coverage — they were always about result identity, not about tool inventory.
+**What this means for verdicts.** Verdicts are based on `sha256(output_A) == sha256(output_B)`, which is a **result-based** check ([`docs/GREYZONE_B21_EXTENSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_B21_EXTENSION_PREREG.md) §a inherited from (b-2-1)). If the reread output is unchanged, the pair is flagged regardless of whether an unrecognized tool sat between the calls. So the hand-labeled TRUE rates (30/30, 30/30, 28/30, 29/30) and their Clopper-Pearson lower bounds (88.43% / 88.43% / 77.93% / 82.78%) are unaffected by mapping coverage — they were always about result identity, not about tool inventory.
 
 **What this means for tier labels.** The tier a pair lands in *does* depend on mapping. A pair with an unrecognized state-changing tool in the interval will land in `no_side_effect` instead of `targeted_writes` or `payload_dependent`. That is a label-precision limitation, not a false verdict. The banner surfaces this so a user reading "no waste detected" on a low-coverage trace does not mistake it for "we are clean" — the reassurance is honest only within the mapped subset.
 
@@ -124,7 +135,7 @@ Clew ships two detectors with opposite logic:
 | **Waste detection** | Both responses byte-identical | Same result — the second call was redundant. Right for reads. |
 | **Duplicate creation check** | Two entity IDs differ | Different entities — two things really were created. Right for creation tools. |
 
-The waste detector excludes creation-tool pairs by design — if two `notion-API-post-page` calls create two different pages, they carry different IDs, so byte identity fails and the detector doesn't flag them. The `Duplicate creation check` section in the report scans that excluded pool separately, using per-tool entity-ID extraction (26 tools currently mapped, see `docs/ID_BRIDGE_PRODUCTION_PREREG.md` §1.1).
+The waste detector excludes creation-tool pairs by design — if two `notion-API-post-page` calls create two different pages, they carry different IDs, so byte identity fails and the detector doesn't flag them. The `Duplicate creation check` section in the report scans that excluded pool separately, using per-tool entity-ID extraction (26 tools currently mapped, see [`docs/ID_BRIDGE_PRODUCTION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/ID_BRIDGE_PRODUCTION_PREREG.md) §1.1).
 
 **On the Toolathlon benchmark** (2026-07-29 measurement):
 - 3,432 same-input side-effect pairs scanned.
@@ -246,9 +257,9 @@ Auto-instrumented agent frameworks emit spans through the OpenInference schema (
 |---|---|---|
 | LangChain / LangGraph | ✔ `tests/fixtures/openinference_langchain.json` | `TOOL` output arrives JSON-wrapped (`{"type":"tool","data":{"content":…}}`); the adapter unwraps to raw content. `AGENT` spans lack `graph.node.id` here, so `span_name` is used. |
 | CrewAI | ✔ `tests/fixtures/openinference_crewai.json` | `TOOL` `span_name` has a `.run` suffix (`search_web.run`); the adapter prefers `tool.name` (`search_web`). `AGENT` `span_name` has a `._execute_core` suffix; the adapter prefers `graph.node.id` (`Web Researcher`). |
-| Other OpenInference-instrumented agents (AutoGen, LlamaIndex, OpenAI Agents SDK, etc.) | schema-shared, not per-framework fixture | Same envelope shim + `agent_or_node_id` rules apply. Case-by-case fixtures are added as dumps are validated. |
+| LlamaIndex, OpenAI Agents SDK, AutoGen, Smolagents | schema-shared, not per-framework fixture (Tier 1–2 measured PASS) | Same envelope shim + `agent_or_node_id` rules apply. Case-by-case fixtures are added as dumps are validated. See [`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md) and [`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_TIER2_RESULTS.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_TIER2_RESULTS.md). |
 
-Pre-registration and mapping details: [`docs/OPENINFERENCE_ADAPTER_PREREG.md`](docs/OPENINFERENCE_ADAPTER_PREREG.md).
+Pre-registration and mapping details: [`docs/OPENINFERENCE_ADAPTER_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_ADAPTER_PREREG.md).
 
 ### Registering your own tools (`clew.yaml`)
 
@@ -307,7 +318,7 @@ tools:
 
 **Path depends on the OpenInference instrumentor you use.**
 
-The path is whatever key structure lands in the tool span's `output.value`. Most instrumentors serialize your tool return value directly, so if `create_ticket` returns `{"ticket": {"id": "T-1"}}`, the path is `ticket.id`. Some instrumentors wrap the return in an envelope first, and the path needs the envelope prefix. Measured on Tier 1 investigation ([`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md`](docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md) §5.2):
+The path is whatever key structure lands in the tool span's `output.value`. Most instrumentors serialize your tool return value directly, so if `create_ticket` returns `{"ticket": {"id": "T-1"}}`, the path is `ticket.id`. Some instrumentors wrap the return in an envelope first, and the path needs the envelope prefix. Measured on Tier 1 investigation ([`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md) §5.2):
 
 | Instrumentor | Path for a `{"ticket": {"id": ...}}` return |
 |---|---|
@@ -315,6 +326,8 @@ The path is whatever key structure lands in the tool span's `output.value`. Most
 | CrewAI (`openinference-instrumentation-crewai`) | `ticket.id` |
 | OpenAI Agents (`openinference-instrumentation-openai-agents`) | `ticket.id` |
 | LlamaIndex (`openinference-instrumentation-llama-index`) | `raw_output.ticket.id` (SDK wraps returns in `{"blocks":[...], "raw_output":<orig>, ...}`) |
+| AutoGen (`openinference-instrumentation-autogen`) | **not extractable** — tool output is serialized as Python `str(dict)`, which is not valid JSON. `entity_id` registration cannot parse the response. |
+| Anthropic (direct SDK, `openinference-instrumentation-anthropic`) | **not extractable** — the instrumentor does not emit TOOL spans (Anthropic tool helpers are uninstrumented; see [Arize-ai/openinference#3392](https://github.com/Arize-ai/openinference/issues/3392)), so there is no `output.value` to read. |
 
 Only instrumentors Clew has actually measured against a `dict`-returning tool are listed. If yours isn't here and the extraction ratio stderr line reports failures, open the trace JSON, find the tool span, and read the exact key path from its `output.value` — that's the entity_id.
 
@@ -328,6 +341,20 @@ Not in scope for this release: URL-tail regex, entity-type registration, and arr
 
 ---
 
+## What Clew doesn't do
+
+Explicit non-goals and known limits, in one place — some are pre-registered KILLs, others are scope decisions or blind spots surfaced by measurement:
+
+- **No fixes, only diagnosis.** The output is a report you read. Prompt changes, context caching, and tool-routing decisions are yours to make.
+- **No real-time interception.** The `args-only` real-time gate was retired after precision measured at 0.633 on labeled data (below the 0.70 threshold required for either auto-block or a confirm-prompt). Clew reads finished trace files, after the run.
+- **No `reread` detector.** Retired at 3.3% precision on the 30-pair RedundancyBench sample (see [`docs/REREAD_DETECTOR_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/REREAD_DETECTOR_PREREG.md) §11). The between-window sub-classification (above) is where reread-shape signal now lives, gated by sha256 identity rather than heuristic.
+- **Reasoning-level ping-pong (`pingpong`) is not shipped.** The code path exists but has fired only on synthetic traces — external corpora we've validated against surface no candidates, and the AGENT-span redefinition needed to open the LangGraph case is currently blocked pending data. Not KILLed; waiting for a corpus.
+- **Toolathlon is benchmark trajectories, not production sessions.** 22 frontier models × 3 runs is scale evidence, not user data. Per-model waste rates vary 54× across models, but "model X wastes N× more" would over-claim (no step-level labels, task-mix and success-rate confounds uncontrolled).
+- **Not all tools are mapped.** Coverage on Toolathlon is 26.4% (138 of 523 unique tool names). Unmapped tools reduce interval-scan tier precision and drop payload-dependent effects into `unclassified`. Coverage on your trace is surfaced in the report banner; the `clew.yaml` registration path is how you close the gap.
+- **Cost is estimated saving potential, not measured.** The amplification formula assumes wasted output is re-consumed each subsequent turn (structural upper bound); the range is cache-hit lower to cache-miss upper because the exact split is not observable from vendor usage.
+
+---
+
 ## How we keep ourselves honest
 
 This repo treats anti-self-deception as a working discipline, not a slogan:
@@ -335,10 +362,10 @@ This repo treats anti-self-deception as a working discipline, not a slogan:
 - **Pre-registration.** Every detection change is committed *before* results are run, so the prediction carries an external timestamp. Predictions and stop-conditions are written first and not edited after seeing results.
 - **Frozen parameters.** `phi`, `N`, and the embedding model are pinned to a git tag; changing them requires a documented recalibration, never a post-hoc nudge.
 - **Published corrections.** When a small-sample number didn't survive a larger sample, we retracted it in the open. (An early "failed traces waste 2.6× more" held on 108 traces but collapsed across 7,116 — retracted. 18 of 22 models still show higher waste on failed traces, but no single multiplier holds.) The Toolathlon `side_effect` count was published as **1,343** in v0.3.0 — that number came from an earlier prototype classifier that included `terminal-run_command` and `local-python-execute` as side effects; the shipped `_enrich.py` treats those tools as `unclassified` (payload-dependent, effect not inferable from name), which produces **1,195**. Corrected here; `4,251` on the same line also adjusted to `4,249` for the same reason (2 additional pairs re-categorized as `idempotent`). The Clopper-Pearson lower bound for the 30/30 hand-labeled samples was printed as **"90% CI lower ≈ 88%"** — the value (88.43%) is correct but the label was wrong: it is the **95% two-sided** CI lower bound (2.5% each tail), not 90%. The direction was conservative (95% CI is wider), and this shipped convention is now standardized to "95% two-sided (2.5% each tail)" across all docs.
-- **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues that no synthetic test caught: session mid-run abort (3/28 crashes → recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false-positives across 269 error responses → gated at the report layer, cascade unchanged). Both are recorded in `docs/CC_TRANSCRIPT.md` §29.
+- **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues that no synthetic test caught: session mid-run abort (3/28 crashes → recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false-positives across 269 error responses → gated at the report layer, cascade unchanged). Both are recorded in [`docs/CC_TRANSCRIPT.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/CC_TRANSCRIPT.md) §29.
 - **Disclosed limits.** The semantic embedding layer does not cleanly separate same-topic real-world outputs — the `sha256` structural gate carries the precision result, not the embedding. We say so rather than imply the model is doing the work.
 
-**433 tests**, CI on every PR, frozen parameters enforced as failing tests.
+**459 tests**, CI on every PR, frozen parameters enforced as failing tests.
 
 ---
 

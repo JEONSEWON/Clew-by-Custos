@@ -323,7 +323,13 @@ def test_readme_example_has_coverage_banner():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
     readme = (root / "README.md").read_text(encoding="utf-8")
-    m = re.search(r"```\s*\n(Result\s*\n.*?Waste detection:.*?)```", readme, re.S)
+    # v0.4.1: fenced example uses the actual renderer output — includes
+    # `## Result` heading and `**Waste detection**:` bold markers.
+    m = re.search(
+        r"```\s*\n((?:##\s+)?Result\s*\n.*?\*{0,2}Waste detection\*{0,2}:.*?)```",
+        readme,
+        re.S,
+    )
     assert m, (
         "README must contain a fenced 'Result / Waste detection:' example. "
         "See docs/COVERAGE_TRANSPARENCY_PREREG.md §5 (regenerate from a "
