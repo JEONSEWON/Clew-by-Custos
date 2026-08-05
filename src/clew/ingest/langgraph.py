@@ -130,6 +130,18 @@ def _token_count_of(attrs: dict[str, Any]) -> int | None:
     return int(v) if v is not None else None
 
 
+def _token_count_prompt(attrs: dict[str, Any]) -> int | None:
+    """OpenInference `llm.token_count.prompt` (input side). None if absent."""
+    v = attrs.get("llm.token_count.prompt")
+    return int(v) if v is not None else None
+
+
+def _token_count_completion(attrs: dict[str, Any]) -> int | None:
+    """OpenInference `llm.token_count.completion` (output side). None if absent."""
+    v = attrs.get("llm.token_count.completion")
+    return int(v) if v is not None else None
+
+
 def _model_of(attrs: dict[str, Any]) -> str | None:
     v = attrs.get("llm.model_name") or attrs.get("llm.provider")
     return str(v) if v is not None else None
@@ -139,6 +151,8 @@ def otel_spans_to_trace(
     spans: Sequence["ReadableSpan"],
     *,
     cost_table: dict[str, float] | None = None,
+    input_cost_table: dict[str, float] | None = None,
+    output_cost_table: dict[str, float] | None = None,
     source_tag: str = "otel_adapter",
 ) -> Trace:
     """OTel ReadableSpan list -> canonical `Trace`.
@@ -164,6 +178,11 @@ def otel_spans_to_trace(
     trace_id_hex = _hex_trace(next(iter(trace_id_ints)))
 
     converted: list[Span] = []
+    # Context Resend Detector prereg §3: capture LLM input/token/rate at ingest
+    # time, keyed by span_id. Consumed by preprocess (collapse_llm_spans) to build
+    # the final trace.metadata["llm_calls"] list before LLM spans are removed.
+    llm_extras: dict[str, dict[str, Any]] = {}
+
     for s in spans:
         attrs: dict[str, Any] = dict(s.attributes or {})
         span_kind = _kind_of(attrs)
@@ -179,10 +198,26 @@ def otel_spans_to_trace(
         if cost_table and model and model in cost_table:
             cost_rate = float(cost_table[model])
 
+        span_id_hex = _hex_span(s.context.span_id)
+
+        if span_kind == "llm":
+            input_cost_rate: float | None = None
+            if input_cost_table and model and model in input_cost_table:
+                input_cost_rate = float(input_cost_table[model])
+            output_cost_rate: float | None = None
+            if output_cost_table and model and model in output_cost_table:
+                output_cost_rate = float(output_cost_table[model])
+            llm_extras[span_id_hex] = {
+                "input_tokens": _token_count_prompt(attrs),
+                "output_tokens": _token_count_completion(attrs),
+                "input_cost_rate": input_cost_rate,
+                "output_cost_rate": output_cost_rate,
+            }
+
         converted.append(
             Span(
                 trace_id=trace_id_hex,
-                span_id=_hex_span(s.context.span_id),
+                span_id=span_id_hex,
                 parent_span_id=(
                     _hex_span(s.parent.span_id) if s.parent is not None else None
                 ),
@@ -206,10 +241,14 @@ def otel_spans_to_trace(
             "than synthesizing a root"
         )
 
+    metadata: dict[str, Any] = {"source": source_tag, "schema_version": "1.0"}
+    if llm_extras:
+        metadata["_pending_llm_extras"] = llm_extras
+
     return Trace(
         trace_id=trace_id_hex,
         spans=converted,
-        metadata={"source": source_tag, "schema_version": "1.0"},
+        metadata=metadata,
     )
 
 
@@ -217,13 +256,27 @@ def ingest_otel_spans(
     spans: Sequence["ReadableSpan"],
     *,
     cost_table: dict[str, float] | None = None,
+    input_cost_table: dict[str, float] | None = None,
+    output_cost_table: dict[str, float] | None = None,
     source_tag: str = "otel_adapter",
 ) -> Trace:
     """Official ingest path = otel_spans_to_trace() + preprocess_trace().
 
     Production/field use must go through this function.
     otel_spans_to_trace() is for raw conversion only (testing/debugging).
+
+    `input_cost_table` / `output_cost_table` (Context Resend Detector prereg §4):
+    per-model $/token rates for input and output sides separately. When
+    provided, LLM call cost rates are populated per side in
+    trace.metadata["llm_calls"]. When only the legacy `cost_table` is provided,
+    the fallback path is used and the detector flags results as "estimated".
     """
     return preprocess_trace(
-        otel_spans_to_trace(spans, cost_table=cost_table, source_tag=source_tag)
+        otel_spans_to_trace(
+            spans,
+            cost_table=cost_table,
+            input_cost_table=input_cost_table,
+            output_cost_table=output_cost_table,
+            source_tag=source_tag,
+        )
     )

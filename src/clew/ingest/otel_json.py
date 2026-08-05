@@ -111,6 +111,8 @@ def ingest_from_otel_json(
     path: Path,
     *,
     cost_table: dict[str, float] | None = None,
+    input_cost_table: dict[str, float] | None = None,
+    output_cost_table: dict[str, float] | None = None,
 ) -> Trace:
     """OTel SDK span.to_json() array file (Format A) -> canonical Trace.
 
@@ -118,7 +120,11 @@ def ingest_from_otel_json(
 
     Args:
         path: Format A JSON file path.
-        cost_table: model name -> cost-per-token (optional).
+        cost_table: legacy single $/token per model (optional).
+        input_cost_table: $/input-token per model — Context Resend Detector
+            prereg §4 accurate path. Populates per-side rates in the new
+            trace.metadata["llm_calls"] entries.
+        output_cost_table: $/output-token per model — same as above (output side).
 
     Raises:
         ValueError: empty file, format error, span without output.value.
@@ -128,7 +134,13 @@ def ingest_from_otel_json(
         raise ValueError(f"{path}: 빈 파일")
 
     shims = _parse_sdk_json(text)
-    return ingest_otel_spans(shims, cost_table=cost_table, source_tag="otel_json")
+    return ingest_otel_spans(
+        shims,
+        cost_table=cost_table,
+        input_cost_table=input_cost_table,
+        output_cost_table=output_cost_table,
+        source_tag="otel_json",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +201,8 @@ def ingest_from_openinference_json(
     path: Path,
     *,
     cost_table: dict[str, float] | None = None,
+    input_cost_table: dict[str, float] | None = None,
+    output_cost_table: dict[str, float] | None = None,
 ) -> Trace:
     """OpenInference nested dict file (Format C) -> canonical Trace.
 
@@ -301,4 +315,10 @@ def ingest_from_openinference_json(
             for r in oi_raws
         ]
 
-    return ingest_otel_spans(shims, cost_table=cost_table, source_tag="openinference_json")
+    return ingest_otel_spans(
+        shims,
+        cost_table=cost_table,
+        input_cost_table=input_cost_table,
+        output_cost_table=output_cost_table,
+        source_tag="openinference_json",
+    )
