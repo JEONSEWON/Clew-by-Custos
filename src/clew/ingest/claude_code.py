@@ -146,8 +146,163 @@ def _collect_cc_usage_metadata(
     return cc_turn_index, cc_usage_pair, total_turns
 
 
-def ingest_claude_code_jsonl(path: Path) -> Trace:
+# Schema source: docs/CONTEXT_RESEND_DETECTOR_PREREG.md §3 (frozen contract).
+def _extract_llm_calls(
+    entries: list[dict],
+    *,
+    input_cost_table: dict[str, float] | None,
+    output_cost_table: dict[str, float] | None,
+) -> list[dict[str, object]]:
+    """Build the `llm_calls` metadata list from Claude Code JSONL assistant turns.
+
+    Contract: matches the frozen Context Resend Detector prereg §3 schema —
+    one entry per unique Anthropic API call (identified by `message.id`),
+    ordered by first appearance.
+
+    Grouping (§ specific to this adapter):
+      Multiple consecutive JSONL `assistant` entries can share a single
+      `message.id` — each entry carries one content block from the same API
+      call. We group consecutive same-id entries and treat them as one API
+      call (one `input_tokens` charge). Content blocks are concatenated into
+      that call's `content` list (Anthropic messages-format shape).
+
+    Input reconstruction:
+      For each API call, `input_text` is the JSON-serialized messages list
+      accumulated up to (but not including) that call. `user` entries
+      contribute in message-order; each grouped assistant call contributes
+      its combined content as a single `assistant` message on the next round.
+      This matches what the Anthropic API sees as the input to that turn.
+
+    input_tokens:
+      Sum of `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`
+      from the usage dict. All three are input-side; cache_read is billed
+      cheaper but represents tokens actually shipped as input.
+    """
+    # Pass 1: collapse consecutive same-message.id assistant entries into groups.
+    #         Interleave user entries between groups. Non-user/assistant entries
+    #         (queue-operation, attachment, file-history-snapshot, ai-title,
+    #         last-prompt, summary, ...) are skipped as they carry no
+    #         model-input content.
+    sequence: list[dict[str, object]] = []
+    current_asst: dict[str, object] | None = None
+
+    def _flush_current():
+        nonlocal current_asst
+        if current_asst is not None:
+            sequence.append(current_asst)
+            current_asst = None
+
+    for entry in entries:
+        etype = entry.get("type")
+        msg = entry.get("message")
+        if not isinstance(msg, dict):
+            continue
+        content = msg.get("content")
+
+        if etype == "user":
+            _flush_current()
+            sequence.append({"role": "user", "content": content})
+            continue
+
+        if etype != "assistant":
+            continue
+
+        mid = msg.get("id")
+        block_content: list[object] = (
+            list(content) if isinstance(content, list)
+            else [{"type": "text", "text": str(content or "")}]
+        )
+        if (
+            current_asst is not None
+            and current_asst.get("message_id") == mid
+            and mid is not None
+        ):
+            # Same API call, next content block — extend content list.
+            existing = current_asst["content"]
+            assert isinstance(existing, list)
+            existing.extend(block_content)
+            continue
+
+        _flush_current()
+        current_asst = {
+            "role": "assistant",
+            "content": block_content,
+            "message_id": mid,
+            "model": msg.get("model"),
+            "timestamp": entry.get("timestamp") or "",
+            "usage": msg.get("usage") or {},
+        }
+    _flush_current()
+
+    # Pass 2: for each assistant group, snapshot accumulated messages BEFORE it
+    #         as the input_text, then add its own response to accumulated.
+    llm_calls: list[dict[str, object]] = []
+    accumulated: list[dict[str, object]] = []
+
+    for item in sequence:
+        if item["role"] == "user":
+            accumulated.append({
+                "role": "user",
+                "content": item["content"],
+            })
+            continue
+
+        # assistant group
+        usage = item["usage"]
+        assert isinstance(usage, dict)
+        model = item.get("model")
+        input_tokens = (
+            (usage.get("input_tokens") or 0)
+            + (usage.get("cache_read_input_tokens") or 0)
+            + (usage.get("cache_creation_input_tokens") or 0)
+        )
+        output_tokens = usage.get("output_tokens") or 0
+
+        input_cost_rate: float | None = None
+        if input_cost_table and isinstance(model, str) and model in input_cost_table:
+            input_cost_rate = float(input_cost_table[model])
+        output_cost_rate: float | None = None
+        if output_cost_table and isinstance(model, str) and model in output_cost_table:
+            output_cost_rate = float(output_cost_table[model])
+
+        # span_id fallback: message.id when present; else a synthetic based on
+        # timestamp + sequence index (deterministic within a session).
+        span_id = item.get("message_id")
+        if not isinstance(span_id, str) or not span_id:
+            span_id = f"cc-llm-{len(llm_calls):06d}"
+
+        llm_calls.append({
+            "span_id": span_id,
+            "input_text": json.dumps(accumulated, ensure_ascii=False, default=str),
+            "input_tokens": int(input_tokens),
+            "output_tokens": int(output_tokens),
+            "input_cost_rate": input_cost_rate,
+            "output_cost_rate": output_cost_rate,
+            "cost_rate_legacy": None,
+            "model": model,
+            "start_time": item.get("timestamp") or "",
+        })
+        accumulated.append({
+            "role": "assistant",
+            "content": item["content"],
+        })
+
+    return llm_calls
+
+
+def ingest_claude_code_jsonl(
+    path: Path,
+    *,
+    input_cost_table: dict[str, float] | None = None,
+    output_cost_table: dict[str, float] | None = None,
+) -> Trace:
     """Claude Code JSONL transcript -> Trace (§22.1 mapping convention).
+
+    `input_cost_table` / `output_cost_table` (Context Resend Detector prereg
+    §4): per-model $/token rates for input and output sides. When provided,
+    each `llm_calls` entry carries accurate per-side rates; the detector's
+    `cost_accuracy_flag` will be `"accurate"`. When omitted (the default),
+    rates stay None and the detector falls back to legacy behavior.
 
     Raises:
         ValueError: parse/join failure, empty output_text span, missing sessionId, etc.
@@ -328,6 +483,16 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
 
     cc_turn_index, cc_usage_pair, cc_total_turns = _collect_cc_usage_metadata(entries)
 
+    # Context Resend Detector prereg §3: build llm_calls metadata from
+    # assistant turns. This adapter previously produced tool-only spans and
+    # left llm_calls empty; the extraction below is orthogonal to span
+    # construction and does not modify tool spans.
+    llm_calls = _extract_llm_calls(
+        entries,
+        input_cost_table=input_cost_table,
+        output_cost_table=output_cost_table,
+    )
+
     return Trace(
         trace_id=session_id,
         spans=[root_span] + tool_spans,
@@ -339,5 +504,6 @@ def ingest_claude_code_jsonl(path: Path) -> Trace:
             "cc_usage_pair": cc_usage_pair,
             "cc_total_turns": cc_total_turns,
             "error_span_ids": error_span_ids,
+            "llm_calls": llm_calls,
         },
     )
