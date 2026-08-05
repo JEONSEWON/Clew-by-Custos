@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from clew.cost.amplification import AmplificationEstimate
 from clew.detect.cascade import CascadeResult
 from clew.detect.context_resend import ContextResendResult
+from clew.detect.llm_judge import LLMJudgeResult
 from clew.detect.redundant_read import RedundantReadResult
 from clew.model import Trace
 from clew.report._enrich import coverage_stats, enrich, scan_id_bridge_candidates
@@ -34,6 +35,43 @@ def _user_tools_block(tools: "ResolvedTools | None") -> dict | None:
         "overrides": [
             {"tool": name, "built_in": built_in, "user": user_cat}
             for name, built_in, user_cat in tools.override_details
+        ],
+    }
+
+
+def _llm_judge_block(rr: LLMJudgeResult | None) -> dict | None:
+    """LLM-as-judge Semantic Duplicate block (prereg §7).
+
+    None when detector wasn't enabled or produced zero matches. When
+    the detector was enabled but returned zero matches, we still emit
+    the block (n_matches=0) so machine consumers can distinguish
+    "not run" from "ran, found nothing".
+    """
+    if rr is None:
+        return None
+    if not rr.enabled and not rr.matches:
+        return None
+    return {
+        "enabled": rr.enabled,
+        "n_matches": len(rr.matches),
+        "total_judge_calls": rr.total_judge_calls,
+        "total_judge_cost": round(rr.total_judge_cost, 8),
+        "total_semantic_resent_tokens": rr.total_semantic_resent_tokens,
+        "total_semantic_resent_cost": round(rr.total_semantic_resent_cost, 8),
+        "matches": [
+            {
+                "kind": m.kind,
+                "chunk_a_hash": m.chunk_a_hash,
+                "chunk_b_hash": m.chunk_b_hash,
+                "origin_llm_span_id": m.origin_llm_span_id,
+                "candidate_llm_span_id": m.candidate_llm_span_id,
+                "equivalent": m.equivalent,
+                "confidence": round(m.confidence, 4),
+                "reasoning": m.reasoning,
+                "judge_model": m.judge_model,
+                "judge_cost": round(m.judge_cost, 8),
+            }
+            for m in rr.matches
         ],
     }
 
@@ -116,6 +154,7 @@ def render_json(
     user_tools: "ResolvedTools | None" = None,
     context_resend: ContextResendResult | None = None,
     redundant_read: RedundantReadResult | None = None,
+    llm_judge: LLMJudgeResult | None = None,
 ) -> str:
     """CascadeResult + WasteDetail list -> JSON string (indent=2).
 
@@ -136,7 +175,9 @@ def render_json(
     cov = coverage_stats(trace, enrichment.enriched, user_tools)
     id_bridge = scan_id_bridge_candidates(trace, user_tools)
     # Cost Attribution Completion prereg §5.3 — top-level cost_summary block.
-    cost_summary = build_cost_summary(trace, cr, context_resend, redundant_read)
+    cost_summary = build_cost_summary(
+        trace, cr, context_resend, redundant_read, llm_judge,
+    )
     ev_by_sid = {ev.span_id: ev for ev in amplification.events} if amplification else {}
 
     waste_details_list = []
@@ -260,6 +301,7 @@ def render_json(
         "user_tools_applied": _user_tools_block(user_tools),
         "context_resend": _context_resend_block(context_resend),
         "redundant_read": _redundant_read_block(redundant_read),
+        "llm_judge": _llm_judge_block(llm_judge),
         "note": (
             "Detection thresholds were calibrated on synthetic traces; "
             "real-trace calibration is in progress. Borderline matches "

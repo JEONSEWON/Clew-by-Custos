@@ -11,6 +11,7 @@ from clew.model import Span, Trace
 if TYPE_CHECKING:
     from clew.detect.cascade import CascadeResult
     from clew.detect.context_resend import ContextResendResult
+    from clew.detect.llm_judge import LLMJudgeResult
     from clew.detect.redundant_read import RedundantReadResult
 
 
@@ -123,6 +124,7 @@ def build_cost_summary(
     cascade_result: "CascadeResult | None",
     context_resend: "ContextResendResult | None",
     redundant_read: "RedundantReadResult | None" = None,
+    llm_judge: "LLMJudgeResult | None" = None,
 ) -> TraceCostSummary:
     """Assemble the report-top cost summary from detector results (prereg §5).
 
@@ -165,6 +167,13 @@ def build_cost_summary(
         total_waste += float(redundant_read.total_waste_cost)
         if redundant_read.cost_accuracy_flag == "estimated":
             all_accurate = False
+    if llm_judge is not None and llm_judge.matches:
+        # LLM-judge Semantic Duplicate prereg §7: contributes to breakdown
+        # AND downgrades accuracy_flag to "estimated" (LLM verdicts are
+        # non-reproducible even at temperature=0).
+        breakdown["semantic_duplicate"] = float(llm_judge.total_semantic_resent_cost)
+        total_waste += float(llm_judge.total_semantic_resent_cost)
+        all_accurate = False
 
     total_analyzed = total_input_cost + total_output_cost  # tool cost is 0 in v1
     waste_ratio = (total_waste / total_analyzed) if total_analyzed > 0 else 0.0

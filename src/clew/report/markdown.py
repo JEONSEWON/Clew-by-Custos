@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from clew.cost.amplification import AmplificationEstimate, AmplificationEvent
 from clew.detect.cascade import CascadeResult
 from clew.detect.context_resend import ContextResendResult
+from clew.detect.llm_judge import LLMJudgeResult
 from clew.detect.redundant_read import RedundantReadResult
 from clew.model import Trace
 from clew.report._enrich import (
@@ -370,6 +371,50 @@ def _render_pair(idx: int, ed: EnrichedDetail, ev: AmplificationEvent | None) ->
     return lines
 
 
+_LLM_JUDGE_HEADER = "## Semantic duplicates (LLM judge)"
+_LLM_JUDGE_INTRO = (
+    "Message chunk pairs judged semantically equivalent by an LLM judge, "
+    "even though their bytes differ (so they were not caught by the "
+    "deterministic context_resend detector). Judge verdicts are "
+    "non-reproducible even at temperature=0 — treat as observation, "
+    "not confirmed billing waste."
+)
+
+
+def _render_llm_judge_section(rr: LLMJudgeResult | None) -> list[str]:
+    """LLM-as-judge Semantic Duplicate prereg §7 — dedicated section."""
+    if rr is None or not rr.matches:
+        return []
+    lines: list[str] = [_LLM_JUDGE_HEADER, "", _LLM_JUDGE_INTRO, ""]
+    lines.append(f"- **matches**: {len(rr.matches)} semantic duplicate pair(s)")
+    lines.append(f"- **judge calls**: {rr.total_judge_calls}")
+    lines.append(f"- **judge cost**: ${rr.total_judge_cost:.6f}")
+    lines.append(
+        f"- **estimated resent tokens**: {rr.total_semantic_resent_tokens} "
+        f"(≈ downstream input token attribution of the paraphrase re-sends)"
+    )
+    lines.append(f"- **estimated resent cost**: ${rr.total_semantic_resent_cost:.6f}")
+    if rr.matches:
+        judge_model = rr.matches[0].judge_model
+        lines.append(
+            f"- **judge model**: `{judge_model}` · "
+            "results non-reproducible (LLM-as-judge)"
+        )
+    lines.append("")
+    top = sorted(rr.matches, key=lambda m: m.confidence, reverse=True)[:5]
+    if top:
+        lines.append("### Top offenders (by judge confidence)")
+        lines.append("")
+        for m in top:
+            lines.append(
+                f"- confidence {m.confidence:.2f} — "
+                f"origin `{m.origin_llm_span_id}` vs candidate "
+                f"`{m.candidate_llm_span_id}`: {m.reasoning}"
+            )
+        lines.append("")
+    return lines
+
+
 _REDUNDANT_READ_HEADER = "## Redundant reads"
 _REDUNDANT_READ_INTRO = (
     "Tool spans where the same read tool was invoked on the same target "
@@ -520,6 +565,7 @@ def render_markdown(
     user_tools: "ResolvedTools | None" = None,
     context_resend: ContextResendResult | None = None,
     redundant_read: RedundantReadResult | None = None,
+    llm_judge: LLMJudgeResult | None = None,
 ) -> str:
     """CascadeResult + WasteDetail list -> markdown string.
 
@@ -550,7 +596,9 @@ def render_markdown(
     # Cost Attribution Completion prereg §5.2 — top-of-report cost summary.
     # Placed before existing content so pitch-critical dollar figures land
     # on-screen first.
-    cost_summary = build_cost_summary(trace, cr, context_resend, redundant_read)
+    cost_summary = build_cost_summary(
+        trace, cr, context_resend, redundant_read, llm_judge,
+    )
     lines.extend(_render_cost_summary(cost_summary))
 
     # Enrich once. Used by (a) coverage banner in the waste-0 branch too,
@@ -595,6 +643,8 @@ def render_markdown(
         lines.extend(_render_context_resend_section(context_resend))
         # Redundant Read section — additive, same waste-0 principle.
         lines.extend(_render_redundant_read_section(redundant_read))
+        # LLM Judge section — opt-in extension of context resend.
+        lines.extend(_render_llm_judge_section(llm_judge))
         lines.append(_FOOTER)
         return "\n".join(lines)
 
@@ -767,6 +817,9 @@ def render_markdown(
 
     # Redundant Read section — right after Context Resend, same principle.
     lines.extend(_render_redundant_read_section(redundant_read))
+
+    # LLM Judge section — right after Redundant reads.
+    lines.extend(_render_llm_judge_section(llm_judge))
 
     lines.append(_POSSIBLE_CAUSES)
     lines.append(_CATEGORY_CAUSES)
