@@ -113,6 +113,7 @@ def test_detect_directory_has_expected_modules():
         "__init__.py",
         "cascade.py",
         "context_resend.py",
+        "redundant_read.py",
         "semantic.py",
         "structural.py",
     ]

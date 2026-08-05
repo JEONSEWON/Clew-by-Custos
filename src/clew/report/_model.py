@@ -11,6 +11,7 @@ from clew.model import Span, Trace
 if TYPE_CHECKING:
     from clew.detect.cascade import CascadeResult
     from clew.detect.context_resend import ContextResendResult
+    from clew.detect.redundant_read import RedundantReadResult
 
 
 CostAccuracy = Literal["accurate", "estimated"]
@@ -121,6 +122,7 @@ def build_cost_summary(
     trace: Trace,
     cascade_result: "CascadeResult | None",
     context_resend: "ContextResendResult | None",
+    redundant_read: "RedundantReadResult | None" = None,
 ) -> TraceCostSummary:
     """Assemble the report-top cost summary from detector results (prereg §5).
 
@@ -158,6 +160,11 @@ def build_cost_summary(
     if context_resend is not None:
         breakdown["context_resend"] = float(context_resend.resent_cost)
         total_waste += float(context_resend.resent_cost)
+    if redundant_read is not None:
+        breakdown["redundant_read"] = float(redundant_read.total_waste_cost)
+        total_waste += float(redundant_read.total_waste_cost)
+        if redundant_read.cost_accuracy_flag == "estimated":
+            all_accurate = False
 
     total_analyzed = total_input_cost + total_output_cost  # tool cost is 0 in v1
     waste_ratio = (total_waste / total_analyzed) if total_analyzed > 0 else 0.0
