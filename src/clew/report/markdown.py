@@ -16,7 +16,7 @@ from clew.report._enrich import (
     enrich,
     scan_id_bridge_candidates,
 )
-from clew.report._model import WasteDetail
+from clew.report._model import TraceCostSummary, WasteDetail, build_cost_summary
 
 if TYPE_CHECKING:
     from clew.config import ResolvedTools
@@ -369,6 +369,29 @@ def _render_pair(idx: int, ed: EnrichedDetail, ev: AmplificationEvent | None) ->
     return lines
 
 
+_COST_SUMMARY_HEADER = "## Cost summary"
+
+
+def _render_cost_summary(summary: TraceCostSummary) -> list[str]:
+    """Cost Attribution Completion prereg §5.2 — top-of-report cost block."""
+    if summary.total_analyzed_cost == 0.0 and summary.total_waste_cost == 0.0:
+        return []
+    lines: list[str] = [_COST_SUMMARY_HEADER, ""]
+    lines.append(f"- **Total analyzed**: ${summary.total_analyzed_cost:.6f}")
+    lines.append(
+        f"- **Total waste (detected)**: ${summary.total_waste_cost:.6f} "
+        f"({summary.waste_ratio:.1%})"
+    )
+    lines.append(f"- **Cost accuracy**: `{summary.accuracy_flag}`")
+    if summary.detector_breakdown:
+        lines.append("")
+        lines.append("Breakdown by detector:")
+        for detector, cost in summary.detector_breakdown.items():
+            lines.append(f"  - {detector}: ${cost:.6f}")
+    lines.append("")
+    return lines
+
+
 _CONTEXT_RESEND_HEADER = "## Context resend"
 _CONTEXT_RESEND_INTRO = (
     "Message chunks that appear in the input of two or more LLM calls within "
@@ -478,6 +501,12 @@ def render_markdown(
     lines.append(f"- **analyzed**: {now}")
     lines.append(f"- **detector params**: φ={_PHI}, N={_N}, model={_MODEL}")
     lines.append("")
+
+    # Cost Attribution Completion prereg §5.2 — top-of-report cost summary.
+    # Placed before existing content so pitch-critical dollar figures land
+    # on-screen first.
+    cost_summary = build_cost_summary(trace, cr, context_resend)
+    lines.extend(_render_cost_summary(cost_summary))
 
     # Enrich once. Used by (a) coverage banner in the waste-0 branch too,
     # (b) category breakdown / per-pair rendering below.

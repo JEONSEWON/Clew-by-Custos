@@ -19,6 +19,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from clew.cost.pricing import ModelPricing, get_pricing
 from clew.model import Trace
 
 
@@ -137,6 +138,65 @@ def _chunk_token_len(text: str, model: str | None) -> int:
 
 # ── Detector entry point ────────────────────────────────────────────────────
 
+def _rate_and_cost_for_call(
+    call: dict[str, Any],
+) -> tuple[float, float, ModelPricing | None]:
+    """Resolve (per-token rate for apportionment, total-input cost for this call, pricing).
+
+    Priority (Cost Attribution Completion prereg §4 · Context Resend prereg §4):
+      1. Tier-split fields populated → pricing.py tier-accurate.
+      2. Explicit `input_cost_rate` (caller override at ingest) → flat rate.
+      3. `cost_rate_legacy` present → flat rate (Context Resend prereg §4
+         backward compat guarantee — do NOT skip past legacy just because
+         pricing.py exists; callers wired legacy for a reason).
+      4. Otherwise, resolve model via `get_pricing()` → base_input flat.
+      5. Nothing available → 0.0 (silent, degrade).
+    """
+    input_tokens_val = call.get("input_tokens")
+    input_tokens = int(input_tokens_val) if input_tokens_val is not None else 0
+    uncached = call.get("input_tokens_uncached")
+    cache_read = call.get("input_tokens_cache_read")
+    cache_write = call.get("input_tokens_cache_write")
+    model = call.get("model")
+
+    # (1) tier-split path
+    if uncached is not None or cache_read is not None or cache_write is not None:
+        pricing = get_pricing(model) if model else get_pricing(None)
+        u = int(uncached or 0)
+        r = int(cache_read or 0)
+        w = int(cache_write or 0)
+        total = u + r + w
+        total_cost = (
+            u * pricing.base_input_per_mtok
+            + r * pricing.cache_read_per_mtok
+            + w * pricing.cache_write_5m_per_mtok
+        ) / 1_000_000.0
+        # Effective per-token rate for apportionment (weighted average).
+        eff_rate = (total_cost / total) if total > 0 else 0.0
+        return eff_rate, total_cost, pricing
+
+    # (2) caller-supplied flat input rate
+    input_cost_rate = call.get("input_cost_rate")
+    if input_cost_rate is not None:
+        rate = float(input_cost_rate)
+        return rate, input_tokens * rate, None
+
+    # (3) legacy fallback (respects Context Resend prereg §4 backward compat)
+    legacy = call.get("cost_rate_legacy")
+    if legacy is not None:
+        rate = float(legacy)
+        return rate, input_tokens * rate, None
+
+    # (4) pricing.py default when nothing else specified
+    if model:
+        pricing = get_pricing(model)
+        rate = pricing.base_input_per_mtok / 1_000_000.0
+        return rate, input_tokens * rate, pricing
+
+    # (5) nothing available
+    return 0.0, 0.0, None
+
+
 def find_context_resend(trace: Trace, n: int = 2) -> ContextResendResult:
     """Detect and cost context resend events within a single trace (prereg §1).
 
@@ -147,6 +207,14 @@ def find_context_resend(trace: Trace, n: int = 2) -> ContextResendResult:
     Returns:
         `ContextResendResult` with per-event breakdown, sums, denominators,
         and `cost_accuracy_flag` per §4.
+
+    Cost path (Cost Attribution Completion prereg §4):
+        When tier-split token fields (`input_tokens_uncached`,
+        `input_tokens_cache_read`, `input_tokens_cache_write`) are populated
+        by the ingest layer, the detector reports tier-accurate cost per
+        call and marks the result "accurate". Legacy path (only
+        `input_tokens` populated) falls back to a flat rate and reports
+        "estimated".
     """
     if n < 2:
         raise ValueError("n must be >= 2")
@@ -157,15 +225,25 @@ def find_context_resend(trace: Trace, n: int = 2) -> ContextResendResult:
     if not llm_calls:
         return result
 
-    # Decide cost accuracy: "accurate" if every call has input_cost_rate set.
-    any_legacy = any(c.get("input_cost_rate") is None for c in llm_calls)
-    result.cost_accuracy_flag = "estimated" if any_legacy else "accurate"
+    # Accuracy flag: "accurate" iff every call has tier-split populated OR
+    # a caller-provided input_cost_rate. Any call falling back to legacy
+    # cost_rate_legacy (or nothing) downgrades the whole result.
+    def _is_call_accurate(c: dict[str, Any]) -> bool:
+        has_split = (
+            c.get("input_tokens_uncached") is not None
+            or c.get("input_tokens_cache_read") is not None
+            or c.get("input_tokens_cache_write") is not None
+        )
+        has_flat = c.get("input_cost_rate") is not None
+        return has_split or has_flat
 
-    # Pre-compute per-call chunk annotations and running denominators.
-    #
-    # per_call[i] = list of (chunk_text, role, chunk_token_len)
-    # occurrence_count[chunk_hash] = total occurrences across whole trace
+    result.cost_accuracy_flag = (
+        "accurate" if all(_is_call_accurate(c) for c in llm_calls) else "estimated"
+    )
+
+    # Pre-compute per-call chunk annotations, denominators, and effective rates.
     per_call: list[list[tuple[str, str | None, int]]] = []
+    per_call_rate: list[float] = []
     occurrence_count: dict[str, int] = {}
     total_input_tokens = 0
     total_input_cost = 0.0
@@ -176,17 +254,10 @@ def find_context_resend(trace: Trace, n: int = 2) -> ContextResendResult:
         input_tokens_val = call.get("input_tokens")
         input_tokens = int(input_tokens_val) if input_tokens_val is not None else 0
 
-        input_cost_rate = call.get("input_cost_rate")
-        legacy_rate = call.get("cost_rate_legacy")
-        rate_for_denominator = (
-            input_cost_rate if input_cost_rate is not None else legacy_rate
-        )
-        rate_for_denominator = (
-            float(rate_for_denominator) if rate_for_denominator is not None else 0.0
-        )
+        eff_rate, call_cost, _ = _rate_and_cost_for_call(call)
 
         total_input_tokens += input_tokens
-        total_input_cost += input_tokens * rate_for_denominator
+        total_input_cost += call_cost
 
         chunks = _chunk_boundary(input_text)
         annotated: list[tuple[str, str | None, int]] = []
@@ -195,6 +266,7 @@ def find_context_resend(trace: Trace, n: int = 2) -> ContextResendResult:
             annotated.append((chunk_text, role, _chunk_token_len(chunk_text, model)))
             occurrence_count[chash] = occurrence_count.get(chash, 0) + 1
         per_call.append(annotated)
+        per_call_rate.append(eff_rate)
 
     result.total_llm_input_tokens = total_input_tokens
     result.total_llm_input_cost = total_input_cost
@@ -213,10 +285,7 @@ def find_context_resend(trace: Trace, n: int = 2) -> ContextResendResult:
 
         input_tokens_val = call.get("input_tokens")
         input_tokens = int(input_tokens_val) if input_tokens_val is not None else 0
-        input_cost_rate = call.get("input_cost_rate")
-        legacy_rate = call.get("cost_rate_legacy")
-        rate = input_cost_rate if input_cost_rate is not None else legacy_rate
-        rate = float(rate) if rate is not None else 0.0
+        eff_rate = per_call_rate[i]
 
         share_total = sum(t for _, _, t in annotated)
         if share_total == 0:
@@ -244,7 +313,10 @@ def find_context_resend(trace: Trace, n: int = 2) -> ContextResendResult:
 
             share = chunk_toks / share_total
             resent_toks = int(round(share * input_tokens))
-            resent_cost = resent_toks * rate
+            # Tier-aware apportionment uses the effective per-token rate for
+            # this call — that rate already reflects the uncached/cache_read/
+            # cache_write split via _rate_and_cost_for_call.
+            resent_cost = resent_toks * eff_rate
 
             result.resent_events.append(ResentEvent(
                 llm_span_id=call["span_id"],

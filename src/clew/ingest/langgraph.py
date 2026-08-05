@@ -142,6 +142,29 @@ def _token_count_completion(attrs: dict[str, Any]) -> int | None:
     return int(v) if v is not None else None
 
 
+def _token_count_cache_read(attrs: dict[str, Any]) -> int | None:
+    """OpenInference `llm.token_count.prompt.cache_read` (cache-hit input). None if absent.
+
+    Per Cost Attribution Completion prereg §4: cache-hit tokens are billed at
+    the provider's cache_read rate (10% of base on Anthropic; provider-specific
+    on OpenAI/Google). Detectors that want tier-accurate cost read this via
+    trace.metadata["llm_calls"][i]["input_tokens_cache_read"].
+    """
+    v = attrs.get("llm.token_count.prompt.cache_read")
+    return int(v) if v is not None else None
+
+
+def _token_count_cache_write(attrs: dict[str, Any]) -> int | None:
+    """OpenInference `llm.token_count.prompt.cache_write` (cache-create input). None if absent.
+
+    Anthropic bills 5m cache write at 125% of base, 1h at 200%. This adapter
+    does not distinguish 5m vs 1h — the detector picks the 5m rate by default
+    per prereg §4 (5m is Anthropic's default TTL when unspecified).
+    """
+    v = attrs.get("llm.token_count.prompt.cache_write")
+    return int(v) if v is not None else None
+
+
 def _model_of(attrs: dict[str, Any]) -> str | None:
     v = attrs.get("llm.model_name") or attrs.get("llm.provider")
     return str(v) if v is not None else None
@@ -210,6 +233,10 @@ def otel_spans_to_trace(
             llm_extras[span_id_hex] = {
                 "input_tokens": _token_count_prompt(attrs),
                 "output_tokens": _token_count_completion(attrs),
+                # Cost Attribution Completion prereg §4 — tier-split fields.
+                # Absent when the instrumentor did not emit cache breakdown.
+                "input_tokens_cache_read": _token_count_cache_read(attrs),
+                "input_tokens_cache_write": _token_count_cache_write(attrs),
                 "input_cost_rate": input_cost_rate,
                 "output_cost_rate": output_cost_rate,
             }

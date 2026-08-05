@@ -251,10 +251,21 @@ def _extract_llm_calls(
         usage = item["usage"]
         assert isinstance(usage, dict)
         model = item.get("model")
+        # Anthropic Claude Code JSONL usage semantics:
+        #   input_tokens              = uncached input only
+        #   cache_read_input_tokens   = cache-hit portion
+        #   cache_creation_input_tokens = cache-write portion (5m default TTL)
+        # Total input = sum of all three. Cost Attribution Completion prereg §4
+        # requires the split for tier-accurate cost — expose all three.
+        input_tokens_uncached = int(usage.get("input_tokens") or 0)
+        input_tokens_cache_read = int(usage.get("cache_read_input_tokens") or 0)
+        input_tokens_cache_write = int(
+            usage.get("cache_creation_input_tokens") or 0
+        )
         input_tokens = (
-            (usage.get("input_tokens") or 0)
-            + (usage.get("cache_read_input_tokens") or 0)
-            + (usage.get("cache_creation_input_tokens") or 0)
+            input_tokens_uncached
+            + input_tokens_cache_read
+            + input_tokens_cache_write
         )
         output_tokens = usage.get("output_tokens") or 0
 
@@ -276,6 +287,9 @@ def _extract_llm_calls(
             "input_text": json.dumps(accumulated, ensure_ascii=False, default=str),
             "input_tokens": int(input_tokens),
             "output_tokens": int(output_tokens),
+            "input_tokens_uncached": input_tokens_uncached,
+            "input_tokens_cache_read": input_tokens_cache_read,
+            "input_tokens_cache_write": input_tokens_cache_write,
             "input_cost_rate": input_cost_rate,
             "output_cost_rate": output_cost_rate,
             "cost_rate_legacy": None,

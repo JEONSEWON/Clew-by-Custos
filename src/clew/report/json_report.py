@@ -11,7 +11,7 @@ from clew.detect.cascade import CascadeResult
 from clew.detect.context_resend import ContextResendResult
 from clew.model import Trace
 from clew.report._enrich import coverage_stats, enrich, scan_id_bridge_candidates
-from clew.report._model import WasteDetail
+from clew.report._model import TraceCostSummary, WasteDetail, build_cost_summary
 
 if TYPE_CHECKING:
     from clew.config import ResolvedTools
@@ -105,6 +105,8 @@ def render_json(
     enrichment = enrich(trace, details, user_tools)
     cov = coverage_stats(trace, enrichment.enriched, user_tools)
     id_bridge = scan_id_bridge_candidates(trace, user_tools)
+    # Cost Attribution Completion prereg §5.3 — top-level cost_summary block.
+    cost_summary = build_cost_summary(trace, cr, context_resend)
     ev_by_sid = {ev.span_id: ev for ev in amplification.events} if amplification else {}
 
     waste_details_list = []
@@ -171,6 +173,18 @@ def render_json(
     report: dict = {
         "trace_id": trace.trace_id,
         "analyzed": now,
+        "cost_summary": {
+            "total_llm_input_cost": round(cost_summary.total_llm_input_cost, 8),
+            "total_llm_output_cost": round(cost_summary.total_llm_output_cost, 8),
+            "total_tool_cost": round(cost_summary.total_tool_cost, 8),
+            "total_analyzed_cost": round(cost_summary.total_analyzed_cost, 8),
+            "total_waste_cost": round(cost_summary.total_waste_cost, 8),
+            "waste_ratio": round(cost_summary.waste_ratio, 6),
+            "accuracy_flag": cost_summary.accuracy_flag,
+            "detector_breakdown": {
+                k: round(v, 8) for k, v in cost_summary.detector_breakdown.items()
+            },
+        },
         "detector_params": {
             "phi": _PHI,
             "n": _N,
