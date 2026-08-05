@@ -94,7 +94,8 @@ def _has_llm_or_tool_descendant(
 def collapse_llm_spans(
     spans: list[Span],
     worker_ids: set[str],
-) -> tuple[list[Span], int]:
+    llm_extras: dict[str, dict[str, Any]] | None = None,
+) -> tuple[list[Span], int, list[dict[str, Any]]]:
     """Remove llm sub-spans + roll up token_count/cost_rate into the parent chain.
 
     ReAct orphan handling:
@@ -104,8 +105,15 @@ def collapse_llm_spans(
     token_count rollup:
         Accumulate the removed llm span's token_count into the parent chain.
         If parent already has token_count, sum; otherwise set.
+
+    Context Resend Detector prereg §3 — LLM call record.
+        Before removal, each LLM span is recorded in `llm_calls` (returned as
+        the third tuple element) with per-side token/rate data supplied via
+        `llm_extras[span_id]` (populated by the adapter). Consumers read
+        `trace.metadata["llm_calls"]` after preprocess_trace runs.
     """
     llm_ids = {s.span_id for s in spans if s.span_kind == "llm"}
+    extras = llm_extras or {}
 
     # Collect (token_count, parent_span_id) per llm span
     llm_info: dict[str, tuple[int | None, str | None]] = {
@@ -118,6 +126,24 @@ def collapse_llm_spans(
     for llm_id, (tc, parent_id) in llm_info.items():
         if parent_id is not None and tc is not None:
             parent_token_delta[parent_id] = parent_token_delta.get(parent_id, 0) + tc
+
+    # Build llm_calls records (ordered by start_time to match prereg §3).
+    llm_span_records = [s for s in spans if s.span_kind == "llm"]
+    llm_span_records.sort(key=lambda s: s.start_time)
+    llm_calls: list[dict[str, Any]] = []
+    for s in llm_span_records:
+        e = extras.get(s.span_id, {})
+        llm_calls.append({
+            "span_id": s.span_id,
+            "input_text": s.input_text,
+            "input_tokens": e.get("input_tokens"),
+            "output_tokens": e.get("output_tokens"),
+            "input_cost_rate": e.get("input_cost_rate"),
+            "output_cost_rate": e.get("output_cost_rate"),
+            "cost_rate_legacy": s.cost_rate,
+            "model": s.model,
+            "start_time": s.start_time.isoformat(),
+        })
 
     kept: list[Span] = []
     for s in spans:
@@ -143,7 +169,7 @@ def collapse_llm_spans(
 
         kept.append(s)
 
-    return kept, len(llm_ids)
+    return kept, len(llm_ids), llm_calls
 
 
 # -- 4. Router span filter ----------------------------------------------------
@@ -194,8 +220,12 @@ def preprocess_trace(trace: Trace) -> Trace:
     # (2) Compute worker set (based on topology before collapse)
     worker_ids = mark_worker_span_ids(spans)
 
-    # (3) collapse
-    spans, removed_count = collapse_llm_spans(spans, worker_ids)
+    # (3) collapse — Context Resend prereg §3: pull adapter-supplied per-side
+    # token/rate extras from the temp metadata key, hand to collapse_llm_spans,
+    # then remove the temp key from the final metadata so consumers see only the
+    # documented `llm_calls` schema.
+    llm_extras = trace.metadata.get("_pending_llm_extras")
+    spans, removed_count, llm_calls = collapse_llm_spans(spans, worker_ids, llm_extras)
 
     # (4) Router filter
     spans = filter_router_spans(spans, worker_ids)
@@ -204,5 +234,7 @@ def preprocess_trace(trace: Trace) -> Trace:
         **trace.metadata,
         "collapsed_llm_spans": removed_count,
         "filtered_router_spans": len(trace.spans) - removed_count - len(spans),
+        "llm_calls": llm_calls,
     }
+    new_meta.pop("_pending_llm_extras", None)
     return Trace(trace_id=trace.trace_id, spans=spans, metadata=new_meta)

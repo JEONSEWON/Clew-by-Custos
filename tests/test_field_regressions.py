@@ -236,7 +236,7 @@ def test_r5_react_tool_reparented_after_llm_collapse():
     worker_ids = mark_worker_span_ids(spans)
     assert "worker" in worker_ids  # worker has an llm descendant
 
-    kept, removed_count = collapse_llm_spans(spans, worker_ids)
+    kept, removed_count, llm_calls = collapse_llm_spans(spans, worker_ids)
     kept_ids = {s.span_id for s in kept}
 
     assert removed_count == 1
@@ -244,3 +244,7 @@ def test_r5_react_tool_reparented_after_llm_collapse():
     assert "tool" in kept_ids               # tool survives
     tool_span = next(s for s in kept if s.span_id == "tool")
     assert tool_span.parent_span_id == "worker"  # re-parented to worker
+
+    # Context Resend prereg §3: the removed LLM span is recorded in llm_calls.
+    assert len(llm_calls) == 1
+    assert llm_calls[0]["span_id"] == "llm"
