@@ -218,6 +218,11 @@ def _analyze(args: argparse.Namespace) -> int:
     from clew.detect.context_resend import find_context_resend
     resend_result = find_context_resend(trace)
 
+    # Redundant Read Detector (Redundant Read prereg §5). Runs on any trace
+    # with tool spans. Empty result when no read tools or no repeats.
+    from clew.detect.redundant_read import find_redundant_reads
+    redundant_read_result = find_redundant_reads(trace, tools=user_tools)
+
     # Phase 2: user entity_id extraction ratios — one-shot stderr summary.
     # Only emitted when clew.yaml declared any entity_id path.
     if user_tools is not None and user_tools.has_user_entity_ids:
@@ -238,6 +243,7 @@ def _analyze(args: argparse.Namespace) -> int:
         trace, cr, details,
         no_snippets=no_snippets, amplification=amp, user_tools=user_tools,
         context_resend=resend_result,
+        redundant_read=redundant_read_result,
     )
 
     if args.out:
@@ -254,6 +260,7 @@ def _analyze(args: argparse.Namespace) -> int:
             trace, cr, details,
             no_snippets=no_snippets, amplification=amp, user_tools=user_tools,
             context_resend=resend_result,
+            redundant_read=redundant_read_result,
         )
         json_path = Path(args.json_out)
         json_path.write_text(jstr, encoding="utf-8")

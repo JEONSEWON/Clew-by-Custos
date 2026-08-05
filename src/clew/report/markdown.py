@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from clew.cost.amplification import AmplificationEstimate, AmplificationEvent
 from clew.detect.cascade import CascadeResult
 from clew.detect.context_resend import ContextResendResult
+from clew.detect.redundant_read import RedundantReadResult
 from clew.model import Trace
 from clew.report._enrich import (
     EnrichedDetail,
@@ -369,6 +370,45 @@ def _render_pair(idx: int, ed: EnrichedDetail, ev: AmplificationEvent | None) ->
     return lines
 
 
+_REDUNDANT_READ_HEADER = "## Redundant reads"
+_REDUNDANT_READ_INTRO = (
+    "Tool spans where the same read tool was invoked on the same target "
+    "within this trace, with no intervening write to that target and no "
+    "Bash/PowerShell in between. `confirmed=True` means the two outputs "
+    "were byte-identical; `confirmed=False` means the outputs differ (state "
+    "may have changed via an unobserved path — user judgment)."
+)
+
+
+def _render_redundant_read_section(
+    rr: RedundantReadResult | None,
+) -> list[str]:
+    """Redundant Read prereg §6 — dedicated markdown section."""
+    if rr is None or not rr.events:
+        return []
+    lines: list[str] = [_REDUNDANT_READ_HEADER, "", _REDUNDANT_READ_INTRO, ""]
+    lines.append(f"- **events**: {len(rr.events)} redundant read(s)")
+    lines.append(
+        f"- **waste tokens**: {rr.total_waste_tokens} "
+        f"(≈ downstream input tokens that would be spent re-consuming these reads)"
+    )
+    lines.append(f"- **waste cost**: ${rr.total_waste_cost:.6f}")
+    lines.append(f"- **cost accuracy**: `{rr.cost_accuracy_flag}`")
+    lines.append("")
+    top = sorted(rr.events, key=lambda e: e.waste_cost, reverse=True)[:5]
+    if top:
+        lines.append("### Top offenders (by waste cost)")
+        lines.append("")
+        for e in top:
+            confirmed_marker = "✓" if e.confirmed else "?"
+            lines.append(
+                f"- {confirmed_marker} `{e.tool_name}` on `{e.target[:80]}` — "
+                f"{e.waste_tokens} tokens, ${e.waste_cost:.6f}"
+            )
+        lines.append("")
+    return lines
+
+
 _COST_SUMMARY_HEADER = "## Cost summary"
 
 
@@ -479,6 +519,7 @@ def render_markdown(
     amplification: AmplificationEstimate | None = None,
     user_tools: "ResolvedTools | None" = None,
     context_resend: ContextResendResult | None = None,
+    redundant_read: RedundantReadResult | None = None,
 ) -> str:
     """CascadeResult + WasteDetail list -> markdown string.
 
@@ -491,6 +532,10 @@ def render_markdown(
     `context_resend` (optional): result from clew.detect.context_resend.
     When None or when the result has no events and no LLM input tokens,
     the section is omitted (pre-Context-Resend-prereg output preserved).
+
+    `redundant_read` (optional): result from clew.detect.redundant_read.
+    When None or when events list is empty, the section is omitted
+    (pre-Redundant-Read-prereg output preserved).
     """
     lines: list[str] = []
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -505,7 +550,7 @@ def render_markdown(
     # Cost Attribution Completion prereg §5.2 — top-of-report cost summary.
     # Placed before existing content so pitch-critical dollar figures land
     # on-screen first.
-    cost_summary = build_cost_summary(trace, cr, context_resend)
+    cost_summary = build_cost_summary(trace, cr, context_resend, redundant_read)
     lines.extend(_render_cost_summary(cost_summary))
 
     # Enrich once. Used by (a) coverage banner in the waste-0 branch too,
@@ -548,6 +593,8 @@ def render_markdown(
         # visible even in the waste-0 branch. LLM input resend can be present
         # without any tool-side cascade waste.
         lines.extend(_render_context_resend_section(context_resend))
+        # Redundant Read section — additive, same waste-0 principle.
+        lines.extend(_render_redundant_read_section(redundant_read))
         lines.append(_FOOTER)
         return "\n".join(lines)
 
@@ -717,6 +764,9 @@ def render_markdown(
     # Positioned right after the id_bridge section for the same reason: report
     # observations, not diagnoses.
     lines.extend(_render_context_resend_section(context_resend))
+
+    # Redundant Read section — right after Context Resend, same principle.
+    lines.extend(_render_redundant_read_section(redundant_read))
 
     lines.append(_POSSIBLE_CAUSES)
     lines.append(_CATEGORY_CAUSES)

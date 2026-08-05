@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from clew.cost.amplification import AmplificationEstimate
 from clew.detect.cascade import CascadeResult
 from clew.detect.context_resend import ContextResendResult
+from clew.detect.redundant_read import RedundantReadResult
 from clew.model import Trace
 from clew.report._enrich import coverage_stats, enrich, scan_id_bridge_candidates
 from clew.report._model import TraceCostSummary, WasteDetail, build_cost_summary
@@ -33,6 +34,34 @@ def _user_tools_block(tools: "ResolvedTools | None") -> dict | None:
         "overrides": [
             {"tool": name, "built_in": built_in, "user": user_cat}
             for name, built_in, user_cat in tools.override_details
+        ],
+    }
+
+
+def _redundant_read_block(rr: RedundantReadResult | None) -> dict | None:
+    """Redundant Read Detector JSON block (prereg §6).
+
+    None when detector wasn't run or produced zero events. Backward compat:
+    old consumers see no new keys unless meaningful data present.
+    """
+    if rr is None or not rr.events:
+        return None
+    return {
+        "n_events": len(rr.events),
+        "total_waste_tokens": rr.total_waste_tokens,
+        "total_waste_cost": round(rr.total_waste_cost, 8),
+        "cost_accuracy_flag": rr.cost_accuracy_flag,
+        "events": [
+            {
+                "read_span_id": e.read_span_id,
+                "origin_read_span_id": e.origin_read_span_id,
+                "tool_name": e.tool_name,
+                "target": e.target,
+                "waste_tokens": e.waste_tokens,
+                "waste_cost": round(e.waste_cost, 8),
+                "confirmed": e.confirmed,
+            }
+            for e in rr.events
         ],
     }
 
@@ -86,6 +115,7 @@ def render_json(
     amplification: AmplificationEstimate | None = None,
     user_tools: "ResolvedTools | None" = None,
     context_resend: ContextResendResult | None = None,
+    redundant_read: RedundantReadResult | None = None,
 ) -> str:
     """CascadeResult + WasteDetail list -> JSON string (indent=2).
 
@@ -106,7 +136,7 @@ def render_json(
     cov = coverage_stats(trace, enrichment.enriched, user_tools)
     id_bridge = scan_id_bridge_candidates(trace, user_tools)
     # Cost Attribution Completion prereg §5.3 — top-level cost_summary block.
-    cost_summary = build_cost_summary(trace, cr, context_resend)
+    cost_summary = build_cost_summary(trace, cr, context_resend, redundant_read)
     ev_by_sid = {ev.span_id: ev for ev in amplification.events} if amplification else {}
 
     waste_details_list = []
@@ -229,6 +259,7 @@ def render_json(
         "waste_details": waste_details_list,
         "user_tools_applied": _user_tools_block(user_tools),
         "context_resend": _context_resend_block(context_resend),
+        "redundant_read": _redundant_read_block(redundant_read),
         "note": (
             "Detection thresholds were calibrated on synthetic traces; "
             "real-trace calibration is in progress. Borderline matches "
