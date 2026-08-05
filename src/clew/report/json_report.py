@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from clew.cost.amplification import AmplificationEstimate
 from clew.detect.cascade import CascadeResult
+from clew.detect.context_resend import ContextResendResult
 from clew.model import Trace
 from clew.report._enrich import coverage_stats, enrich, scan_id_bridge_candidates
 from clew.report._model import WasteDetail
@@ -36,6 +37,45 @@ def _user_tools_block(tools: "ResolvedTools | None") -> dict | None:
     }
 
 
+def _context_resend_block(cr: ContextResendResult | None) -> dict | None:
+    """Context Resend Detector JSON block (prereg §5/§6).
+
+    Returns None when the detector wasn't run (context_resend is None) or ran
+    on a trace with no LLM calls (total_llm_input_tokens == 0 and no events).
+    Backward compat: old consumers see no new keys unless the detector was
+    invoked with meaningful data.
+    """
+    if cr is None:
+        return None
+    if cr.total_llm_input_tokens == 0 and not cr.resent_events:
+        return None
+    denom_tokens = cr.total_llm_input_tokens
+    denom_cost = cr.total_llm_input_cost
+    ratio_tokens = (cr.resent_input_tokens / denom_tokens) if denom_tokens > 0 else 0.0
+    ratio_cost = (cr.resent_cost / denom_cost) if denom_cost > 0 else 0.0
+    return {
+        "resent_input_tokens": cr.resent_input_tokens,
+        "resent_cost": round(cr.resent_cost, 8),
+        "total_llm_input_tokens": cr.total_llm_input_tokens,
+        "total_llm_input_cost": round(cr.total_llm_input_cost, 8),
+        "resent_tokens_ratio": round(ratio_tokens, 6),
+        "resent_cost_ratio": round(ratio_cost, 6),
+        "cost_accuracy_flag": cr.cost_accuracy_flag,
+        "n_events": len(cr.resent_events),
+        "events": [
+            {
+                "llm_span_id": ev.llm_span_id,
+                "origin_llm_span_id": ev.origin_llm_span_id,
+                "chunk_hash": ev.chunk_hash,
+                "chunk_role": ev.chunk_role,
+                "resent_input_tokens": ev.resent_input_tokens,
+                "resent_cost": round(ev.resent_cost, 8),
+            }
+            for ev in cr.resent_events
+        ],
+    }
+
+
 def render_json(
     trace: Trace,
     cr: CascadeResult,
@@ -45,6 +85,7 @@ def render_json(
     snippet_len: int = _SNIPPET_LEN,
     amplification: AmplificationEstimate | None = None,
     user_tools: "ResolvedTools | None" = None,
+    context_resend: ContextResendResult | None = None,
 ) -> str:
     """CascadeResult + WasteDetail list -> JSON string (indent=2).
 
@@ -53,6 +94,11 @@ def render_json(
 
     `user_tools` (optional): ResolvedTools from clew.yaml. When None,
     output is bit-identical to pre-clew.yaml releases (§3 gate).
+
+    `context_resend` (optional): result from clew.detect.context_resend.
+    When None or when the result carries no events, the "context_resend"
+    JSON block is omitted entirely (pre-Context-Resend-prereg output shape
+    preserved).
     """
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -168,6 +214,7 @@ def render_json(
         ],
         "waste_details": waste_details_list,
         "user_tools_applied": _user_tools_block(user_tools),
+        "context_resend": _context_resend_block(context_resend),
         "note": (
             "Detection thresholds were calibrated on synthetic traces; "
             "real-trace calibration is in progress. Borderline matches "

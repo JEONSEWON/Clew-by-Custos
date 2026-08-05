@@ -211,6 +211,13 @@ def _analyze(args: argparse.Namespace) -> int:
         from clew.cost.amplification import estimate_amplification
         amp = estimate_amplification(cr, trace)
 
+    # Context Resend Detector (prereg §5). Runs whenever the trace carries an
+    # `llm_calls` metadata block. Adapters that do not produce LLM spans
+    # (Claude Code v1, Toolathlon) yield an empty list and the section is
+    # skipped downstream.
+    from clew.detect.context_resend import find_context_resend
+    resend_result = find_context_resend(trace)
+
     # Phase 2: user entity_id extraction ratios — one-shot stderr summary.
     # Only emitted when clew.yaml declared any entity_id path.
     if user_tools is not None and user_tools.has_user_entity_ids:
@@ -230,6 +237,7 @@ def _analyze(args: argparse.Namespace) -> int:
     md = render_markdown(
         trace, cr, details,
         no_snippets=no_snippets, amplification=amp, user_tools=user_tools,
+        context_resend=resend_result,
     )
 
     if args.out:
@@ -245,6 +253,7 @@ def _analyze(args: argparse.Namespace) -> int:
         jstr = render_json(
             trace, cr, details,
             no_snippets=no_snippets, amplification=amp, user_tools=user_tools,
+            context_resend=resend_result,
         )
         json_path = Path(args.json_out)
         json_path.write_text(jstr, encoding="utf-8")
