@@ -181,7 +181,16 @@ def test_multiple_events_aggregate():
     assert est.total_amp_tokens == 1800 + 2800
 
 
-def test_unknown_model_key_raises():
-    import pytest as _pytest
-    with _pytest.raises(KeyError):
-        get_pricing("no-such-model")
+def test_unknown_model_key_soft_fails_with_warning():
+    """Cost Attribution Completion prereg §3: unknown models soft-fail
+    (default + UserWarning) rather than raising. Old KeyError-raising
+    contract was superseded — CLI users would otherwise crash on any
+    model outside the frozen list."""
+    import warnings
+    from clew.cost.pricing import DEFAULT_MODEL_KEY, PRICING
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = get_pricing("no-such-model")
+    assert result is PRICING[DEFAULT_MODEL_KEY]
+    assert any("unknown model" in str(w.message) for w in caught)

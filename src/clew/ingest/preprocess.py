@@ -133,11 +133,17 @@ def collapse_llm_spans(
     llm_calls: list[dict[str, Any]] = []
     for s in llm_span_records:
         e = extras.get(s.span_id, {})
+        # Cost Attribution Completion prereg §4 — pass through tier-split
+        # token fields when adapter populated them. Older adapters that only
+        # set input_tokens continue to work; those fields stay None.
         llm_calls.append({
             "span_id": s.span_id,
             "input_text": s.input_text,
             "input_tokens": e.get("input_tokens"),
             "output_tokens": e.get("output_tokens"),
+            "input_tokens_uncached": e.get("input_tokens_uncached"),
+            "input_tokens_cache_read": e.get("input_tokens_cache_read"),
+            "input_tokens_cache_write": e.get("input_tokens_cache_write"),
             "input_cost_rate": e.get("input_cost_rate"),
             "output_cost_rate": e.get("output_cost_rate"),
             "cost_rate_legacy": s.cost_rate,
