@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from clew.cost.amplification import AmplificationEstimate, AmplificationEvent
 from clew.detect.cascade import CascadeResult
+from clew.detect.context_resend import ContextResendResult
 from clew.model import Trace
 from clew.report._enrich import (
     EnrichedDetail,
@@ -368,6 +369,83 @@ def _render_pair(idx: int, ed: EnrichedDetail, ev: AmplificationEvent | None) ->
     return lines
 
 
+_CONTEXT_RESEND_HEADER = "## Context resend"
+_CONTEXT_RESEND_INTRO = (
+    "Message chunks that appear in the input of two or more LLM calls within "
+    "this trace, byte-exact by sha256. System-role chunks are exempt. First "
+    "occurrence of each chunk is not counted (it is the necessary payload); "
+    "occurrences from the second onward are recorded as resent."
+)
+_CONTEXT_RESEND_LEGACY_HINT = (
+    "_Cost figures below are estimated — the ingest layer received only a "
+    "single-rate cost table. Pass `input_cost_table` (and optionally "
+    "`output_cost_table`) at ingest time for accurate per-side monetization._"
+)
+
+
+def _summary_context_resend_line(cr: ContextResendResult | None) -> list[str]:
+    """One-line summary of context resend for the top Result banner."""
+    if cr is None:
+        return []
+    if cr.total_llm_input_tokens == 0 and not cr.resent_events:
+        return []
+    denom = cr.total_llm_input_tokens
+    ratio = (cr.resent_input_tokens / denom) if denom > 0 else 0.0
+    return [
+        f"- **Context resend**: {len(cr.resent_events)} resent chunk(s), "
+        f"{cr.resent_input_tokens} of {cr.total_llm_input_tokens} input tokens "
+        f"({ratio:.1%}). See section below."
+    ]
+
+
+def _render_context_resend_section(cr: ContextResendResult | None) -> list[str]:
+    """Prereg §5-integrated markdown section. Empty list when nothing to render."""
+    if cr is None:
+        return []
+    if cr.total_llm_input_tokens == 0 and not cr.resent_events:
+        return []
+    lines: list[str] = [_CONTEXT_RESEND_HEADER, "", _CONTEXT_RESEND_INTRO, ""]
+    denom_toks = cr.total_llm_input_tokens
+    denom_cost = cr.total_llm_input_cost
+    ratio_toks = (cr.resent_input_tokens / denom_toks) if denom_toks > 0 else 0.0
+    ratio_cost = (cr.resent_cost / denom_cost) if denom_cost > 0 else 0.0
+    lines.append(f"- **events**: {len(cr.resent_events)} resent chunk occurrence(s)")
+    lines.append(
+        f"- **resent input tokens**: {cr.resent_input_tokens} of "
+        f"{cr.total_llm_input_tokens} ({ratio_toks:.1%})"
+    )
+    lines.append(
+        f"- **resent input cost**: ${cr.resent_cost:.6f} of "
+        f"${cr.total_llm_input_cost:.6f} ({ratio_cost:.1%})"
+    )
+    lines.append(f"- **cost accuracy**: `{cr.cost_accuracy_flag}`")
+    if cr.cost_accuracy_flag == "estimated":
+        lines.append("")
+        lines.append(_CONTEXT_RESEND_LEGACY_HINT)
+    lines.append("")
+    if cr.resent_events:
+        # Aggregate by originating LLM span for a compact overview instead of
+        # listing every event (a long trace may have thousands).
+        by_span: dict[str, dict[str, int | float]] = {}
+        for ev in cr.resent_events:
+            slot = by_span.setdefault(
+                ev.llm_span_id, {"count": 0, "toks": 0, "cost": 0.0}
+            )
+            slot["count"] += 1
+            slot["toks"] += ev.resent_input_tokens
+            slot["cost"] += ev.resent_cost
+        lines.append("### Top offenders (by LLM call)")
+        lines.append("")
+        top = sorted(by_span.items(), key=lambda kv: kv[1]["cost"], reverse=True)[:5]
+        for span_id, agg in top:
+            lines.append(
+                f"- span `{span_id}` — {agg['count']} resent chunks, "
+                f"{agg['toks']} tokens, ${agg['cost']:.6f}"
+            )
+        lines.append("")
+    return lines
+
+
 def render_markdown(
     trace: Trace,
     cr: CascadeResult,
@@ -377,6 +455,7 @@ def render_markdown(
     snippet_len: int = _SNIPPET_LEN,
     amplification: AmplificationEstimate | None = None,
     user_tools: "ResolvedTools | None" = None,
+    context_resend: ContextResendResult | None = None,
 ) -> str:
     """CascadeResult + WasteDetail list -> markdown string.
 
@@ -385,6 +464,10 @@ def render_markdown(
 
     `user_tools` (optional): ResolvedTools from clew.yaml. When None,
     behavior is bit-identical to pre-clew.yaml releases (§3 gate).
+
+    `context_resend` (optional): result from clew.detect.context_resend.
+    When None or when the result has no events and no LLM input tokens,
+    the section is omitted (pre-Context-Resend-prereg output preserved).
     """
     lines: list[str] = []
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -407,6 +490,7 @@ def render_markdown(
         lines.append("")
         lines.append("- **Waste detection**: no waste detected (wasteful=False).")
         lines.extend(_summary_duplicate_creation_line(id_bridge))
+        lines.extend(_summary_context_resend_line(context_resend))
         lines.append("")
         # Coverage line A — ALWAYS rendered, including waste-0.
         # PREREG §1.1 Q2 rationale: a low-coverage user seeing "no waste"
@@ -431,6 +515,10 @@ def render_markdown(
         # hidden behind "no waste detected".
         if id_bridge:
             lines.extend(_render_id_bridge_section(id_bridge))
+        # Context Resend section — same principle as duplicate creation check:
+        # visible even in the waste-0 branch. LLM input resend can be present
+        # without any tool-side cascade waste.
+        lines.extend(_render_context_resend_section(context_resend))
         lines.append(_FOOTER)
         return "\n".join(lines)
 
@@ -438,6 +526,7 @@ def render_markdown(
     lines.append("")
     lines.append(f"- **Waste detection**: {len(cr.waste_span_ids)} wasteful span(s).")
     lines.extend(_summary_duplicate_creation_line(id_bridge))
+    lines.extend(_summary_context_resend_line(context_resend))
     lines.append("")
     lines.append(f"- **wasted spans**: {len(cr.waste_span_ids)}")
     if enrichment.enriched:
@@ -594,6 +683,11 @@ def render_markdown(
     # PREREG §1.6 decision 2 — position between Wasted Span Details and
     # Possible causes. Reports discovery, not explanation.
     lines.extend(_render_id_bridge_section(id_bridge))
+
+    # Context Resend section — sibling of the duplicate creation check.
+    # Positioned right after the id_bridge section for the same reason: report
+    # observations, not diagnoses.
+    lines.extend(_render_context_resend_section(context_resend))
 
     lines.append(_POSSIBLE_CAUSES)
     lines.append(_CATEGORY_CAUSES)
