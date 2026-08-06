@@ -52,11 +52,16 @@ semantic = [
     "torch>=2.0",
     "huggingface_hub>=0.20",
 ]
+judge = [
+    # LLM-as-judge Semantic Duplicate detector (opt-in). Only needed
+    # when CLEW_ENABLE_LLM_JUDGE=1 or --llm-judge is passed.
+    "anthropic>=0.30",
+]
 dev = [
     "pytest>=8.0",
 ]
 all = [
-    "clew-custos[detect,semantic,adapter]",
+    "clew-custos[detect,semantic,adapter,judge]",
 ]
 
 [project.urls]

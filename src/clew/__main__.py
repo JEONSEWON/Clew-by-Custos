@@ -223,6 +223,13 @@ def _analyze(args: argparse.Namespace) -> int:
     from clew.detect.redundant_read import find_redundant_reads
     redundant_read_result = find_redundant_reads(trace, tools=user_tools)
 
+    # LLM-as-judge Semantic Duplicate (Task #10 prereg §2). Opt-in ONLY.
+    # Off by default; enabled iff --llm-judge OR CLEW_ENABLE_LLM_JUDGE=1.
+    from clew.detect.llm_judge import find_llm_judge_semantic_duplicates
+    llm_judge_result = find_llm_judge_semantic_duplicates(
+        trace, enabled=args.llm_judge,
+    )
+
     # Phase 2: user entity_id extraction ratios — one-shot stderr summary.
     # Only emitted when clew.yaml declared any entity_id path.
     if user_tools is not None and user_tools.has_user_entity_ids:
@@ -244,6 +251,7 @@ def _analyze(args: argparse.Namespace) -> int:
         no_snippets=no_snippets, amplification=amp, user_tools=user_tools,
         context_resend=resend_result,
         redundant_read=redundant_read_result,
+        llm_judge=llm_judge_result,
     )
 
     if args.out:
@@ -261,6 +269,7 @@ def _analyze(args: argparse.Namespace) -> int:
             no_snippets=no_snippets, amplification=amp, user_tools=user_tools,
             context_resend=resend_result,
             redundant_read=redundant_read_result,
+            llm_judge=llm_judge_result,
         )
         json_path = Path(args.json_out)
         json_path.write_text(jstr, encoding="utf-8")
@@ -285,6 +294,17 @@ def main() -> None:
         help=(
             "path to user tool config (clew.yaml). "
             "Overrides trace-file walk-up and ~/.clew/config.yaml discovery."
+        ),
+    )
+    p.add_argument(
+        "--llm-judge",
+        dest="llm_judge",
+        action="store_true",
+        default=None,
+        help=(
+            "enable LLM-as-judge semantic duplicate detection (opt-in). "
+            "Requires ANTHROPIC_API_KEY env var. "
+            "See docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md for details."
         ),
     )
 
