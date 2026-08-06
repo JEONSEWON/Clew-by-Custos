@@ -140,7 +140,9 @@ A prompt-clause test is not added at unit level (the fake judge_fn
 tests in `test_llm_judge_semantic_duplicate.py` don't exercise the real
 prompt). The prompt clause is validated by re-measurement (§4 below).
 
-## 4. Re-measurement plan
+## 4. Re-measurement plan and results
+
+### 4.1 Plan (frozen before re-measurement)
 
 Same procedure as base prereg §12:
 
@@ -150,19 +152,95 @@ Same procedure as base prereg §12:
 - Same $2.00 total cost cap, $1.80 running-total hard-stop.
 - Same Go/No-go thresholds (5% / 1% / between).
 
-Report includes:
-
-- Pre-amendment measurement: **ratio = 0.0252, verdict = SHIP-AS-IS**
-  (baseline, retained for honesty).
-- Post-amendment measurement: ratio = ?, verdict = ?.
-- Delta (attribute to which change: parser vs prompt).
-
-If post-amendment ratio ≥ 5% → GO. If < 1% → NO-GO. If between →
-SHIP-AS-IS (unchanged verdict).
-
 **Cost budget for re-measurement**: ≤ $0.30 (small run; base prereg
 §12 total budget $2.00 was for the ONE measurement, and this
 amendment stays under half).
+
+### 4.2 Results (executed 2026-08-06)
+
+Two data points, both retained per §0 honesty preface:
+
+| Measurement | Matches | Pairs judged | Ratio | Cost | Verdict |
+|---|---|---|---|---|---|
+| Pre-amendment (baseline) | 4 | 159 | 0.0252 | $0.131 | SHIP-AS-IS |
+| Post-amendment (this amend) | 83 | 159 | **0.5220** | $0.133 | **GO** |
+
+**Ratio delta:** +49.7 percentage points. Attribution:
+- Parser fence-stripping alone accounted for ratio 0.0252 (moved from
+  0.0000 initial-fail run to 0.0252 = 4 matches). Documented as the
+  "pre-amendment baseline" retained here.
+- Prompt ephemeral-ID clause accounted for the +49.7pp jump. All new
+  matches in the post-amendment run cite the ephemeral-ID reasoning
+  ("tool_use_id values are ephemeral identifiers that should be
+  ignored per the equivalence criteria").
+
+### 4.3 Match verification (post-amendment run)
+
+Sanity checks executed on `llm_judge_go_nogo.RESULTS.json`:
+
+- **Arithmetic:** 83/159 = 0.5220 (matches header).
+- **Uniqueness:** all 83 matches are distinct `(session, span_a,
+  span_b)` triples — no double counting.
+- **Confidence:** all 83 matches have `confidence ≥ 0.95` (52 at
+  0.99, 31 at 0.95). None hovered near the 0.85 threshold.
+- **Per-session breakdown:**
+
+  | Session | LLM calls | Pairs | Matches | Rate (of judged) |
+  |---|---|---|---|---|
+  | 07b57159... | 193 | 50 (cap) | 39 | 78% |
+  | 11ef2190... | 11 | 9 | 2 | 22% |
+  | 4130c9a7... | 75 | 50 (cap) | 29 | 58% |
+  | ba1b4916... | 51 | 50 (cap) | 13 | 26% |
+  | comparia... | 4 | 0 | 0 | N/A |
+
+- **Match content types (categorized by judge reasoning text):**
+  - File update tool_result: 38
+  - Todo modification tool_result: 11
+  - Command / plugin output: 2
+  - Python code, error message, shell result: 3
+  - Other (same "identical semantic content, only tool_use_id
+    differs" pattern, uncategorized by keyword): 29
+
+  **Effective single dominant pattern:** ~80 of the 83 matches are
+  the same shape — tool_result messages that are byte-identical
+  except for the randomly-generated `tool_use_id`. This is exactly
+  the failure mode the amendment's §1.1 clause targets.
+
+### 4.4 Honest interpretation of the 52.20% number
+
+The ratio is `matches_found / candidate_pairs_evaluated`. Its
+meaning:
+
+- **Not:** "52% of the trace is duplicated content."
+- **Actually:** "of the top-50-by-Jaccard candidate pairs the
+  detector chose to spend judge budget on, 52% were confirmed
+  semantically equivalent."
+
+The metric is a **detector precision** measure (§12 was designed
+this way), not a trace-level waste rate. A separate metric would
+be needed to answer "how many input tokens are wasted by semantic
+duplicates" — that is a follow-up, not covered by this
+amendment.
+
+**Under §12 threshold:** 0.5220 >> 0.05 → GO is the mandated
+verdict. This is defensible in the strict prereg-language sense.
+
+### 4.5 Cost and time
+
+- Total judge cost: $0.133 (post-amendment run) + $0.131 (baseline
+  run) = $0.264, well under the $0.30 amendment budget and under
+  the base prereg $2.00 cap.
+- Total elapsed: ~11 minutes (post) + ~11 minutes (baseline).
+
+### 4.6 Artifacts
+
+Uncommitted diagnostic files (per rule 8 step 3):
+
+- `field_test/diagnostics/llm_judge_go_nogo.RESULTS.json` — full
+  raw per-session detail (post-amendment run overwrote the earlier
+  baseline file; baseline numbers preserved in §4.2 above).
+- `field_test/diagnostics/llm_judge_go_nogo_RESULTS.md` — human-
+  readable summary of the post-amendment run.
 
 ## 5. Backout plan
 
