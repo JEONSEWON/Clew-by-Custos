@@ -243,3 +243,156 @@ The following remain untouched by this prereg:
 - Frozen tests.
 
 Only new file added: this prereg itself.
+
+## §12. Results (executed 2026-08-07)
+
+Rule 8 step 2 — execution results appended after run. Diagnostic
+artifacts uncommitted per §7. Numbers below are the record of record.
+
+### §12.1 Per-framework outcomes
+
+| # | Framework | LLM calls | CR events | CR % | PD | RR | LLM-judge | Cost |
+|---|---|---|---|---|---|---|---|---|
+| T1.3 | Anthropic SDK direct | 4 | **9** | **43.9%** | 0 | 0 | 0 (5 pairs) | $0.030 |
+| T1.1 | LlamaIndex FunctionAgent | 6 | **6** | **40.9%** | 0 | 0 | 0 (13 pairs) | $0.033 |
+| T1.2 | OpenAI Agents SDK | 3 | **4** | **35.5%** | 0 | 0 | 0 (0 pairs) | $0.016 |
+| T1.4 | AutoGen AssistantAgent | 0 | 0 | — | 0 | 0 | 0 | ~$0.02 (unmeasured) |
+
+Notes:
+- CR% = `resent_input_tokens / total_llm_input_tokens`.
+- LLM-judge `(N pairs)` = candidate pairs sent to judge; 0 matches in
+  all runs.
+- Cost includes both scenario LLM cost and LLM-judge cost.
+
+### §12.2 Per-cell grid (§3 PASS/EMPTY/FAIL)
+
+Per §3 definitions:
+- PASS = ≥1 non-empty event, no crash.
+- EMPTY = 0 events, no crash.
+- FAIL = crash.
+
+|   | PD | CR | RR | LLM-judge |
+|---|---|---|---|---|
+| Anthropic | EMPTY | **PASS** | EMPTY | EMPTY |
+| LlamaIndex | EMPTY | **PASS** | EMPTY | EMPTY |
+| OpenAI Agents SDK | EMPTY | **PASS** | EMPTY | EMPTY |
+| AutoGen | EMPTY | EMPTY | EMPTY | EMPTY |
+
+**Per-framework ≥1 non-empty cell:**
+- Anthropic ✅ / LlamaIndex ✅ / OpenAI Agents SDK ✅ / AutoGen ❌
+
+### §12.3 Verdict
+
+**3/4 Tier 1 frameworks PASS.** Per §3 frozen threshold
+(≥ 3/4 → GO), verdict: **GO**.
+
+**Interpretation:** the pipeline (ingest + 3 deterministic detectors +
+opt-in LLM-judge) demonstrates end-to-end operation without crash on
+3 of 4 Tier 1 frameworks, and produces the context-resend signal on
+each. Direction B "framework support" claim is defensible from this
+result set.
+
+### §12.4 AutoGen — honest analysis
+
+AutoGen produced 3 spans (2 TOOL + 1 AGENT) with **zero LLM spans**,
+despite the agent completing the task successfully (verified by
+final message output). Root cause: the
+`openinference-instrumentation-autogen-agentchat` instrumentor
+(v0.1.10) emits spans for agent lifecycle and tool invocations but
+does NOT emit spans for the underlying LLM client
+(`AnthropicChatCompletionClient` in this run). Anthropic API calls
+were made and billed (~$0.02 estimated) but not surfaced in the
+trace.
+
+**This is a framework/instrumentor limitation, not a detector
+defect.** Our detectors correctly returned 0 events on an
+empty-of-LLM-calls trace.
+
+**Follow-up (out of scope for this prereg):** try combined
+instrumentation (Autogen instrumentor + Anthropic instrumentor) to
+capture LLM calls. That is a separate amendment / scenario.
+
+### §12.5 OpenAI Agents SDK — deviation note
+
+The OpenAI Agents SDK does not natively support Anthropic models.
+Per §5 "each framework uses `claude-sonnet-4-5`", we routed via the
+`LitellmModel` adapter (`agents.extensions.models.litellm_model`,
+model id `anthropic/claude-sonnet-4-5`). This is a documented
+deviation: OpenAI Agents SDK's *native* pathway is unmeasured here.
+A follow-up run with native OpenAI GPT model (e.g. `gpt-4o`) would
+show whether the OI instrumentor behavior differs; not attempted in
+this prereg.
+
+### §12.6 CR pattern across frameworks
+
+The three PASS frameworks show CR% between **35-44%**, a tight range
+despite differing agent APIs. This suggests context-resend is a
+*structural* property of iterative LLM tool loops, not a
+framework-specific artifact:
+
+- Every framework re-sends prior conversation on each API call
+  (Anthropic messages array must grow across turns).
+- The 35-44% range reflects the short scenario (3-6 turns). Longer
+  workloads compound this into much higher ratios (CC baseline
+  98.5%).
+
+**Non-commitment:** the 35-44% number is workload-specific
+(FizzBuzz retry-loop, 3-6 turns). It is NOT a general framework CR
+rate.
+
+### §12.7 PD / RR / LLM-judge — scenario limitations
+
+All three of these detectors returned 0 across all 4 frameworks.
+This is expected given the FizzBuzz scenario:
+
+- **PD (structural repeat):** the task succeeded on first attempt in
+  all three PASS runs — no retry loop, no tool re-invocation. To
+  exercise PD, need a scenario that induces at least one retry.
+- **RR (redundant read):** the task uses `write_file` and
+  `run_python` only. Read is not among the exposed tools. To
+  exercise RR, need a scenario with `read_file` invocations.
+- **LLM-judge (semantic duplicate):** 3-6 turn conversations have
+  too few unique chunks to produce semantic paraphrase candidates
+  (Jaccard-filtered candidate pairs: 0-13 total across runs, all
+  judged non-equivalent). To exercise LLM-judge, need longer
+  workloads with paraphrased re-sends.
+
+**None of these zero results indicate detector failure.** They
+indicate scenario coverage gaps — the FizzBuzz scenario does not
+stimulate PD/RR/LLM-judge signal by construction.
+
+### §12.8 Cost totals
+
+| Line item | Cost |
+|---|---|
+| Anthropic SDK (task + LLM-judge) | $0.030 |
+| LlamaIndex (task + LLM-judge) | $0.033 |
+| OpenAI Agents SDK (task + LLM-judge) | $0.016 |
+| AutoGen (task, LLM span unmeasured) | ~$0.020 |
+| **Total (measured)** | **$0.079** |
+| **Total (with AutoGen estimate)** | **~$0.099** |
+
+Budget cap per §5: $10.00 total. Consumed 0.8-1.0% of budget.
+
+### §12.9 Setup notes (installation quirks)
+
+- **LlamaIndex:** required additional `pip install
+  llama-index-llms-anthropic` (the Anthropic LLM binding). Core
+  package was pre-installed but Anthropic binding was not.
+- **OpenAI Agents SDK:** import name is `agents`, not
+  `openai_agents`. Requires `agents.extensions.models.litellm_model`
+  for Claude routing.
+- **AutoGen:** native Anthropic support via
+  `autogen_ext.models.anthropic.AnthropicChatCompletionClient` —
+  no LiteLLM needed. But see §12.4 for instrumentation gap.
+- **Anthropic SDK direct:** simplest (no framework agent loop —
+  retry logic hand-written in probe script). Best baseline.
+
+### §12.10 Artifacts (uncommitted per §7)
+
+- `field_test/diagnostics/task9_phaseB_anthropic.{py,json,RESULTS.json}`
+- `field_test/diagnostics/task9_phaseB_llamaindex.{py,json,RESULTS.json}`
+- `field_test/diagnostics/task9_phaseB_openai_agents.{py,json,RESULTS.json}`
+- `field_test/diagnostics/task9_phaseB_autogen.{py,json,RESULTS.json}`
+- `field_test/diagnostics/task9_phaseA_detector_coverage.{py,RESULTS.json,md}`
+  (Phase A preflight)
