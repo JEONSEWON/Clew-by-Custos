@@ -1,4 +1,5 @@
-# Spec: docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md §4 (frozen).
+# Spec: docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md §4 (frozen)
+#       + docs/LLM_JUDGE_AMENDMENT_v1.md §1.1 (ephemeral-ID clause added).
 """Frozen prompt template for the LLM judge.
 
 DO NOT modify this file without a new prereg. The rubric is treated as
@@ -18,8 +19,11 @@ SYSTEM_PROMPT = (
     "Two chunks are \"equivalent\" only if they express the same "
     "request, tool call, or information to the LLM. Formatting "
     "differences (whitespace, punctuation, quotation style) are "
-    "equivalent. Different content, values, or intent are NOT "
-    "equivalent."
+    "equivalent. Ephemeral identifiers that are randomly generated "
+    "per invocation (e.g. tool_use_id, message_id, id fields on tool "
+    "calls / tool results) are NOT semantic content — ignore them "
+    "when judging equivalence. Different content, values, or intent "
+    "are NOT equivalent."
 )
 
 

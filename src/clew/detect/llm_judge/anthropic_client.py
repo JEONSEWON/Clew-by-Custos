@@ -1,4 +1,5 @@
-# Spec: docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md §3, §8 (frozen).
+# Spec: docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md §3, §8 (frozen)
+#       + docs/LLM_JUDGE_AMENDMENT_v1.md §1.2 (parser fence-stripping).
 """Anthropic API client for the LLM judge — thin wrapper.
 
 Prereg §3: temperature=0, no streaming, pinned model string.
@@ -158,8 +159,18 @@ class AnthropicJudge:
         ) / 1_000_000.0
 
         # Parse JSON body. Prereg §4: parse failure = non-match + warn.
+        # Strip markdown code fences (``` or ```json ... ```) that Claude
+        # models frequently wrap JSON output in despite instructions.
+        text_clean = text.strip()
+        if text_clean.startswith("```"):
+            lines = text_clean.split("\n")
+            if len(lines) >= 2:
+                lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                text_clean = "\n".join(lines)
         try:
-            body = json.loads(text)
+            body = json.loads(text_clean)
         except (json.JSONDecodeError, TypeError):
             warnings.warn(
                 f"clew judge: response was not valid JSON (first 200 chars: "
