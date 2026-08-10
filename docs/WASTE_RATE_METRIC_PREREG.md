@@ -356,16 +356,76 @@ The following remain untouched by this prereg:
 
 No squash, no rebase. Commit chain preserved.
 
-## 13. Results (executed <date>)
+## 13. Results (Corpus A executed 2026-08-10; Corpus B deferred)
 
 Rule 8 step 2 — execution results appended after run. Numbers below
-are the record of record after execution. Placeholder until then.
+are the record of record.
 
-<!-- To be filled in post-execution:
-### 13.1 Per-corpus per-detector table (12 numbers × 2 corpora)
-### 13.2 Union metrics
-### 13.3 SDR@10 per corpus
-### 13.4 Corpus manifests (sha256)
-### 13.5 Cost totals for the scan
-### 13.6 Interpretation notes (matching predictions in §5)
--->
+### 13.1 Corpus A · trace-commons (28 CC sessions)
+
+- **Manifest sha256:** `be511bcd6ce0e1a72ae794dc06105033331f21a55123bd15eb9c77ab20494e1a`
+- **Traces:** 28 total, 28 included (0 excluded)
+- **Elapsed:** 1193s (~20 min single-threaded) on Windows 11, torch
+  2.6.0+cu124, embedder `paraphrase-multilingual-MiniLM-L12-v2 @
+  e8f8c211226b894fcb81acc59f3b34ba3efd5f42`.
+
+#### 13.1.1 Per-detector metrics (Corpus A)
+
+| Detector | WR_char | WR_cost | SDR@10 |
+|---|---:|---:|---:|
+| `repeat` (cascade) | 0.0000 | 0.0000 | 0.0000 |
+| `context_resend` | **0.9930** | **0.2903** | **0.9643** |
+| `redundant_read` | 0.0000 | 0.0000 | 0.0000 |
+| `duplicate_creation` | 0.0000 | 0.0000 | 0.0000 |
+
+#### 13.1.2 Union metrics (Corpus A)
+
+| Metric | Value |
+|---|---:|
+| `union_wr_char` | **0.9930** |
+| `union_wr_cost` | **0.2903** |
+| `union_sdr_at_10` | **0.9643** (27 of 28 sessions) |
+
+#### 13.1.3 Bootstrap 95% CI on `union_wr_char`
+
+`n_boot=1000, seed=42`, weighted-ratio bootstrap over per-trace `(union_waste_bytes, total_input_bytes)`:
+
+- **lower_2_5:** 0.9892
+- **median:** 0.9929
+- **upper_97_5:** 0.9944
+
+#### 13.1.4 Per-trace WR_char distribution
+
+- **n:** 28
+- **min / max:** 0.0000 / 0.9954
+- **median:** 0.9835
+- **p10 / p90:** 0.7971 / 0.9940
+- **count ≥ 0.10 (SDR@10 numerator):** 27 / 28
+
+### 13.2 Corpus B · Toolathlon (deferred)
+
+- **Manifest sha256:** `9648d18876685ae54ee20abcb88e191f0914f20f2025ff38a9d2cedb0699d4f7`
+- **Files:** 66 JSONL (each containing multiple trajectories per Toolathlon `model_run` structure; approximately 6,780 total trajectories per the paper).
+- **Status:** **Not scanned in this pass.** Per-trajectory cascade with the frozen embedder averaged ~40s per session on Corpus A; extrapolating to ~6,780 trajectories gives an estimated wall-clock of many hours to a day, which was not feasible in the session that produced this results append.
+- **Deferral policy:** the Corpus B scan is deferred to a follow-up run using the same frozen `waste_rate_metric.py` script with `SCAN_TOOLATHLON=True`. When completed, results will be added as §13.5 in a subsequent PR referencing this prereg. **No metric definitions, corpus manifests, detector set, or thresholds are changed by this deferral** — the frozen positions (§1-5) remain the same for the Corpus B pass.
+
+### 13.3 Interpretation (matching §5 predictions)
+
+**Predictions from §5 that were verified:**
+
+- §5 predicted "`context_resend` alone triggers ≥ 10% on essentially every session, so per-detector SDR@10 for `context_resend` on Corpus A will be near 1.0 and `union_SDR@10` will match." — **verified:** `context_resend_sdr_at_10 = 0.9643`, `union_sdr_at_10 = 0.9643`; the one session that fell below 10% (`4c09dfa9` with WR_char = 0.0000) is a no-tool-use session that the CC adapter recovered as a root-only Trace, contributing no LLM input bytes flagged as waste.
+- §5 predicted the metric on Corpus A would be dominated by `context_resend`. — **verified:** the other three detectors returned 0 across all 28 sessions. Provable Duplicate (cascade) requires byte-exact tool output AND no compact-boundary gap AND no state change; Redundant Read requires an interval-clean gate that CC's iterative edit workflow often breaks; Duplicate Creation (id-bridge) requires side-effect tools like `canvas-*` / `notion-*` that appear in Toolathlon but not in these CC sessions.
+
+**A finding not pre-committed but worth noting:**
+
+- `union_wr_char = 0.9930` and `union_wr_cost = 0.2903` **diverge by 3×**. This is expected under the current cost model: WR_char counts UTF-8 bytes uniformly, while WR_cost apportions provider-reported input tokens per-chunk (proportionally by tiktoken length) — chunks that are short but repeat many times contribute a small cost share each time even though they contribute a large char share cumulatively. The two ratios answer different questions and neither is wrong. Pitch material that uses the "%" without qualifier should say which one (`char` is more conservative for "how much of the trace is waste"; `cost` is more accurate for "how much of your bill is waste").
+
+### 13.4 Notes on the scan
+
+- The measurement script `field_test/diagnostics/waste_rate_metric.py` remains uncommitted per rule 8 step 3.
+- Raw per-trace results in `field_test/diagnostics/waste_rate_metric.RESULTS.json` (uncommitted). Manifest sha256 in §13.1 above suffices for reproducibility given a fixed corpus.
+- `PYTHONUNBUFFERED=1` was required to see live progress on Windows; a first run with buffered stdout succeeded silently until reaching a slow session. Documented for reproducibility.
+
+### 13.5 Corpus B results
+
+*(To be appended in a follow-up PR after the Toolathlon scan completes.)*
