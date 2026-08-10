@@ -27,7 +27,12 @@ from clew.detect.cascade import cascade
 from clew.detect.context_resend import _chunk_boundary, find_context_resend
 from clew.detect.redundant_read import find_redundant_reads
 from clew.model import Trace
-from clew.report._enrich import scan_id_bridge_candidates
+
+# NOTE: `clew.report._enrich` is imported LAZILY inside
+# `_duplicate_creation_metric` below. Eager import creates a cycle
+# through `clew.report.__init__` → `clew.report.json_report` →
+# `clew.metrics.waste_rate` after §6.1 report-integration wires
+# `waste_rate` back into the JSON renderer.
 
 if TYPE_CHECKING:
     from clew.config.user_tools import ResolvedTools
@@ -213,6 +218,8 @@ def _duplicate_creation_metric(
     *,
     tools: "ResolvedTools | None" = None,
 ) -> PerDetectorMetric:
+    # Lazy import to break the circular chain (see module-level note).
+    from clew.report._enrich import scan_id_bridge_candidates
     cands = scan_id_bridge_candidates(trace, tools=tools)
     # Prereg §3: only "differ" verdicts feed the waste aggregation.
     flagged = frozenset(

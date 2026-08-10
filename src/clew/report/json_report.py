@@ -11,6 +11,7 @@ from clew.detect.cascade import CascadeResult
 from clew.detect.context_resend import ContextResendResult
 from clew.detect.llm_judge import LLMJudgeResult
 from clew.detect.redundant_read import RedundantReadResult
+from clew.metrics.waste_rate import DETECTOR_ORDER, WasteRateMetric
 from clew.model import Trace
 from clew.report._enrich import coverage_stats, enrich, scan_id_bridge_candidates
 from clew.report._model import TraceCostSummary, WasteDetail, build_cost_summary
@@ -143,6 +144,28 @@ def _context_resend_block(cr: ContextResendResult | None) -> dict | None:
     }
 
 
+def _wr_round(v: float | None, digits: int = 6) -> float | None:
+    return None if v is None else round(v, digits)
+
+
+def _waste_rate_block(wr: WasteRateMetric | None) -> dict | None:
+    """WASTE_RATE_METRIC_PREREG §6.1 JSON field."""
+    if wr is None:
+        return None
+    return {
+        "excluded_reason": wr.excluded_reason,
+        "total_input_bytes": wr.total_input_bytes,
+        "union_wr_char": _wr_round(wr.union_wr_char),
+        "union_wr_cost": _wr_round(wr.union_wr_cost),
+        "per_detector": {
+            d: {"wr_char": _wr_round(wr.per_detector[d].wr_char),
+                "wr_cost": _wr_round(wr.per_detector[d].wr_cost),
+                "waste_bytes": wr.per_detector[d].waste_bytes}
+            for d in DETECTOR_ORDER
+        },
+    }
+
+
 def render_json(
     trace: Trace,
     cr: CascadeResult,
@@ -155,6 +178,7 @@ def render_json(
     context_resend: ContextResendResult | None = None,
     redundant_read: RedundantReadResult | None = None,
     llm_judge: LLMJudgeResult | None = None,
+    waste_rate: WasteRateMetric | None = None,
 ) -> str:
     """CascadeResult + WasteDetail list -> JSON string (indent=2).
 
@@ -302,6 +326,7 @@ def render_json(
         "context_resend": _context_resend_block(context_resend),
         "redundant_read": _redundant_read_block(redundant_read),
         "llm_judge": _llm_judge_block(llm_judge),
+        "waste_rate": _waste_rate_block(waste_rate),
         "note": (
             "Detection thresholds were calibrated on synthetic traces; "
             "real-trace calibration is in progress. Borderline matches "

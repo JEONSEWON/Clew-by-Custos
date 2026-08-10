@@ -10,6 +10,7 @@ from clew.detect.cascade import CascadeResult
 from clew.detect.context_resend import ContextResendResult
 from clew.detect.llm_judge import LLMJudgeResult
 from clew.detect.redundant_read import RedundantReadResult
+from clew.metrics.waste_rate import WasteRateMetric
 from clew.model import Trace
 from clew.report._enrich import (
     EnrichedDetail,
@@ -554,6 +555,25 @@ def _render_context_resend_section(cr: ContextResendResult | None) -> list[str]:
     return lines
 
 
+def _waste_rate_line(wr: WasteRateMetric | None) -> str | None:
+    """One-line Waste-rate summary (WASTE_RATE_METRIC_PREREG §6.1).
+
+    Emits None when `wr` is None or the trace was excluded (no LLM input
+    to divide against). Otherwise renders union WR_char always, and
+    union WR_cost when defined.
+    """
+    if wr is None or wr.excluded_reason is not None or wr.union_wr_char is None:
+        return None
+    pct_char = f"{wr.union_wr_char * 100:.1f}%"
+    if wr.union_wr_cost is None:
+        return f"- **Waste rate (bytes)**: {pct_char} of input bytes flagged (union of 4 detectors)."
+    pct_cost = f"{wr.union_wr_cost * 100:.1f}%"
+    return (
+        f"- **Waste rate**: {pct_char} of input bytes / {pct_cost} of input cost "
+        f"flagged as waste (union of 4 detectors)."
+    )
+
+
 def render_markdown(
     trace: Trace,
     cr: CascadeResult,
@@ -566,6 +586,7 @@ def render_markdown(
     context_resend: ContextResendResult | None = None,
     redundant_read: RedundantReadResult | None = None,
     llm_judge: LLMJudgeResult | None = None,
+    waste_rate: WasteRateMetric | None = None,
 ) -> str:
     """CascadeResult + WasteDetail list -> markdown string.
 
@@ -613,6 +634,9 @@ def render_markdown(
         lines.append("- **Waste detection**: no waste detected (wasteful=False).")
         lines.extend(_summary_duplicate_creation_line(id_bridge))
         lines.extend(_summary_context_resend_line(context_resend))
+        wr_line = _waste_rate_line(waste_rate)
+        if wr_line is not None:
+            lines.append(wr_line)
         lines.append("")
         # Coverage line A — ALWAYS rendered, including waste-0.
         # PREREG §1.1 Q2 rationale: a low-coverage user seeing "no waste"
@@ -653,6 +677,9 @@ def render_markdown(
     lines.append(f"- **Waste detection**: {len(cr.waste_span_ids)} wasteful span(s).")
     lines.extend(_summary_duplicate_creation_line(id_bridge))
     lines.extend(_summary_context_resend_line(context_resend))
+    wr_line = _waste_rate_line(waste_rate)
+    if wr_line is not None:
+        lines.append(wr_line)
     lines.append("")
     lines.append(f"- **wasted spans**: {len(cr.waste_span_ids)}")
     if enrichment.enriched:

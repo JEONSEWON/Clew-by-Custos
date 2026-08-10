@@ -230,6 +230,14 @@ def _analyze(args: argparse.Namespace) -> int:
         trace, enabled=args.llm_judge,
     )
 
+    # Waste-rate metric (WASTE_RATE_METRIC_PREREG §6.1 report integration).
+    # Additive summary field. Re-runs the 4 deterministic detectors internally
+    # (~2× cascade cost); acceptable for per-session report generation.
+    from clew.metrics.waste_rate import compute_waste_rate
+    waste_rate_result = compute_waste_rate(
+        trace, embedder=embedder, n=_N, phi=_PHI, tools=user_tools,
+    )
+
     # Phase 2: user entity_id extraction ratios — one-shot stderr summary.
     # Only emitted when clew.yaml declared any entity_id path.
     if user_tools is not None and user_tools.has_user_entity_ids:
@@ -252,6 +260,7 @@ def _analyze(args: argparse.Namespace) -> int:
         context_resend=resend_result,
         redundant_read=redundant_read_result,
         llm_judge=llm_judge_result,
+        waste_rate=waste_rate_result,
     )
 
     if args.out:
@@ -270,6 +279,7 @@ def _analyze(args: argparse.Namespace) -> int:
             context_resend=resend_result,
             redundant_read=redundant_read_result,
             llm_judge=llm_judge_result,
+            waste_rate=waste_rate_result,
         )
         json_path = Path(args.json_out)
         json_path.write_text(jstr, encoding="utf-8")
