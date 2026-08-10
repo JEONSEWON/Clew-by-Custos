@@ -402,12 +402,33 @@ are the record of record.
 - **p10 / p90:** 0.7971 / 0.9940
 - **count ≥ 0.10 (SDR@10 numerator):** 27 / 28
 
-### 13.2 Corpus B · Toolathlon (deferred)
+### 13.2 Corpus B · Toolathlon (executed 2026-08-10)
 
 - **Manifest sha256:** `9648d18876685ae54ee20abcb88e191f0914f20f2025ff38a9d2cedb0699d4f7`
-- **Files:** 66 JSONL (each containing multiple trajectories per Toolathlon `model_run` structure; approximately 6,780 total trajectories per the paper).
-- **Status:** **Not scanned in this pass.** Per-trajectory cascade with the frozen embedder averaged ~40s per session on Corpus A; extrapolating to ~6,780 trajectories gives an estimated wall-clock of many hours to a day, which was not feasible in the session that produced this results append.
-- **Deferral policy:** the Corpus B scan is deferred to a follow-up run using the same frozen `waste_rate_metric.py` script with `SCAN_TOOLATHLON=True`. When completed, results will be added as §13.5 in a subsequent PR referencing this prereg. **No metric definitions, corpus manifests, detector set, or thresholds are changed by this deferral** — the frozen positions (§1-5) remain the same for the Corpus B pass.
+- **Files:** 66 JSONL (22 models × 3 runs)
+- **Trajectories scanned:** **6,780** (exact count, matching the Toolathlon paper)
+- **Elapsed:** 49.5s single-threaded (no embedder cache miss cost — Toolathlon has zero non-tool spans that would invoke cosine).
+- **Result:** **Every one of the 6,780 trajectories is excluded from the aggregate.**
+
+| Aggregate metric | Value |
+|---|---|
+| `n_traces_total` | 6,780 |
+| `n_traces_included` | **0** |
+| `n_traces_excluded` | **6,780** (100%, all with `excluded_reason="no_llm_calls"`) |
+| Every per-detector WR_char/WR_cost/SDR | **`None`** |
+| `union_wr_char` / `union_wr_cost` / `union_sdr_at_10` | **`None`** |
+
+**Root cause (honest reading):** the Toolathlon adapter (`src/clew/ingest/toolathlon.py`) surfaces tool spans only; it does not populate `trace.metadata["llm_calls"]`. Toolathlon trajectory JSONL records tool invocations and their responses but not the underlying LLM call inputs — so there is no `input_text` to divide against in `WR_char`, and `total_input_bytes = 0` for every trajectory.
+
+**What this means for the metric:** WR_char and WR_cost are structurally undefined on Toolathlon under the current adapter. The metric spec (§1) is honored (denominator zero → `None` → trace excluded). Corpus B contributes 0 information to the union metric.
+
+**What this does NOT mean:**
+- The Toolathlon corpus has no waste — the other Clew detectors (cascade `waste_span_ids` on tool sha256 identity, id-bridge `differing_entity_id` count) still work on Toolathlon and report the numbers cited in `README.md` "Where it stands / Toolathlon" (4,249 provable-duplicate pairs, 159 differing-ID pairs). Those numbers are tool-span-level, not input-side-ratio.
+- The metric is broken — the metric spec explicitly defines `None` for zero-denominator traces (§1.1), and the aggregate correctly propagates.
+
+**Predictions from §5 that missed:** §5 said "Corpus B (Toolathlon) is where SDR is expected to carry discriminative information." **Not verified** — the adapter gap prevents any SDR value on Toolathlon at all. This is an honest miss; the prediction was written before verifying whether the Toolathlon adapter surfaces `llm_calls`.
+
+**Follow-up scope (deferred, not blocking):** extending the Toolathlon adapter to reconstruct pseudo-LLM-calls (system prompt + tool spans concatenated) from trajectory records would let the WR metric apply to Toolathlon. That's an adapter change, out of scope for this prereg — a separate prereg amendment would define the reconstruction rule.
 
 ### 13.3 Interpretation (matching §5 predictions)
 
@@ -426,6 +447,15 @@ are the record of record.
 - Raw per-trace results in `field_test/diagnostics/waste_rate_metric.RESULTS.json` (uncommitted). Manifest sha256 in §13.1 above suffices for reproducibility given a fixed corpus.
 - `PYTHONUNBUFFERED=1` was required to see live progress on Windows; a first run with buffered stdout succeeded silently until reaching a slow session. Documented for reproducibility.
 
-### 13.5 Corpus B results
+### 13.5 Cross-corpus summary
 
-*(To be appended in a follow-up PR after the Toolathlon scan completes.)*
+| Corpus | Scan status | Included | union_wr_char | union_wr_cost | union_sdr_at_10 |
+|---|---|---:|---:|---:|---:|
+| A · trace-commons | Executed 2026-08-10 | 28 / 28 | **0.9930** | **0.2903** | **0.9643** |
+| B · Toolathlon | Executed 2026-08-10 | 0 / 6,780 | `None` | `None` | `None` |
+
+**One-line pitch reading (Corpus A only, honest):**
+
+> "On 28 measured Claude Code sessions from the public trace-commons corpus, Clew flags waste on 96.4% of sessions (`SDR@10`), with union WR_char = 99.3% (95% bootstrap CI [98.9%, 99.4%]) and union WR_cost = 29.0%."
+
+Any pitch statement drawing on "all measured corpora" must acknowledge Corpus B contributed 0 traces (§13.2 root cause).
