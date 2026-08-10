@@ -139,7 +139,7 @@ Beyond fixture coverage above, the full pipeline (ingest → 4 deterministic det
 | OpenAI Agents SDK | Official OI (LiteLLM → Claude) | 4 | **35.5%** | ✅ PASS |
 | AutoGen AssistantAgent | Official OI v0.1.10 | 0 | — | ❌ EMPTY |
 
-Pre-registered §3 threshold ≥ 3/4 PASS → **GO**. AutoGen's instrumentor emits agent/tool spans but not the underlying LLM span (framework limitation, not a detector defect — see §12.4 of the prereg). Provable-Duplicate / Redundant-Read / LLM-judge returned 0 across all four frameworks — the FizzBuzz scenario (3-6 turns, no realized retries, no Read tool) does not stimulate those detectors by construction (§12.7). Total API cost: ~$0.099 of a $10 budget cap.
+Pre-registered §3 threshold ≥ 3/4 PASS → **GO**. AutoGen's instrumentor emits agent/tool spans but not the underlying LLM span (framework limitation, not a detector defect — see §12.4 of the prereg). The `repeat` detector, Redundant Read, and LLM-judge returned 0 across all four frameworks — the FizzBuzz scenario (3-6 turns, no realized retries, no Read tool) does not stimulate those detectors by construction (§12.7). Total API cost: ~$0.099 of a $10 budget cap.
 
 Pre-registration + results: [`docs/TASK9_FRAMEWORK_REAL_WORKLOAD_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/TASK9_FRAMEWORK_REAL_WORKLOAD_PREREG.md).
 
