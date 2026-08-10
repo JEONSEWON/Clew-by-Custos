@@ -128,6 +128,21 @@ Measured PASS on Tier 1 and Tier 2:
 
 Full results and per-instrumentor path table: [`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md), [`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_TIER2_RESULTS.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_TIER2_RESULTS.md).
 
+### Framework real-workload validation (Task #9 Phase B)
+
+Beyond fixture coverage above, the full pipeline (ingest → 4 deterministic detectors + opt-in LLM-judge) was executed against real workloads of 4 Tier 1 frameworks under a fixed FizzBuzz retry-loop scenario, all using `claude-sonnet-4-5`:
+
+| Framework | Instrumentation | CR events | CR % of input | Verdict |
+|---|---|---|---|---|
+| Anthropic SDK (direct wrap) | Helper wrap | 9 | **43.9%** | ✅ PASS |
+| LlamaIndex FunctionAgent | Official OI | 6 | **40.9%** | ✅ PASS |
+| OpenAI Agents SDK | Official OI (LiteLLM → Claude) | 4 | **35.5%** | ✅ PASS |
+| AutoGen AssistantAgent | Official OI v0.1.10 | 0 | — | ❌ EMPTY |
+
+Pre-registered §3 threshold ≥ 3/4 PASS → **GO**. AutoGen's instrumentor emits agent/tool spans but not the underlying LLM span (framework limitation, not a detector defect — see §12.4 of the prereg). Provable-Duplicate / Redundant-Read / LLM-judge returned 0 across all four frameworks — the FizzBuzz scenario (3-6 turns, no realized retries, no Read tool) does not stimulate those detectors by construction (§12.7). Total API cost: ~$0.099 of a $10 budget cap.
+
+Pre-registration + results: [`docs/TASK9_FRAMEWORK_REAL_WORKLOAD_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/TASK9_FRAMEWORK_REAL_WORKLOAD_PREREG.md).
+
 ### Registering your own tools
 
 LangChain / CrewAI apps typically name their tools inside application code (`search_web`, `create_ticket`). Register them so waste is not stuck in `unclassified`:
@@ -175,13 +190,56 @@ Duplicate creation check across the same corpus: **3,432 same-input side-effect 
 
 Toolathlon ships pass/fail labels, not step-level ground truth. Per-model rates vary 54× (0.157 to 8.463 candidate density per trajectory). "Model X wastes N× more than model Y" is not a claim we make; task-mix and success-rate confounds are uncontrolled.
 
+### Context Resend Detector — coding agent workloads
+
+New in Tier 1. Measures the input-side cost of chunks (message-array elements) resent byte-exact across LLM calls within one trace. Deterministic (sha256 chunk hash + provider-reported input token counts).
+
+Aggregate over the same trace-commons corpus (28 CC sessions, `data/hf_recon/trace_commons_paths.txt`, `random.Random(seed=42)` order):
+
+- **`resent_cost / total_input_cost = 0.9851`** (98.5%)
+- Per-trace ratios cluster at 98-99%; **95% bootstrap CI [0.9796, 0.9878]** (`n_boot=1000, seed=42`)
+- Pre-registered §7 threshold `≥ 0.20` → **GO**
+
+**Caching caveat.** Anthropic `cache_read_input_tokens` bills at ~10% of the input rate. The 98.5% *structural* resend corresponds to roughly **8-15% of effective billed input cost** for users with caching enabled. The detector reports the structural number honestly; the billed-cost proxy is a derived interpretation and requires a v2 cache-tier split to measure directly.
+
+Pre-registration + honesty preface: [`docs/CONTEXT_RESEND_DETECTOR_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/CONTEXT_RESEND_DETECTOR_PREREG.md).
+
+### Redundant Read Detector — standalone
+
+New in Tier 1, distinct from the retired v0.3.0 reread cascade integration (see *What Clew doesn't do* below). Emits its own `RedundantReadResult` with per-event tokens/dollars, contributes a distinct entry in the unified cost summary, and works cross-adapter (Claude Code, OpenInference, Toolathlon). Gate: both spans are read-nature tools on the same normalized target, the interval contains no write to that target and no payload-opaque shell tool, and (when the parent structure is known) both spans share the same nearest-AGENT ancestor. Output-identity is a strengthening flag, not a requirement — the pair is `confirmed=True` when outputs are byte-identical.
+
+Pre-registration: [`docs/REDUNDANT_READ_DETECTOR_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/REDUNDANT_READ_DETECTOR_PREREG.md).
+
+### LLM-as-Judge Semantic Duplicate (opt-in)
+
+Semantic-equivalence check on chunk pairs that already pass a Jaccard pre-filter (threshold `0.30`, max 50 judged pairs per session). Uses `claude-haiku-4-5` as judge. **Default OFF**; requires explicit opt-in per session with a hard cost cap.
+
+Two data points from Go/No-go measurement on 5 CC sessions (`seed=42`, `data/hf_recon/trace_commons_paths.txt`), both retained:
+
+| Measurement | Matches / Pairs | Ratio | Cost | Verdict |
+|---|---|---|---|---|
+| Pre-amendment (base spec) | 4 / 159 | 0.0252 | $0.131 | SHIP-AS-IS |
+| Post-amendment v1 | 83 / 159 | **0.5220** | $0.133 | **GO** |
+
+Amendment v1 changes: (1) response parser strips markdown code fences (all 159 base responses were fence-wrapped); (2) rubric explicitly ignores randomly-generated per-invocation identifiers (`tool_use_id`, etc.) as non-semantic. Both changes were made **after** seeing the 2.52% baseline; the amendment document's honesty preface acknowledges the p-hacking risk and retains both data points as a joint record.
+
+**The 52.20% is a detector precision figure** — of judge-evaluated candidate pairs, how many were confirmed equivalent. It is **not** a trace-level waste rate. A separate metric would be needed to answer "what fraction of input tokens are wasted by semantic duplicates".
+
+Pre-registration: [`docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md); amendment: [`docs/LLM_JUDGE_AMENDMENT_v1.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/LLM_JUDGE_AMENDMENT_v1.md).
+
+### Cost attribution (Tier 1 · unified summary)
+
+Prior versions priced only Claude Sonnet 4.5. As of the Cost Attribution Completion prereg, pricing tables now cover Sonnet 4.5 / 4.6, Opus 4.7, Haiku 4.5, GPT-4o and GPT-4o mini, Gemini 1.5 Pro and 1.5 Flash — with 4-tier cache-aware rates where the provider exposes them. The report emits a unified `Total analyzed / Total waste / Waste ratio` block at the top, plus per-detector breakdown in dollars. Each pricing entry carries a source URL and ISO-8601 verification date.
+
+Pre-registration: [`docs/COST_ATTRIBUTION_COMPLETION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/COST_ATTRIBUTION_COMPLETION_PREREG.md).
+
 ---
 
 ## What Clew doesn't do
 
 - **No fixes**, only diagnosis. The output is a report you read. Prompt changes, context caching, and tool routing are yours to make.
 - **No real-time interception.** The `args-only` real-time gate was retired at precision 0.633 on labeled data (below the 0.70 threshold required for either auto-block or a confirm-prompt). Clew reads finished trace files, after the run.
-- **No `reread` detector.** Retired at 3.3% precision on a 30-pair RedundancyBench sample: 29 of 30 same-path Read pairs were legitimate chunked reads at different `offset` / `limit` values. See [`docs/REREAD_DETECTOR_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/REREAD_DETECTOR_PREREG.md) §11.
+- **The v0.3.0 in-cascade `reread` gate was retired** at 3.3% precision on a 30-pair RedundancyBench sample: 29 of 30 same-path Read pairs were legitimate chunked reads at different `offset` / `limit` values. See [`docs/REREAD_DETECTOR_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/REREAD_DETECTOR_PREREG.md) §11. The current standalone **Redundant Read Detector** (see *Where it stands* above) is a different approach: it requires interval-clean gating (no intervening write to the same target, no payload-opaque shell tool in the interval) before flagging, and emits per-event tokens/dollars rather than bundling into the cascade waste-cost line.
 - **No reasoning-level `pingpong`.** Code path exists but has fired only on synthetic traces. Blocked pending an external corpus that surfaces it, not killed.
 - **Tool coverage is 26.4% on Toolathlon** (138 of 523 unique tool names). Unmapped tools drop into `unclassified` and reduce interval-scan tier precision. The banner shows coverage on your specific trace; `clew.yaml` closes the gap.
 - **Cost is estimated saving potential, not measured.** Amplification formula assumes wasted output is re-consumed each subsequent turn (structural upper bound). Cache-hit lower to cache-miss upper; the exact split is not observable from vendor usage. Sonnet pricing assumed.
