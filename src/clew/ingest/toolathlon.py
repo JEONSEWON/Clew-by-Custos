@@ -3,7 +3,8 @@
 Mapping convention: docs/TOOLATHLON.md §23 (pre-registered, finalized after PR approval).
 
 Input: `data/toolathlon/<model>_<run>.jsonl` (JSONL, one line = one trace).
-Output: Clew canonical Trace (synthetic CHAIN root + tool spans only).
+Output: Clew canonical Trace (synthetic CHAIN root + tool spans, plus
+reconstructed `llm_calls` per WASTE_RATE_TOOLATHLON_ADAPTER_AMENDMENT_PREREG.md §1).
 
 Main decisions (§23.2):
 - All top-level field values are JSON strings, so re-deserialization is required.
@@ -11,9 +12,17 @@ Main decisions (§23.2):
 - end_time = start_time (the detector uses start_time sort only).
 - tool_calls[j].function.arguments is already a JSON string -> re-parse + sort_keys re-serialization.
 
+LLM call reconstruction (amendment §1):
+- One `llm_calls` entry per assistant message; `input_text` = JSON-serialized
+  accumulated prior messages (matches CC adapter at claude_code.py:239).
+- Trace-level `key_stats.input_tokens` apportioned length-weighted across calls;
+  `output_tokens` split equally by `agent_llm_requests`; residual absorbed in last call.
+- Cache tiers all uncached (Toolathlon `key_stats` does not distinguish).
+- Cost rate looked up by `modelname_run` in the caller-provided table; missing model → None.
+
 Contract:
-- ingest_toolathlon_jsonl(path) -> Trace (first line only; same contract as CC)
-- iter_toolathlon_traces(path) -> Iterator[Trace] (for full scans)
+- ingest_toolathlon_jsonl(path, *, input_cost_table, output_cost_table) -> Trace
+- iter_toolathlon_traces(path, *, input_cost_table, output_cost_table) -> Iterator[Trace]
 """
 from __future__ import annotations
 
@@ -111,7 +120,108 @@ def _render_content(content: Any) -> str:
     raise ValueError(f"Toolathlon: content 지원 타입 아님 ({type(content).__name__})")
 
 
-def _build_trace_from_entry(entry: dict, source_line: int) -> Trace:
+def _reconstruct_llm_calls(
+    messages: list,
+    key_stats: dict,
+    modelname_run: str | None,
+    input_cost_table: dict[str, float] | None,
+    output_cost_table: dict[str, float] | None,
+) -> list[dict[str, Any]]:
+    """Amendment §1: reconstruct per-assistant LLM calls from Toolathlon trajectory.
+
+    Returns [] when `key_stats` lacks `input_tokens` (>0) or
+    `agent_llm_requests` (>0) - existing tests use empty key_stats and
+    must continue to see no llm_calls populated.
+    """
+    try:
+        t_in = int(key_stats.get("input_tokens", 0))
+        t_out = int(key_stats.get("output_tokens", 0))
+        n_req = int(key_stats.get("agent_llm_requests", 0))
+    except (TypeError, ValueError):
+        return []
+
+    if t_in <= 0 or n_req <= 0:
+        return []
+
+    input_cost_rate: float | None = None
+    output_cost_rate: float | None = None
+    if input_cost_table and isinstance(modelname_run, str) and modelname_run in input_cost_table:
+        input_cost_rate = float(input_cost_table[modelname_run])
+    if output_cost_table and isinstance(modelname_run, str) and modelname_run in output_cost_table:
+        output_cost_rate = float(output_cost_table[modelname_run])
+
+    # Pass 1: iterate in trajectory order; snapshot accumulated context
+    # BEFORE each assistant, then append the assistant to accumulated
+    # (matches CC pattern at claude_code.py:239).
+    accumulated: list[dict[str, Any]] = []
+    call_snapshots: list[tuple[int, str]] = []  # (msg_idx, input_text_json)
+
+    for msg_idx, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            continue
+        role = msg.get("role")
+        if role == "assistant":
+            input_text = json.dumps(accumulated, ensure_ascii=False, default=str)
+            call_snapshots.append((msg_idx, input_text))
+            asst_entry: dict[str, Any] = {"role": "assistant", "content": msg.get("content")}
+            if "tool_calls" in msg:
+                asst_entry["tool_calls"] = msg.get("tool_calls")
+            accumulated.append(asst_entry)
+        elif role == "user":
+            accumulated.append({"role": "user", "content": msg.get("content")})
+        elif role == "tool":
+            tool_entry: dict[str, Any] = {"role": "tool", "content": msg.get("content")}
+            if "tool_call_id" in msg:
+                tool_entry["tool_call_id"] = msg.get("tool_call_id")
+            accumulated.append(tool_entry)
+
+    if not call_snapshots:
+        return []
+
+    # Pass 2: length-weighted apportionment (amendment §1.3).
+    lengths = [len(it.encode("utf-8")) for (_, it) in call_snapshots]
+    total_len = sum(lengths)
+    n_calls = len(call_snapshots)
+
+    if total_len > 0:
+        raw_in = [t_in * L / total_len for L in lengths]
+    else:
+        raw_in = [t_in / n_calls] * n_calls
+
+    input_tokens_list = [int(round(x)) for x in raw_in]
+    input_tokens_list[-1] += t_in - sum(input_tokens_list)
+
+    per_call_out = t_out // n_calls
+    output_tokens_list = [per_call_out] * n_calls
+    output_tokens_list[-1] += t_out - sum(output_tokens_list)
+
+    llm_calls: list[dict[str, Any]] = []
+    for k, ((msg_idx, input_text), it_i, ot_i) in enumerate(
+        zip(call_snapshots, input_tokens_list, output_tokens_list, strict=True)
+    ):
+        llm_calls.append({
+            "span_id": f"toolathlon-llm-{k:06d}",
+            "input_text": input_text,
+            "input_tokens": int(it_i),
+            "output_tokens": int(ot_i),
+            "input_tokens_uncached": int(it_i),
+            "input_tokens_cache_read": 0,
+            "input_tokens_cache_write": 0,
+            "input_cost_rate": input_cost_rate,
+            "output_cost_rate": output_cost_rate,
+            "cost_rate_legacy": None,
+            "model": modelname_run,
+            "start_time": _synth_ts(msg_idx, 0).isoformat(),
+        })
+    return llm_calls
+
+
+def _build_trace_from_entry(
+    entry: dict,
+    source_line: int,
+    input_cost_table: dict[str, float] | None = None,
+    output_cost_table: dict[str, float] | None = None,
+) -> Trace:
     """Convert one JSONL line (= one trace) into a Trace."""
     # Plain string fields
     request_id = entry.get("request_id")
@@ -228,11 +338,28 @@ def _build_trace_from_entry(entry: dict, source_line: int) -> Trace:
         model=modelname_run,
     )
 
+    # Amendment §1: reconstruct llm_calls from assistant messages.
+    try:
+        key_stats_parsed = _load_str_field(entry, "key_stats", dict)
+    except ValueError:
+        key_stats_parsed = {}
+    if not isinstance(key_stats_parsed, dict):
+        key_stats_parsed = {}
+    llm_calls = _reconstruct_llm_calls(
+        messages,
+        key_stats_parsed,
+        modelname_run,
+        input_cost_table,
+        output_cost_table,
+    )
+
     metadata: dict[str, Any] = {
         "source": "toolathlon_jsonl",
         "task_name": task_name,
         "task_status": task_status if isinstance(task_status, dict) else {},
         "modelname_run": modelname_run,
+        "key_stats": key_stats_parsed,
+        "llm_calls": llm_calls,
     }
 
     return Trace(
@@ -254,19 +381,29 @@ def _iter_raw_lines(path: Path) -> Iterator[tuple[int, dict]]:
                 raise ValueError(f"{path}:{lineno}: JSONL 라인 파싱 실패 ({exc})") from exc
 
 
-def ingest_toolathlon_jsonl(path: Path) -> Trace:
+def ingest_toolathlon_jsonl(
+    path: Path,
+    *,
+    input_cost_table: dict[str, float] | None = None,
+    output_cost_table: dict[str, float] | None = None,
+) -> Trace:
     """Return only the first trace (same contract as CC). Use iter_toolathlon_traces for full scan."""
     for lineno, entry in _iter_raw_lines(path):
         with warnings.catch_warnings():
             warnings.simplefilter("default")
-            return _build_trace_from_entry(entry, lineno)
+            return _build_trace_from_entry(entry, lineno, input_cost_table, output_cost_table)
     raise ValueError(f"{path}: 빈 JSONL 파일")
 
 
-def iter_toolathlon_traces(path: Path) -> Iterator[Trace]:
+def iter_toolathlon_traces(
+    path: Path,
+    *,
+    input_cost_table: dict[str, float] | None = None,
+    output_cost_table: dict[str, float] | None = None,
+) -> Iterator[Trace]:
     """Yield every trace in the file.
 
     Individual trace parse failures raise rather than silently skip - the caller decides.
     """
     for lineno, entry in _iter_raw_lines(path):
-        yield _build_trace_from_entry(entry, lineno)
+        yield _build_trace_from_entry(entry, lineno, input_cost_table, output_cost_table)
