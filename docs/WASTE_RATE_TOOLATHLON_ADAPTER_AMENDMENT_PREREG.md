@@ -301,6 +301,124 @@ Three commits, no squash/rebase:
 3. `docs(waste_rate): append §9 Toolathlon amendment results` —
    append executed results section below.
 
-## 10. Results (Toolathlon re-scan — to be appended after code lands)
+## 10. Results (Toolathlon re-scan executed 2026-08-11)
 
-_To be appended._
+### 10.1 Scan metadata
+
+- **Corpus:** frozen manifest per §2 (Toolathlon HF, 66 JSONL files, 6,780 trajectories)
+- **Manifest sha256:** `9648d18876685ae54ee20abcb88e191f0914f20f2025ff38a9d2cedb0699d4f7`
+- **Adapter:** `src/clew/ingest/toolathlon.py` with amendment §1 reconstruction (merged as `feat(ingest): Toolathlon LLM call reconstruction per amendment §1`, commit `f66aac4`, PR #90).
+- **Diagnostic script:** `field_test/diagnostics/waste_rate_metric_toolathlon_v2.py` (uncommitted per `feedback_diagnostics_uncommitted`)
+- **Frozen parameters:** `phi=0.514345`, `n=2`, `embedding_model=paraphrase-multilingual-MiniLM-L12-v2` (revision `e8f8c211226b894fcb81acc59f3b34ba3efd5f42`), `sdr_threshold=0.10`
+- **Elapsed:** 4,934s (82 minutes single-threaded).
+
+### 10.2 Fidelity check (per §4)
+
+| Fidelity item | Value |
+|---|---|
+| Trajectories scanned | 7,116 |
+| `built` (adapter succeeded) | 6,780 (95.3%) |
+| `count_match=True` | 5,445 |
+| `count_match=False` | 1,214 |
+| `token_in_exact=False` | 0 (100% invariant preserved) |
+| `token_out_exact=False` | 0 (100% invariant preserved) |
+| `priced` (model in cost table) | 121 (1.8%) |
+| `cost_ratio` median | N/A (only 121 priced traces; distribution not computed) |
+
+**Count-match: 5,445 / 6,659 included traces (81.8%) match exactly. 1,214 differ by exactly +1** — consistent with the 540-trace probe pattern (§4-anticipated). Investigation of the probe on `claude-4-sonnet-0514_1.jsonl` confirmed the mechanism:
+
+| diff (`agent_llm_requests - n_llm_calls`) | Share (probe) | Last message role | Interpretation |
+|---|---|---|---|
+| `0` | 41.9% | `assistant` | Exact match — trajectory ends with a visible final assistant message. |
+| `+1` | 55.6% | `tool` | Phantom final LLM call — agent made one closing LLM request whose output is absent from `messages` (empty-content stop, non-truncation; `truncations=0` verified). |
+| negative | 2.6% | mixed | Anomaly: `agent_llm_requests=0` while `assistant_turns=100` — Toolathlon max-turns cap (100) records the field as `0`. Adapter's §1.3 guard (`n_req <= 0 → []`) yields empty `llm_calls` → excluded from the metric via the existing `no_llm_calls` path. |
+
+**Adapter contract verified:** `assistant_turns == count(role=='assistant' in messages)` held in 540/540 probed traces (100%). Reconstruction produces exactly one `llm_call` per assistant message, as specified in §1.1.
+
+**Impact of count mismatch on the metric:** for `diff=+1` traces (~18% of the corpus), the missing call's accumulated-context snapshot (the largest one, since context grows monotonically) is absent from the `total_input_bytes` denominator, so `WR_char` for those traces is over-estimated by at most `1/(N+1)` where `N` is visible assistant count — bounded 5–15% relative for typical trajectory lengths. Token sum invariant is preserved exactly by adapter design (§1.3 residual absorption).
+
+**Cost fidelity check inapplicable:** only 121 / 6,780 traces (1.8%) had a model in the cost table — Toolathlon's `modelname_run` values (`claude-4-sonnet-0514_2`, `gpt-5.1_3`, `qwen-3-coder_1`, etc.) mostly diverge from CC-oriented table keys (`claude-sonnet-4.5`, `gpt-4o`). §1.5 pre-committed this fallback. The `cost_ratio ∈ [0.5, 2.0]` §4 reporting trigger is therefore vacuously not evaluated across the full corpus.
+
+### 10.3 Per-detector aggregate (weighted ratios)
+
+| Detector | WR_char | WR_cost | SDR@10 |
+|---|---:|---:|---:|
+| `repeat` | 0.000583 | N/A | 0.0012 |
+| `context_resend` | **0.9319** | N/A | **0.9907** |
+| `redundant_read` | 0.001938 | N/A | 0.0045 |
+| `duplicate_creation` | 8.1 × 10⁻⁶ | N/A | 0.0000 |
+
+**WR_cost is N/A across all four detectors** because <2% of traces have a priced model; the aggregate correctly propagates `None` per §1.2 of the parent prereg.
+
+### 10.4 Union aggregate
+
+| Metric | Value |
+|---|---:|
+| `n_traces_total` | 6,780 |
+| `n_traces_included` | 6,659 (98.2%) |
+| `n_traces_excluded` | 121 (1.8%; `no_llm_calls` anomalies per §10.2) |
+| `union_wr_char` | **0.9342** |
+| `union_wr_cost` | `None` (§1.5 predicted) |
+| `union_sdr_at_10` | **0.9908** |
+| Bootstrap 95% CI on `union_wr_char` | `[0.9314, 0.9368]` (n_boot=1000, seed=42) |
+
+**Per-trace distribution of `union_wr_char` (n = 6,659 included traces):**
+
+| min | p10 | median | p90 | max |
+|---:|---:|---:|---:|---:|
+| 0.0000 | 0.6519 | 0.8847 | 0.9573 | 49.77 |
+
+The per-trace maximum exceeding 1.0 is a known effect of the per-trace formula in parent prereg §1.1 (numerator sums waste bytes across all detector spans; denominator sums only `llm_call.input_text` bytes). Extreme outliers occur when a trace's llm_calls carry small input_text totals while cascade-attributed waste spans (which include tool output byte lengths per detector rules) are large. **Aggregate `union_wr_char` = 0.9342 is unaffected** because it uses sum-of-numerators / sum-of-denominators, not mean of per-trace ratios (parent §4.1).
+
+### 10.5 Predictions vs. observed (per §5)
+
+| ID | Prediction band | Observed | Verdict |
+|---|---|---|---|
+| **P1** | `union_wr_char ∈ [0.85, 0.999]` | 0.9342 | ✅ **PASS** |
+| **P2** | `union_sdr_at_10 ∈ [0.85, 1.00]` | 0.9908 | ✅ **PASS** |
+| **P3** | `union_wr_cost ∈ [0.10, 0.50]` | `None` (1.8% priced) | ⏭️ **Vacuously N/A per §1.5** (adapter pricing table gap pre-committed) |
+| **P4** | `context_resend ≥ 95%` of union numerator | 0.9319 / 0.9342 = **99.76%** | ✅ **PASS** |
+| Fidelity | Median `cost_ratio ∈ [0.5, 2.0]` (§4 reporting trigger) | N/A (only 121 priced) | ⏭️ Not evaluated |
+
+**All 3 measurable predictions pass. P3 was vacuously excluded exactly as §1.5 forecasted.** No post-hoc adjustment of prediction bands.
+
+### 10.6 Interpretation
+
+**What this measurement adds vs. Corpus A.** Parent prereg §13.1 established on 28 CC coding sessions that Context Resend dominates the waste signal. This Corpus B scan tests the same claim on a **structurally different footprint**: 22 frontier models × 3 runs × diverse non-coding task families (retail, airline, canvas art, k8s upgrade, notion automation, interview reports). The pattern **holds identically**: `union_wr_char = 0.9342` on Toolathlon vs. `0.9930` on CC; `union_sdr_at_10 = 0.9908` vs. `0.9643`. Context Resend contributes **99.76%** of the Toolathlon union numerator — essentially the same 99%+ dominance seen on CC.
+
+**Systemic reason for `context_resend` dominance (per code inspection):**
+
+The dominance is not empirical accident. It follows from three structural properties visible in `src/clew/detect/context_resend.py`:
+
+1. **LLM APIs are stateless.** Every call must include the full conversation history — there is no server-side session that the provider maintains between calls. `_chunk_boundary(input_text)` in the detector reads exactly what the caller sent, one JSON element per chunk.
+2. **Compounding math.** For an N-turn conversation, turn k's input contains messages 1..(k-1). The i-th message is resent (N-i) times. Total "new" content = N chunks (one per turn); total "repeated" content = N(N−1)/2. Baseline resend ratio floor is (N−1)/(N+1): N=20 → 90.5%, N=50 → 96.1%. Toolathlon trajectories have `agent_llm_requests` ranging 3–100+ (see §10.2 anomaly note).
+3. **System-role exemption is not enough to overcome (2).** `find_context_resend` at line 311 explicitly skips chunks with `role == "system"` (necessary payload, prereg §1.2). So the 93.19% is contributed by **user + assistant + tool** messages resent, not by system-prompt bloat.
+
+**Why the other three detectors fire at ≤ 0.2% of union:**
+
+| Detector | Trigger requirement | Why rarely fires on Toolathlon |
+|---|---|---|
+| `repeat` | Byte-exact same tool call twice, same subgroup, no compact boundary between | Agents typically vary tool arguments or hit different resources between attempts |
+| `redundant_read` | Read-nature tool on same normalized target, no intervening write, same nearest-agent ancestor | Agents interleave reads with state changes (writes, transitions); interval-clean gate rarely holds |
+| `duplicate_creation` | Same-input side-effect tool with differing extracted `entity_id` | Only fires when specific create tools (canvas, notion) mishandle idempotency; 4.63% pair rate observed in parent §13.5 on Toolathlon overall, but attributed waste bytes tiny relative to context_resend |
+
+Each of these detects a **specific anti-pattern** — a well-behaved agent generally avoids them. Context Resend, by contrast, is a **structural property of any multi-turn agent** using a stateless LLM API, regardless of implementation quality. That is why one detector accounts for 99.76% of the union: it is measuring an inevitability, while the others measure fixable-but-rare bugs.
+
+**Pitch implication.** Corpus A's "99.3% CC" finding is not a coding-agent quirk. The Toolathlon scan reproduces the pattern on 22 different frontier models across non-coding task families. The one-line honest pitch after this amendment:
+
+> "On 6,780 Toolathlon trajectories across 22 frontier models, Clew flags waste on 99.1% of sessions with `union WR_char = 93.4%` (95% bootstrap CI [93.1%, 93.7%]) — reproducing the Context Resend dominance first observed on 28 Claude Code sessions. WR_cost is not reported on Toolathlon because 98.2% of trajectories use models outside the current cost table (§1.5); byte-level pattern is the honest cross-corpus signal."
+
+### 10.7 Diagnostic script output
+
+- `field_test/diagnostics/waste_rate_metric_toolathlon_v2.RESULTS.json` (uncommitted, contains per-trace rows and per-trace fidelity records)
+
+### 10.8 Cross-corpus summary (updates parent prereg §13.5)
+
+| Corpus | Scan status | Included | `union_wr_char` | `union_wr_cost` | `union_sdr_at_10` |
+|---|---|---:|---:|---:|---:|
+| A · trace-commons | Executed 2026-08-10 | 28 / 28 | 0.9930 | 0.2903 | 0.9643 |
+| B · Toolathlon (pre-amendment) | Executed 2026-08-10 | 0 / 6,780 | `None` | `None` | `None` |
+| B · Toolathlon (this amendment) | Executed 2026-08-11 | 6,659 / 6,780 | **0.9342** | `None` (98.2% unpriced) | **0.9908** |
+
+**Cross-corpus reading:** Context Resend dominance replicates across two structurally distinct corpora (interactive coding sessions vs. non-coding task trajectories) at 93–99% aggregate WR_char, with SDR@10 ≥ 96% in both. The mechanism is structural, not corpus-specific.
+
