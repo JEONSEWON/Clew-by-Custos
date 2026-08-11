@@ -62,7 +62,7 @@ Observability tools (Langfuse, Phoenix, LangSmith) show you the trace. Clew tell
 
 Clew diagnoses; it does not fix. What to change in your agent (prompt, context caching, tool routing) is a call only you can make.
 
-Scope is deterministic-first: 4 deterministic detectors (`repeat` / `requery`, `context_resend`, `redundant_read`, plus the `pingpong` code path that has only fired on synthetic traces so far) and 1 opt-in LLM-as-judge check for semantic duplicates. Each detector is pre-registered with a frozen spec before results are measured.
+Scope is deterministic-first: four deterministic detectors used in the waste-rate metric (`repeat` / `requery`, `context_resend`, `redundant_read`, `duplicate_creation`), the `pingpong` code path (implemented but not yet observed on real traces), and one opt-in LLM-as-judge check for semantic duplicates. Each detector is pre-registered with a frozen spec before results are measured.
 
 ---
 
@@ -203,6 +203,23 @@ Aggregate over the same trace-commons corpus (28 CC sessions, `data/hf_recon/tra
 **Caching caveat.** Anthropic `cache_read_input_tokens` bills at ~10% of the input rate. The 98.5% *structural* resend corresponds to roughly **8-15% of effective billed input cost** for users with caching enabled. The detector reports the structural number honestly; the billed-cost proxy is a derived interpretation and requires a v2 cache-tier split to measure directly.
 
 Pre-registration + honesty preface: [`docs/CONTEXT_RESEND_DETECTOR_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/CONTEXT_RESEND_DETECTOR_PREREG.md).
+
+### Waste-rate metric — cross-corpus (Tier 1)
+
+Union of the four deterministic detectors (`repeat`, `context_resend`, `redundant_read`, `duplicate_creation`) into three per-corpus metrics: `WR_char` (UTF-8 byte ratio), `WR_cost` (dollar ratio via existing cost attribution), `SDR@10` (share of sessions with `WR_char ≥ 0.10`). Spec: [`docs/WASTE_RATE_METRIC_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/WASTE_RATE_METRIC_PREREG.md). Toolathlon adapter amendment (2026-08-11): [`docs/WASTE_RATE_TOOLATHLON_ADAPTER_AMENDMENT_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/WASTE_RATE_TOOLATHLON_ADAPTER_AMENDMENT_PREREG.md).
+
+| Corpus | Included | `union_wr_char` | `union_wr_cost` | `union_sdr_at_10` | 95% bootstrap CI on `wr_char` |
+|---|---:|---:|---:|---:|---|
+| A · trace-commons (28 CC sessions) | 28 / 28 | **0.9930** | **0.2903** | **0.9643** | [0.9892, 0.9944] |
+| B · Toolathlon (6,780 non-coding trajectories, 22 frontier models) | 6,659 / 6,780 | **0.9342** | `None` | **0.9908** | [0.9314, 0.9368] |
+
+Corpus B `WR_cost` is `None` because 98.2% of Toolathlon trajectories use models absent from the cost table (§1.5 of the amendment, pre-committed). Corpus B fidelity: 5,445 / 6,659 (81.8%) exact count-match against `agent_llm_requests`; the remaining 18.2% differ by exactly `+1` due to trajectories ending on a `role=tool` message (root-caused in amendment §10.2). Token sum invariant preserved on 100% of built traces.
+
+**Amendment prediction verdict.** P1 `union_wr_char ∈ [0.85, 0.999]`: pass (0.9342). P2 `union_sdr_at_10 ∈ [0.85, 1.00]`: pass (0.9908). P3 `union_wr_cost ∈ [0.10, 0.50]`: vacuously N/A (Toolathlon models unpriced, forecast in §1.5). P4 `context_resend ≥ 95%` of union numerator: pass (99.76%). No prediction band was adjusted post-hoc.
+
+**Reading the numbers honestly.** LLM APIs are stateless — every call must include the full conversation. Some resend is mechanically required. The `WR_char` column measures the total resend footprint; the `WR_cost` column measures the share of the bill after Anthropic's prompt-cache discount is already applied. `WR_cost = 0.29` on Corpus A is the dollar-leak figure that survives caching; the `WR_char = 0.99` includes bytes that caching prices at 10% of the uncached rate.
+
+**Note on `union_wr_char` vs `Context Resend Detector 98.5%` above.** These are two different measurements. `Context Resend Detector 98.5%` is `resent_cost / total_input_cost` on 28 CC sessions, single-detector. `union_wr_char` is the union across all four Tier 1 detectors on the same 28 CC sessions (`0.9930`), plus the 6,780-trajectory Corpus B extension. Both numbers are correct for their respective definitions; they are not interchangeable.
 
 ### Redundant Read Detector — standalone
 
