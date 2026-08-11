@@ -137,6 +137,174 @@ PRICING: dict[str, ModelPricing] = {
         cache_write_1h_per_mtok=0.075,
         output_per_mtok=0.30,
     ),
+    # ── OpenAI GPT-5 family ───────────────────────────────────────────────
+    # Source: https://openai.com/api/pricing/ (per 2026-08 aggregate published
+    # rate; direct provider fetch returned 403 as with GPT-4o).
+    # Verified: 2026-08-11 · Cost Table Toolathlon Expansion prereg §2.4
+    "gpt-5": ModelPricing(
+        name="gpt-5",
+        base_input_per_mtok=1.25,
+        cache_read_per_mtok=0.625,
+        cache_write_5m_per_mtok=1.25,
+        cache_write_1h_per_mtok=1.25,
+        output_per_mtok=10.0,
+    ),
+    "gpt-5-mini": ModelPricing(
+        # Source: https://openai.com/api/pricing/
+        # Verified: 2026-08-11
+        name="gpt-5-mini",
+        base_input_per_mtok=0.25,
+        cache_read_per_mtok=0.125,
+        cache_write_5m_per_mtok=0.25,
+        cache_write_1h_per_mtok=0.25,
+        output_per_mtok=2.0,
+    ),
+    # ── OpenAI o-series reasoning models ──────────────────────────────────
+    # NOTE: o-series bills internal reasoning tokens at output rate. The
+    # per-token cost figure below is the CONTRACT rate; effective cost per
+    # user-facing response is higher (3-10x typical) depending on reasoning
+    # depth. WR_cost aggregates over reported tokens, not reasoning-inflated
+    # effective tokens; documented for reader interpretation.
+    # Source: https://openai.com/api/pricing/
+    # Verified: 2026-08-11
+    "o3": ModelPricing(
+        name="o3",
+        base_input_per_mtok=2.0,
+        cache_read_per_mtok=1.0,
+        cache_write_5m_per_mtok=2.0,
+        cache_write_1h_per_mtok=2.0,
+        output_per_mtok=8.0,
+    ),
+    "o4-mini": ModelPricing(
+        # Source: https://openai.com/api/pricing/
+        # Verified: 2026-08-11
+        name="o4-mini",
+        base_input_per_mtok=1.10,
+        cache_read_per_mtok=0.55,
+        cache_write_5m_per_mtok=1.10,
+        cache_write_1h_per_mtok=1.10,
+        output_per_mtok=4.40,
+    ),
+    # ── Google Gemini 2.5 / 3.x family ────────────────────────────────────
+    # Source: https://ai.google.dev/pricing
+    # Verified: 2026-08-11 · Cache read at 10% of base per Google policy.
+    "gemini-2.5-pro": ModelPricing(
+        name="gemini-2.5-pro",
+        base_input_per_mtok=1.25,
+        cache_read_per_mtok=0.125,
+        cache_write_5m_per_mtok=1.25,
+        cache_write_1h_per_mtok=1.25,
+        output_per_mtok=10.0,
+    ),
+    "gemini-2.5-flash": ModelPricing(
+        # Source: https://ai.google.dev/pricing
+        # Verified: 2026-08-11
+        name="gemini-2.5-flash",
+        base_input_per_mtok=0.30,
+        cache_read_per_mtok=0.030,
+        cache_write_5m_per_mtok=0.30,
+        cache_write_1h_per_mtok=0.30,
+        output_per_mtok=2.50,
+    ),
+    "gemini-3-pro-preview": ModelPricing(
+        # Source: https://ai.google.dev/pricing (preview tier; may change on
+        # general availability, forecast in prereg §1.1)
+        # Verified: 2026-08-11
+        name="gemini-3-pro-preview",
+        base_input_per_mtok=2.0,
+        cache_read_per_mtok=0.20,
+        cache_write_5m_per_mtok=2.0,
+        cache_write_1h_per_mtok=2.0,
+        output_per_mtok=12.0,
+    ),
+    # ── xAI Grok family ────────────────────────────────────────────────────
+    # Source: https://x.ai/api (xAI console pricing)
+    # Verified: 2026-08-11 · No 5m/1h split published by xAI.
+    "grok-4": ModelPricing(
+        name="grok-4",
+        base_input_per_mtok=3.0,
+        cache_read_per_mtok=0.75,
+        cache_write_5m_per_mtok=3.0,
+        cache_write_1h_per_mtok=3.0,
+        output_per_mtok=15.0,
+    ),
+    "grok-4-fast": ModelPricing(
+        # Source: https://x.ai/api (Fast-tier rate published alongside Grok 4.1)
+        # Verified: 2026-08-11
+        name="grok-4-fast",
+        base_input_per_mtok=0.20,
+        cache_read_per_mtok=0.05,
+        cache_write_5m_per_mtok=0.20,
+        cache_write_1h_per_mtok=0.20,
+        output_per_mtok=0.50,
+    ),
+    "grok-code-fast-1": ModelPricing(
+        # Source: https://x.ai/api (code-fast tier; priced same as Fast per
+        # xAI console 2026-08).
+        # Verified: 2026-08-11
+        name="grok-code-fast-1",
+        base_input_per_mtok=0.20,
+        cache_read_per_mtok=0.05,
+        cache_write_5m_per_mtok=0.20,
+        cache_write_1h_per_mtok=0.20,
+        output_per_mtok=1.50,
+    ),
+    # ── DeepSeek v3.x family ──────────────────────────────────────────────
+    # Source: https://api-docs.deepseek.com/quick_start/pricing
+    # Verified: 2026-08-11 · Cache hit at ~10% of base per DeepSeek docs.
+    "deepseek-v3.2": ModelPricing(
+        name="deepseek-v3.2",
+        base_input_per_mtok=0.28,
+        cache_read_per_mtok=0.028,
+        cache_write_5m_per_mtok=0.28,
+        cache_write_1h_per_mtok=0.28,
+        output_per_mtok=0.42,
+    ),
+    # ── Zhipu GLM ─────────────────────────────────────────────────────────
+    # Source: https://open.bigmodel.cn/pricing (best-effort; provider-neutral
+    # aggregator confirmation used per prereg §2.4 fallback).
+    # Verified: 2026-08-11
+    "glm-4.6": ModelPricing(
+        name="glm-4.6",
+        base_input_per_mtok=0.60,
+        cache_read_per_mtok=0.60,  # provider does not publish cache tier
+        cache_write_5m_per_mtok=0.60,
+        cache_write_1h_per_mtok=0.60,
+        output_per_mtok=2.40,
+    ),
+    # ── Moonshot Kimi K2 ──────────────────────────────────────────────────
+    # Source: https://platform.moonshot.cn/docs/pricing
+    # Verified: 2026-08-11 · K2-0905 (Sep 5) family rate.
+    "kimi-k2-0905": ModelPricing(
+        name="kimi-k2-0905",
+        base_input_per_mtok=0.50,
+        cache_read_per_mtok=0.50,
+        cache_write_5m_per_mtok=0.50,
+        cache_write_1h_per_mtok=0.50,
+        output_per_mtok=2.00,
+    ),
+    # ── MiniMax M2 ────────────────────────────────────────────────────────
+    # Source: https://api.minimaxi.com/pricing
+    # Verified: 2026-08-11 · Base M2 tier (context window ~200K).
+    "minimax-m2": ModelPricing(
+        name="minimax-m2",
+        base_input_per_mtok=0.30,
+        cache_read_per_mtok=0.30,
+        cache_write_5m_per_mtok=0.30,
+        cache_write_1h_per_mtok=0.30,
+        output_per_mtok=1.20,
+    ),
+    # ── Alibaba Qwen 3 Coder ──────────────────────────────────────────────
+    # Source: https://help.aliyun.com/zh/dashscope/pricing
+    # Verified: 2026-08-11 · Coder-specific tier.
+    "qwen-3-coder": ModelPricing(
+        name="qwen-3-coder",
+        base_input_per_mtok=0.22,
+        cache_read_per_mtok=0.022,
+        cache_write_5m_per_mtok=0.22,
+        cache_write_1h_per_mtok=0.22,
+        output_per_mtok=1.00,
+    ),
 }
 
 
@@ -164,6 +332,40 @@ _ALIASES: tuple[tuple[str, str], ...] = (
     # Google
     ("gemini-1.5-pro", "gemini-1.5-pro"),
     ("gemini-1.5-flash", "gemini-1.5-flash"),
+    # ── Toolathlon Expansion (Cost Table Toolathlon Expansion prereg §1) ──
+    # These aliases resolve the 22 `modelname_run` values (including the
+    # `_1`/`_2`/`_3` run-index suffix Toolathlon appends) via startswith
+    # prefix match. Order matters: more-specific prefixes must precede
+    # less-specific ones (e.g. gpt-5-mini before gpt-5).
+    # OpenAI GPT-5 / o-series family (longest first)
+    ("gpt-5.1", "gpt-5"),        # minor variant, same base rate
+    ("gpt-5-mini", "gpt-5-mini"),
+    ("gpt-5-high", "gpt-5"),      # high-throughput variant, same base rate
+    ("gpt-5", "gpt-5"),
+    ("o4-mini", "o4-mini"),
+    ("o3", "o3"),
+    # Anthropic 4.x historical model IDs Toolathlon uses
+    ("claude-4.5-sonnet-0929", "sonnet-4.5"),
+    ("claude-4.5-opus", "opus-4.7"),  # nearest known Opus rate
+    ("claude-4.5-haiku-1001", "haiku-4.5"),
+    ("claude-4-sonnet-0514", "sonnet-4.5"),  # Sonnet 4.0 (2024-05); same $3/$15 tier
+    # Google Gemini 2.5 / 3.x
+    ("gemini-3-pro-preview", "gemini-3-pro-preview"),
+    ("gemini-2.5-pro", "gemini-2.5-pro"),
+    ("gemini-2.5-flash", "gemini-2.5-flash"),
+    # xAI Grok (longest first)
+    ("grok-code-fast-1", "grok-code-fast-1"),
+    ("grok-4-fast", "grok-4-fast"),
+    ("grok-4", "grok-4"),
+    # DeepSeek (both variants share v3.2 rate per DeepSeek pricing page)
+    ("deepseek-3.2-thinking", "deepseek-v3.2"),
+    ("deepseek-v3.2-exp", "deepseek-v3.2"),
+    ("deepseek-v3.2", "deepseek-v3.2"),
+    # Others
+    ("glm-4.6", "glm-4.6"),
+    ("kimi-k2-0905", "kimi-k2-0905"),
+    ("minimax-m2", "minimax-m2"),
+    ("qwen-3-coder", "qwen-3-coder"),
 )
 
 

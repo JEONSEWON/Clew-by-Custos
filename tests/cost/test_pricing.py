@@ -107,3 +107,125 @@ def test_pricing_source_and_date_present():
     assert re.search(r"\b20\d{2}-\d{2}-\d{2}\b", text), (
         "no ISO-8601 verification date found in pricing.py"
     )
+
+
+# ─── Cost Table Toolathlon Expansion prereg §5 ────────────────────────────
+
+
+TOOLATHLON_MODEL_FAMILIES = [
+    # Anthropic (4) — resolve to existing entries via alias
+    ("claude-4-sonnet-0514", "sonnet-4.5"),
+    ("claude-4.5-sonnet-0929", "sonnet-4.5"),
+    ("claude-4.5-opus", "opus-4.7"),
+    ("claude-4.5-haiku-1001", "haiku-4.5"),
+    # OpenAI (6)
+    ("gpt-5", "gpt-5"),
+    ("gpt-5-high", "gpt-5"),
+    ("gpt-5-mini", "gpt-5-mini"),
+    ("gpt-5.1", "gpt-5"),
+    ("o3", "o3"),
+    ("o4-mini", "o4-mini"),
+    # Google (3)
+    ("gemini-2.5-flash", "gemini-2.5-flash"),
+    ("gemini-2.5-pro", "gemini-2.5-pro"),
+    ("gemini-3-pro-preview", "gemini-3-pro-preview"),
+    # xAI (3)
+    ("grok-4", "grok-4"),
+    ("grok-4-fast", "grok-4-fast"),
+    ("grok-code-fast-1", "grok-code-fast-1"),
+    # DeepSeek (2) — both variants share v3.2 base
+    ("deepseek-3.2-thinking", "deepseek-v3.2"),
+    ("deepseek-v3.2-exp", "deepseek-v3.2"),
+    # Others (4)
+    ("glm-4.6", "glm-4.6"),
+    ("kimi-k2-0905", "kimi-k2-0905"),
+    ("minimax-m2", "minimax-m2"),
+    ("qwen-3-coder", "qwen-3-coder"),
+]
+
+
+@pytest.mark.parametrize("family_name,expected_canonical", TOOLATHLON_MODEL_FAMILIES)
+def test_toolathlon_model_family_resolves(family_name: str, expected_canonical: str):
+    """Every §1 model family resolves without a warning to the expected canonical key."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # fail on UserWarning
+        pricing = get_pricing(family_name)
+    assert pricing is PRICING[expected_canonical], (
+        f"{family_name} resolved to {pricing.name!r}, expected canonical {expected_canonical!r}"
+    )
+
+
+@pytest.mark.parametrize("family_name,expected_canonical", TOOLATHLON_MODEL_FAMILIES)
+@pytest.mark.parametrize("suffix", ["_1", "_2", "_3"])
+def test_toolathlon_run_suffix_resolves(
+    family_name: str, expected_canonical: str, suffix: str,
+):
+    """§1.2: `_1`/`_2`/`_3` run-index suffix strips via existing prefix-match alias table."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        pricing = get_pricing(family_name + suffix)
+    assert pricing is PRICING[expected_canonical], (
+        f"{family_name}{suffix} resolved to {pricing.name!r}, expected {expected_canonical!r}"
+    )
+
+
+def test_expansion_did_not_disturb_existing_entries():
+    """Prereg §3: existing 8 entries and their published values are unchanged."""
+    expected = {
+        "sonnet-4.5": (3.0, 15.0, 0.30),
+        "sonnet-4.6": (3.0, 15.0, 0.30),
+        "opus-4.7": (5.0, 25.0, 0.50),
+        "haiku-4.5": (1.0, 5.0, 0.10),
+        "gpt-4o": (2.50, 10.0, 1.25),
+        "gpt-4o-mini": (0.15, 0.60, 0.075),
+        "gemini-1.5-pro": (1.25, 5.0, 0.125),
+        "gemini-1.5-flash": (0.075, 0.30, 0.0075),
+    }
+    for key, (bi, out, cr) in expected.items():
+        p = PRICING[key]
+        assert p.base_input_per_mtok == bi, f"{key} base_input changed"
+        assert p.output_per_mtok == out, f"{key} output changed"
+        assert p.cache_read_per_mtok == cr, f"{key} cache_read changed"
+
+
+def test_expansion_new_entries_have_verification_date():
+    """Every new §1 entry must carry the 2026-08-11 verification date somewhere."""
+    path = Path(__file__).resolve().parents[2] / "src" / "clew" / "cost" / "pricing.py"
+    text = path.read_text(encoding="utf-8")
+    # Prereg was locked 2026-08-11; every new provider group references this date.
+    # Providers added: OpenAI GPT-5 family, o-series, Google 2.5/3, xAI, DeepSeek,
+    # Zhipu, Moonshot, MiniMax, Alibaba (>= 8 group blocks, each with the date).
+    assert text.count("2026-08-11") >= 8, (
+        f"expected at least 8 occurrences of 2026-08-11 (one per new provider group), "
+        f"found {text.count('2026-08-11')}"
+    )
+
+
+def test_expansion_alias_ordering_avoids_shadow():
+    """Longest / most-specific aliases win before generic ones (prereg §5.2)."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        # gpt-5-mini must NOT resolve to gpt-5
+        assert get_pricing("gpt-5-mini") is PRICING["gpt-5-mini"]
+        assert get_pricing("gpt-5-mini_2") is PRICING["gpt-5-mini"]
+        # grok-4-fast must NOT resolve to grok-4
+        assert get_pricing("grok-4-fast") is PRICING["grok-4-fast"]
+        assert get_pricing("grok-4-fast_3") is PRICING["grok-4-fast"]
+        # gpt-5.1 resolves to gpt-5 (minor version alias)
+        assert get_pricing("gpt-5.1") is PRICING["gpt-5"]
+        # grok-code-fast-1 has its own entry (not shadowed by grok-4-fast)
+        assert get_pricing("grok-code-fast-1") is PRICING["grok-code-fast-1"]
+
+
+def test_expansion_cache_tier_defaults_when_provider_uniform():
+    """Providers without published cache-tier split default write columns to base_input."""
+    # Zhipu / Moonshot / MiniMax do not publish separate cache tiers → all
+    # cache columns equal base_input (documented in prereg §2.2).
+    for key in ("glm-4.6", "kimi-k2-0905", "minimax-m2"):
+        p = PRICING[key]
+        assert p.cache_read_per_mtok == p.base_input_per_mtok, (
+            f"{key}: expected cache_read == base_input, "
+            f"got cache_read={p.cache_read_per_mtok}, base_input={p.base_input_per_mtok}"
+        )
+        assert p.cache_write_5m_per_mtok == p.base_input_per_mtok
+        assert p.cache_write_1h_per_mtok == p.base_input_per_mtok
