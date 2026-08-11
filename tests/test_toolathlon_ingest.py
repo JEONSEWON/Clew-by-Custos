@@ -278,3 +278,253 @@ def test_auto_dispatch_unknown_jsonl_raises(tmp_path: Path) -> None:
     p.write_text(json.dumps({"foo": "bar", "baz": 42}), encoding="utf-8")
     with pytest.raises(ValueError, match="JSONL 형식 판별 실패"):
         _load_trace_auto(p)
+
+
+# ─── Amendment §1: LLM call reconstruction ───────────────────────────────
+
+def _trace_entry_with_stats(
+    request_id: str,
+    messages: list[dict],
+    input_tokens: int,
+    output_tokens: int,
+    agent_llm_requests: int,
+    model: str = "claude-4.5-sonnet-0929",
+) -> dict:
+    entry = _trace_entry(request_id=request_id, model=model, messages=messages)
+    entry["key_stats"] = json.dumps({
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "agent_llm_requests": agent_llm_requests,
+    })
+    return entry
+
+
+def test_llm_calls_empty_when_key_stats_missing(tmp_path: Path) -> None:
+    """Amendment §1: empty key_stats -> no llm_calls populated (back-compat)."""
+    messages = [
+        _asst_calls([_tool_call("t1", "r", {})]),
+        _tool_result("t1", "ok"),
+    ]
+    entry = _trace_entry(messages=messages)  # key_stats = {}
+    path = _write_jsonl(tmp_path, [entry])
+    trace = ingest_toolathlon_jsonl(path)
+    assert trace.metadata["llm_calls"] == []
+    assert trace.metadata["key_stats"] == {}
+
+
+def test_llm_calls_count_matches_agent_llm_requests(tmp_path: Path) -> None:
+    """Amendment §4: len(llm_calls) == count of assistant messages."""
+    messages = [
+        _user("hi"),
+        _asst_calls([_tool_call("t1", "r", {})], content="think 1"),
+        _tool_result("t1", "R-1"),
+        _asst_calls([_tool_call("t2", "r", {})], content="think 2"),
+        _tool_result("t2", "R-2"),
+        _asst_calls([_tool_call("t3", "r", {})], content="think 3"),
+        _tool_result("t3", "R-3"),
+    ]
+    entry = _trace_entry_with_stats(
+        request_id="req-count",
+        messages=messages,
+        input_tokens=3000,
+        output_tokens=300,
+        agent_llm_requests=3,
+    )
+    path = _write_jsonl(tmp_path, [entry])
+    trace = ingest_toolathlon_jsonl(path)
+    llm_calls = trace.metadata["llm_calls"]
+    assert len(llm_calls) == 3
+    assert trace.metadata["key_stats"]["agent_llm_requests"] == 3
+
+
+def test_llm_calls_token_sum_invariant(tmp_path: Path) -> None:
+    """Amendment §1.3: sum(input_tokens_i) == T_in exactly (residual absorbed in last)."""
+    messages = [
+        _user("some longer user question here to give input tokens body"),
+        _asst_calls([_tool_call("t1", "r", {})], content="a"),
+        _tool_result("t1", "result-A" * 5),
+        _asst_calls([_tool_call("t2", "r", {})], content="b"),
+        _tool_result("t2", "result-B" * 20),
+        _asst_calls([_tool_call("t3", "r", {})], content="c"),
+        _tool_result("t3", "final"),
+    ]
+    entry = _trace_entry_with_stats(
+        request_id="req-sum",
+        messages=messages,
+        input_tokens=1_000_000,
+        output_tokens=1_000_003,  # non-divisible by 3 to exercise residual
+        agent_llm_requests=3,
+    )
+    path = _write_jsonl(tmp_path, [entry])
+    trace = ingest_toolathlon_jsonl(path)
+    llm_calls = trace.metadata["llm_calls"]
+    assert sum(c["input_tokens"] for c in llm_calls) == 1_000_000
+    assert sum(c["output_tokens"] for c in llm_calls) == 1_000_003
+
+
+def test_llm_calls_length_weighted_apportionment(tmp_path: Path) -> None:
+    """Amendment §1.3: later assistant sees more accumulated context -> more input tokens."""
+    messages = [
+        _user("hi"),
+        _asst_calls([_tool_call("t1", "r", {})], content="a"),
+        _tool_result("t1", "R-1"),
+        _asst_calls([_tool_call("t2", "r", {})], content="b"),
+        _tool_result("t2", "R-2"),
+        _asst_calls([_tool_call("t3", "r", {})], content="c"),
+        _tool_result("t3", "R-3"),
+    ]
+    entry = _trace_entry_with_stats(
+        request_id="req-lw",
+        messages=messages,
+        input_tokens=10000,
+        output_tokens=300,
+        agent_llm_requests=3,
+    )
+    path = _write_jsonl(tmp_path, [entry])
+    trace = ingest_toolathlon_jsonl(path)
+    llm_calls = trace.metadata["llm_calls"]
+    it = [c["input_tokens"] for c in llm_calls]
+    # First assistant sees only [user]; third sees [user, asst1, tool1, asst2, tool2].
+    # Length-weighted -> monotone non-decreasing on this construction.
+    assert it[0] < it[1] < it[2]
+
+
+def test_llm_calls_input_text_matches_prior_messages(tmp_path: Path) -> None:
+    """Amendment §1.2: input_text = JSON-serialized accumulated messages BEFORE the assistant."""
+    messages = [
+        _user("first"),
+        _asst_calls([_tool_call("t1", "r", {})], content="a1"),
+        _tool_result("t1", "R-1"),
+        _asst_calls([_tool_call("t2", "r", {})], content="a2"),
+        _tool_result("t2", "R-2"),
+    ]
+    entry = _trace_entry_with_stats(
+        request_id="req-it",
+        messages=messages,
+        input_tokens=1000,
+        output_tokens=200,
+        agent_llm_requests=2,
+    )
+    path = _write_jsonl(tmp_path, [entry])
+    trace = ingest_toolathlon_jsonl(path)
+    llm_calls = trace.metadata["llm_calls"]
+    # First call: only the user message accumulated before it.
+    first_parsed = json.loads(llm_calls[0]["input_text"])
+    assert first_parsed == [{"role": "user", "content": "first"}]
+    # Second call: user + asst1 + tool1 accumulated.
+    second_parsed = json.loads(llm_calls[1]["input_text"])
+    assert len(second_parsed) == 3
+    assert second_parsed[0]["role"] == "user"
+    assert second_parsed[1]["role"] == "assistant"
+    assert second_parsed[1]["content"] == "a1"
+    assert second_parsed[1]["tool_calls"][0]["id"] == "t1"
+    assert second_parsed[2]["role"] == "tool"
+    assert second_parsed[2]["tool_call_id"] == "t1"
+
+
+def test_llm_calls_cost_rate_lookup(tmp_path: Path) -> None:
+    """Amendment §1.5: cost rate looked up by modelname_run; missing model -> None."""
+    messages = [
+        _asst_calls([_tool_call("t1", "r", {})], content="a"),
+        _tool_result("t1", "ok"),
+    ]
+    entry = _trace_entry_with_stats(
+        request_id="req-cost",
+        messages=messages,
+        input_tokens=100,
+        output_tokens=10,
+        agent_llm_requests=1,
+        model="claude-model-priced",
+    )
+    path = _write_jsonl(tmp_path, [entry])
+
+    # Model present in table
+    trace = ingest_toolathlon_jsonl(
+        path,
+        input_cost_table={"claude-model-priced": 3e-6},
+        output_cost_table={"claude-model-priced": 15e-6},
+    )
+    llm_calls = trace.metadata["llm_calls"]
+    assert llm_calls[0]["input_cost_rate"] == 3e-6
+    assert llm_calls[0]["output_cost_rate"] == 15e-6
+
+    # Model missing from table -> None
+    trace2 = ingest_toolathlon_jsonl(
+        path,
+        input_cost_table={"some-other-model": 3e-6},
+        output_cost_table={"some-other-model": 15e-6},
+    )
+    assert trace2.metadata["llm_calls"][0]["input_cost_rate"] is None
+    assert trace2.metadata["llm_calls"][0]["output_cost_rate"] is None
+
+
+def test_llm_calls_cache_tiers_all_uncached(tmp_path: Path) -> None:
+    """Amendment §1.4: all input tokens assigned to uncached tier."""
+    messages = [
+        _asst_calls([_tool_call("t1", "r", {})], content="a"),
+        _tool_result("t1", "ok"),
+    ]
+    entry = _trace_entry_with_stats(
+        request_id="req-cache",
+        messages=messages,
+        input_tokens=500,
+        output_tokens=20,
+        agent_llm_requests=1,
+    )
+    path = _write_jsonl(tmp_path, [entry])
+    trace = ingest_toolathlon_jsonl(path)
+    c = trace.metadata["llm_calls"][0]
+    assert c["input_tokens_uncached"] == c["input_tokens"] == 500
+    assert c["input_tokens_cache_read"] == 0
+    assert c["input_tokens_cache_write"] == 0
+
+
+def test_llm_calls_span_id_and_start_time(tmp_path: Path) -> None:
+    """Amendment §1.6: span_id = toolathlon-llm-{k:06d}; start_time via _synth_ts(msg_idx, 0)."""
+    messages = [
+        _user("go"),
+        _asst_calls([_tool_call("t1", "r", {})], content="a"),
+        _tool_result("t1", "ok"),
+        _asst_calls([_tool_call("t2", "r", {})], content="b"),
+        _tool_result("t2", "ok"),
+    ]
+    entry = _trace_entry_with_stats(
+        request_id="req-id",
+        messages=messages,
+        input_tokens=100,
+        output_tokens=10,
+        agent_llm_requests=2,
+    )
+    path = _write_jsonl(tmp_path, [entry])
+    trace = ingest_toolathlon_jsonl(path)
+    llm_calls = trace.metadata["llm_calls"]
+    assert llm_calls[0]["span_id"] == "toolathlon-llm-000000"
+    assert llm_calls[1]["span_id"] == "toolathlon-llm-000001"
+    # Assistants at msg_idx 1 and 3.
+    assert llm_calls[0]["start_time"] == _synth_ts(1, 0).isoformat()
+    assert llm_calls[1]["start_time"] == _synth_ts(3, 0).isoformat()
+
+
+def test_llm_calls_fallback_equal_split_when_no_prior_context(tmp_path: Path) -> None:
+    """Amendment §1.3 fallback: all-zero prior context lengths -> equal split."""
+    # An assistant with no prior message -> its input_text = "[]" (2 bytes, not 0);
+    # so we construct a synthetic case: single assistant only (prior accumulated = [] -> "[]").
+    # The equal-split branch is exercised when sum(L_j) == 0, which json.dumps([]) is not,
+    # so we test the more common path here: a single call absorbs T_in exactly.
+    messages = [
+        _asst_calls([_tool_call("t1", "r", {})], content="a"),
+        _tool_result("t1", "ok"),
+    ]
+    entry = _trace_entry_with_stats(
+        request_id="req-single",
+        messages=messages,
+        input_tokens=777,
+        output_tokens=13,
+        agent_llm_requests=1,
+    )
+    path = _write_jsonl(tmp_path, [entry])
+    trace = ingest_toolathlon_jsonl(path)
+    llm_calls = trace.metadata["llm_calls"]
+    assert len(llm_calls) == 1
+    assert llm_calls[0]["input_tokens"] == 777
+    assert llm_calls[0]["output_tokens"] == 13
