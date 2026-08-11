@@ -237,6 +237,101 @@ Three commits, no squash/rebase:
    `union_wr_cost`, or a new §7 in this file — choice locked at
    commit-3 time based on where the reader will look first.
 
-## 8. Results (to be appended after commits 2 and 3 land)
+## 8. Results (Toolathlon re-scan executed 2026-08-11 · expanded pricing)
 
-_To be appended._
+### 8.1 Scan metadata
+
+- **Corpus:** identical manifest as amendment §10.1 (66 files, 6,780 trajectories, sha256 `9648d18876685ae54ee20abcb88e191f0914f20f2025ff38a9d2cedb0699d4f7`).
+- **Pricing table:** expanded per §1 (PR #94, commit `f4e148c`). All 22 model families + `_1`/`_2`/`_3` run-index suffixes now resolve without warning.
+- **Diagnostic script update:** `field_test/diagnostics/waste_rate_metric.py` refactored to build `INPUT_COST_TABLE` / `OUTPUT_COST_TABLE` dynamically from `src/clew/cost/pricing.py` via `get_pricing()`; the caller-provided dict passed to the adapter contains 144 entries (36 families × 4 suffix variations, including CC-side test entries).
+- **Elapsed:** 4,985s (83 minutes; comparable to the pre-expansion 82-min scan).
+
+### 8.2 Coverage change vs. amendment §10.2
+
+| Metric | Amendment §10.2 (uncached table) | This scan (expanded) | Delta |
+|---|---:|---:|---:|
+| Trajectories priced | 121 / 6,780 (1.8%) | **6,780 / 6,780 (100%)** | **+98.2 pp** |
+| `n_traces_included` | 6,659 | 6,659 | unchanged |
+| `n_traces_excluded` | 121 | 121 | unchanged (`no_llm_calls` anomalies) |
+
+### 8.3 Aggregate (post-expansion)
+
+| Metric | Value |
+|---|---:|
+| `union_wr_char` | 0.9342 (unchanged — byte-level metric, invariant to pricing) |
+| **`union_wr_cost`** | **0.9189** (first time computable on Toolathlon) |
+| `union_sdr_at_10` | 0.9908 (unchanged) |
+| Bootstrap 95% CI on `union_wr_char` | [0.9314, 0.9368] (unchanged) |
+
+### 8.4 Per-detector (post-expansion)
+
+| Detector | WR_char | WR_cost | SDR@10 |
+|---|---:|---:|---:|
+| `repeat` | 0.000583 | 0.0000 | 0.0012 |
+| `context_resend` | 0.9319 | **0.9189** | 0.9907 |
+| `redundant_read` | 0.001938 | 0.0016 | 0.0045 |
+| `duplicate_creation` | 8.1 × 10⁻⁶ | 0.0000 | 0.0000 |
+
+`context_resend` accounts for **99.99%** of `union_wr_cost` numerator (0.9189 / 0.9189).
+
+### 8.5 Cost fidelity check (§4)
+
+Predicted vs. actual cost distribution across 6,780 priced trajectories:
+
+| Statistic | `predicted_cost / agent_cost.total_cost` |
+|---|---:|
+| min | 0.200 |
+| p10 | 0.333 |
+| **median** | **1.000** |
+| p90 | 1.001 |
+| max | 1.991 |
+
+The median `cost_ratio` is exactly **1.000**, i.e. our pricing table matches provider-reported billed cost on half the trajectories. p10 = 0.333 flags a tail where trajectories are under-priced by ~3× — investigation shows this cluster is dominated by o-series reasoning models (`o3`, `o4-mini`) where internal reasoning tokens are billed at output rate but are not fully exposed in `key_stats.output_tokens` used for apportionment. The right tail (max = 1.991) is a small population where our nominal rate slightly over-estimates provider-billed. **Median 1.000 is inside the §4 [0.5, 2.0] reporting band** — no post-hoc adjustment triggered.
+
+### 8.6 Prediction verdict (per §4)
+
+| ID | Prediction band | Observed | Verdict |
+|---|---|---|---|
+| **P1** | `n_priced / n_included ≥ 0.90` | **6,780 / 6,780 = 1.000** | ✅ **PASS** |
+| **P2** | `union_wr_cost ∈ [0.05, 0.60]` | **0.9189** | ❌ **MISS (above band)** |
+| **P3** | `context_resend ≥ 95%` of `union_wr_cost` numerator | 99.99% | ✅ **PASS** |
+| Fidelity | median `cost_ratio ∈ [0.5, 2.0]` | 1.000 | ✅ within band |
+
+### 8.7 Honest analysis of P2 miss
+
+**Root cause:** the amendment adapter §1.4 assigns 100% of Toolathlon input tokens to the uncached tier (`input_tokens_cache_read = 0`, `input_tokens_cache_write = 0`). This is a pre-committed choice (Toolathlon's `key_stats` does not distinguish cache tiers, so uncached-only is the conservative default). Under uncached-only pricing, `WR_cost` collapses toward `WR_char` because both numerator (waste bytes × uncached rate) and denominator (input bytes × uncached rate) apply the same rate — the ratio approximates the byte-level ratio.
+
+The P2 prediction band `[0.05, 0.60]` was calibrated against Corpus A `WR_cost = 0.29`, which reflects **cache-tier-aware** billing (Claude Code JSONL populates `input_tokens_cache_read` accurately per amendment §1.5 of the parent `CONTEXT_RESEND_DETECTOR_PREREG`). Applying that band to Toolathlon (uncached-only) was a category error in the prediction: two structurally different cost regimes.
+
+**What P2 actually measures:** the fraction of a bill that would go to Context Resend **if the caller does not use prompt caching**. Toolathlon corpus does not encode caching, so the number Toolathlon reports is the no-cache scenario. On Claude Code with default cache-read-tier billing, the same detector's share drops from ~93% to ~29% (the 3× gap first documented in `WASTE_RATE_METRIC_PREREG.md` §13.4).
+
+**Not adjusted post-hoc.** The prediction miss is documented; the band stands; the amendment adapter's uncached-only choice stands. Future work (not in this prereg): a v2 adapter that infers cache tier from `key_stats` if Toolathlon or successor benchmarks add that field.
+
+### 8.8 Cross-corpus cost reading
+
+| Corpus | `union_wr_char` | `union_wr_cost` | Cache regime |
+|---|---:|---:|---|
+| A · trace-commons (28 CC) | 0.9930 | **0.2903** | Cache-tier-aware billing (Anthropic 10% cache_read rate) |
+| B · Toolathlon (6,780) | 0.9342 | **0.9189** | Uncached-only billing (adapter §1.4 pre-commit) |
+
+The two `WR_cost` numbers answer **different questions** even though both are "share of the bill from Context Resend":
+
+- **Corpus A 29%** — dollars leaked *after Anthropic prompt caching is applied*.
+- **Corpus B 92%** — dollars leaked *if the caller does not use prompt caching*.
+
+Neither is "wrong". They frame the two ends of the same optimization axis: with caching correctly configured, Context Resend costs ~29% of the input bill; without caching, it costs ~92%. The gap is exactly the caching lever's leverage.
+
+### 8.9 Diagnostic script output
+
+- `field_test/diagnostics/waste_rate_metric_toolathlon_v2.RESULTS.json` (uncommitted, ~7 MB). Contains per-trace rows with `input_cost_rate` / `output_cost_rate` now populated for all 6,780 built traces.
+- `waste_rate_metric.py` still uncommitted per `feedback_diagnostics_uncommitted`, but its `_build_rate_tables` refactor is the reference implementation for the pricing-table-driven approach.
+
+### 8.10 Follow-ups
+
+**Not blocking:** the P2 miss is a prediction-band calibration issue, not a metric or code defect. No amendment is triggered.
+
+**Documented for future consideration:**
+
+1. **Toolathlon-side cache tier reconstruction.** If Toolathlon or a successor benchmark exposes cache-hit token counts, an amendment v3 could infer them and produce a cache-aware `WR_cost` closer to the CC 0.29 regime. Out of scope for this prereg.
+2. **o-series reasoning token attribution.** The p10 = 0.333 cost-ratio cluster suggests reasoning-heavy models under-price systematically. A follow-up could split reasoning tokens into a distinct tier. Out of scope.
+3. **README and Waste-rate metric section refresh.** `README.md` §"Waste-rate metric — cross-corpus" currently shows Corpus B `union_wr_cost = None`; a separate docs PR will update it to `0.9189` with the §8.8 cache-regime footnote.
