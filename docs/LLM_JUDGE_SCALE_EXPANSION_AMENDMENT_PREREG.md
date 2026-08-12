@@ -224,6 +224,116 @@ Three commits, no squash/rebase:
 3. `docs(llm_judge): append §9 Scale Expansion results` — final
    post-measurement append.
 
-## 9. Results (to be appended after execution)
+## 9. Results (executed 2026-08-11 → 2026-08-12)
 
-_To be appended._
+### 9.1 Scan metadata
+
+- **CC subset:** 28 sessions from `data/hf_recon/trace_commons_paths.txt` (§1.1).
+- **Toolathlon subset:** 20 `(file, lineno)` pairs sampled by `random.Random(seed=42)` over sorted `built=True` rows of `waste_rate_metric_toolathlon_v2.RESULTS.json` (§1.2). Deterministic sample; full pair list committed to `field_test/diagnostics/llm_judge_v2_expansion.RESULTS.json` `toolathlon_sample_pairs` field.
+- **Judge model:** `claude-haiku-4-5` (§2).
+- **Detector config:** v1 rubric unchanged (system prompt + parser).
+- **Sampling seed:** 42.
+- **Bootstrap:** 1000 iterations, seed 42.
+- **Elapsed:** ~12h wall time (started 21:24 KST 2026-08-11, completed early 2026-08-12). Estimate of 1.5-2h in §3 was materially wrong — actual latency dominated by per-pair Anthropic API round-trip (average ~2s per call, well above the naïve arithmetic assumption). Documented; not a scientific issue.
+- **Cost:** **$2.5779** (86% of §3 hard cap $3.00; below §3 hard-stop $2.70 by $0.12).
+- **Coverage:** all 48 sessions successfully measured. No sessions dropped, no adapter errors.
+
+### 9.2 Per-corpus aggregate
+
+| Corpus | n_sessions | matches | pairs | precision |
+|---|---:|---:|---:|---:|
+| A · CC (trace-commons) | 28 | 571 | 1,178 | **0.4847** |
+| B · Toolathlon (seed-42 sample) | 20 | 96 | 924 | **0.1039** |
+| Unified | 48 | 667 | 2,102 | **0.3173** |
+
+### 9.3 Unified 95% bootstrap CI (n=1000, seed=42)
+
+| Statistic | Value |
+|---|---:|
+| Lower 2.5% | 0.2311 |
+| Median | 0.3176 |
+| Upper 97.5% | 0.4103 |
+| **CI width** | **0.1792** |
+
+### 9.4 Ephemeral-ID attribution (§4 P3 basis)
+
+Match reasoning classified by v1 §4.3 keyword set (`tool_use_id`, `ephemeral`, `identifier`, etc.):
+
+| Corpus | matches classified as ephemeral-ID | total matches | share |
+|---|---:|---:|---:|
+| CC | 548 | 571 | **95.97%** |
+| Toolathlon | 85 | 96 | **88.54%** |
+
+### 9.5 Prediction verdict (§4)
+
+| ID | Prediction band | Observed | Verdict |
+|---|---|---|---|
+| **P1a** | CC precision ∈ [0.40, 0.60] | **0.4847** | ✅ **PASS** |
+| **P1b** | Toolathlon precision ∈ [0.10, 0.60] | **0.1039** | ⚠️ **PASS (grazes lower bound)** |
+| **P2** | Unified CI width ≤ 0.15 | **0.1792** | ❌ **MISS (+0.029 over)** |
+| **P3** | CC ephemeral-ID share ≥ 70% | **95.97%** | ✅ **PASS** |
+| Base-prereg GO threshold (unified ≥ 0.05) | 0.3173 | ✅ well above; v1 GO stands |
+
+**3/4 pass. P2 CI-width miss documented honestly per §4 non-commitment 3.**
+
+### 9.6 P2 CI-width miss · honest root cause
+
+The 95% CI on the unified precision spans **[0.2311, 0.4103]**, width **0.179** — just above the predicted `≤ 0.15` ceiling. Root cause is per-session heterogeneity that the n=5 v1 sample masked:
+
+- **CC per-session precision spread:** min 0.000 (2 sessions: `674e0f5c` with 14 pairs / 0 matches; `da6566ff` with 5 pairs / 0 matches), max 0.940 (`09d9abe9`).
+- **Toolathlon per-session precision spread:** min 0.000 (5 sessions: `claude-4.5-haiku-1001_2`, `gpt-5_3`, `gpt-5.1_2`, `gemini-3-pro-preview_1`, `gemini-2.5-flash_2`), max 0.580 (`grok-4-fast_3`).
+
+Bootstrap resampling over sessions surfaces this heterogeneity; the wider CI is the honest reflection of what an n=48 sample actually supports. Tightening below 0.15 would require either n ≥ ~80 or a stratified sampling design that reduces between-session variance. **Neither is done post-hoc; the miss stands.**
+
+### 9.7 Honest interpretation
+
+**Detector precision is real, but narrower than the v1 headline number suggested.**
+
+The v1 precision 0.5220 (n=5) sat comfortably above 0.30 in this expansion, but the point estimate on n=48 is **0.3173** (unified), not 0.52. The v1 number was measured on 5 CC sessions where the tool_result / tool_use_id pattern was concentrated. On a broader CC sample (28), the pattern remains dominant but per-session precision is more variable — some sessions have very few or no such repetitions.
+
+**Extrapolating to Toolathlon (non-coding tool-use):** precision drops to **0.104**, indicating that the v1 ephemeral-ID rubric — designed against CC's `toolu_*` identifier pattern — captures a much smaller share of Toolathlon's `call_*` pattern. The 88.54% ephemeral-ID share within Toolathlon matches means that when the detector *does* find a semantic match on Toolathlon, it is almost always the same tool_use_id repetition pattern; but such matches are rarer per session because Toolathlon trajectories use more diverse tool sequences with fewer verbatim tool_result repeats.
+
+**What is safe to say in pitch material:**
+
+- ✅ "LLM-judge precision on 48 measured agent sessions: **31.7%** (95% CI [23.1%, 41.0%])."
+- ✅ "On Claude Code coding sessions (n=28): **48.5%** precision. On Toolathlon non-coding trajectories (n=20): **10.4%**."
+- ✅ "96% (CC) / 89% (Toolathlon) of matches attribute to `tool_use_id` ephemeral-identifier equivalence."
+- ⚠️ **What is NOT safe:** "LLM-judge finds 52% semantic duplicates" (the v1 headline). That number came from n=5 and does not survive n=48. **Corrected number is 31.7% unified or 48.5% CC-only.**
+
+### 9.8 New finding · Model family effect on Toolathlon
+
+Top Toolathlon precision by model:
+
+| Model family (Toolathlon session) | Precision |
+|---|---:|
+| grok-4-fast (`grok-4-fast_3::L17`) | 0.580 |
+| grok-4 (`grok-4_3::L59`) | 0.300 |
+| glm-4.6 (`glm-4.6_3::L7`) | 0.200 |
+| grok-code-fast-1 (`grok-code-fast-1_1::L73`) | 0.180 |
+| grok-4-fast (`grok-4-fast_2::L11`) | 0.180 |
+| ...(descending)... | |
+| gpt-5, gpt-5.1, gemini-*, claude-haiku-4.5 | 0.000 |
+
+**Observation (not a claim):** Grok-family models (grok-4, grok-4-fast, grok-code-fast-1) cluster near the top of Toolathlon per-session precision. GPT-5 and Gemini families cluster near zero. Anthropic Claude-4.5-haiku scored 0. This is a **model-family effect on tool_result-repetition patterns**, not a Clew capability claim. Documented for future investigation; not a prereg prediction and not evidence of any waste-detection difference across model families (which would require separate controls).
+
+### 9.9 v1 headline update recommendation
+
+The public README currently cites LLM-judge precision as **52.20% on 5 CC sessions** (from Amendment v1, `README.md` §"LLM-as-Judge Semantic Duplicate (opt-in)"). Following this Amendment v2 measurement:
+
+- v1's 52.20% number **stands** as a historical anchor (v1 GO judgment unchanged).
+- README should be updated (separate docs PR) to add: **"On the expanded 28-CC + 20-Toolathlon sample (n=48), post-parser-fix precision is 31.7% (95% CI [23.1%, 41.0%]); on the CC subset alone, 48.5%; on Toolathlon, 10.4%."**
+- The 52.20% headline is retained but qualified as v1's smaller-sample estimate.
+- Follows anti-self-deception discipline: earlier numbers are not deleted, they are contextualized with the fuller data.
+
+### 9.10 Diagnostic script output
+
+- `field_test/diagnostics/llm_judge_v2_expansion.py` (uncommitted per `feedback_diagnostics_uncommitted`).
+- `field_test/diagnostics/llm_judge_v2_expansion.RESULTS.json` (uncommitted; contains per-session rows including all match reasoning strings).
+- `field_test/diagnostics/llm_judge_v2_stdout.log` (uncommitted; full stdout of the 12h run).
+
+### 9.11 Follow-ups (not blocking; deferred)
+
+1. **Recall / ground-truth benchmark.** This expansion measures precision only. A future v3 with hand-labeled ground truth (subset ~200 pairs) would give the actual F1.
+2. **Model-family variance study.** §9.8 observation is worth a dedicated prereg with proper controls (task-mix, trace-length, and success-rate matching across model families).
+3. **Toolathlon-specific rubric tuning.** The 10.4% precision on Toolathlon suggests the `toolu_*`-optimized clause under-serves `call_*` patterns. A rubric v3 could add pattern-specific detection. Requires new prereg.
+4. **README pitch update PR.** Add the 31.7% / 48.5% / 10.4% numbers alongside v1's 52.20% per §9.9. Small docs PR.
