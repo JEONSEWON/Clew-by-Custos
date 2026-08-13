@@ -302,6 +302,130 @@ Three commits, no squash/rebase:
    §8 of this file with the 10-row re-run table and the P1-P4
    verdict lines.
 
-## 9. Results (post-expansion Day 2 re-run · 2026-XX-XX)
+## 9. Results (post-expansion Day 2 re-run · 2026-08-13)
 
-*Placeholder. Populated by commit 3 above.*
+**Re-run command:** `python -m field_test.diagnostics.exgentic_day2_stratified_10`
+(same seed=42, same 10-session pick as Day 2 pre-expansion).
+
+**Diagnostic script:** `field_test/diagnostics/exgentic_day2_stratified_10.py`
+(uncommitted per `feedback_diagnostics_uncommitted`; augmented to record
+per-session `canonical_pricing_key`, `input_rate_per_mtok`,
+`total_llm_input_cost_usd`, and `resent_cost_usd` for provenance).
+
+### 9.1 Per-session resolution (all 10 sessions)
+
+| # | Model → Canonical | Rate $/MTok | wr_char | wr_cost | total_cost $ |
+|---|---|---:|---:|---:|---:|
+| 0 | `gpt-5.2-2025-12-11` → `gpt-5.2` | 1.750 | 0.8249 | 0.8249 | 0.1210 |
+| 1 | `gpt-5.2-2025-12-11` → `gpt-5.2` | 1.750 | 0.9080 | 0.9080 | 0.2385 |
+| 2 | `DeepSeek-V3.2` → `deepseek-v3.2` | 0.280 | 0.8810 | 0.8810 | 0.7848 |
+| 3 | `Kimi-K2.5` → `kimi-k2.5` | 0.375 | 0.6601 | 0.6601 | 0.2276 |
+| 4 | `DeepSeek-V3.2` → `deepseek-v3.2` | 0.280 | 0.9325 | 0.9325 | 0.2887 |
+| 5 | `gpt-5.2-2025-12-11` → `gpt-5.2` | 1.750 | 0.8105 | 0.8105 | 0.2194 |
+| 6 | `DeepSeek-V3.2` → `deepseek-v3.2` | 0.280 | 0.9056 | 0.9056 | 0.2198 |
+| 7 | `DeepSeek-V3.2` → `deepseek-v3.2` | 0.280 | 0.8579 | 0.8579 | 0.0206 |
+| 8 | `Kimi-K2.5` → `kimi-k2.5` | 0.375 | 0.9564 | 0.9564 | 1.9778 |
+| 9 | `DeepSeek-V3.2` → `deepseek-v3.2` | 0.280 | 0.9589 | 0.9589 | 0.1719 |
+
+**Every session resolves to its canonical Exgentic model with zero
+`unknown model` UserWarnings.** No `sonnet-4.5` fallback path taken.
+
+### 9.2 Aggregate
+
+- Token invariant preserved: 10/10.
+- `wr_char`: min 0.6601 · p10 0.8105 · median 0.9056 · p90 0.9589 · max 0.9589
+- `wr_cost`: min 0.6601 · p10 0.8105 · median 0.9056 · p90 0.9589 · max 0.9589
+- `cost_accuracy_flag = "estimated"` for 10/10 (per Corpus B parity;
+  Exgentic dataset has no `cache_read` / `cache_write` tier data, so
+  the detector cannot mark cost as "accurate" — this is orthogonal to
+  the pricing-table gap and remains unchanged by this expansion).
+
+### 9.3 Pre-expansion vs post-expansion comparison
+
+Same 10 sessions, same converter, same detector, seed=42:
+
+| # | Model | Pre-expansion wr_char | Post-expansion wr_char | Pre wr_cost | Post wr_cost |
+|---|---|---:|---:|---:|---:|
+| 0-9 | (5 DeepSeek + 3 gpt-5.2 + 2 Kimi) | 0.6601-0.9589 | **identical** | 0.6601-0.9589 | **identical** |
+
+Every `wr_char` and every per-session `wr_cost` matches to 4 decimal
+places. Zero drift. `resent_cost_usd` absolute values did shift (Kimi
+sessions dropped ~8× on absolute cost as expected from the Sonnet 4.5
+$3.00/MTok → Kimi K2.5 $0.375/MTok rate change), but the per-session
+ratio is unchanged. See §9.5 for why this is not a bug.
+
+### 9.4 Prediction verdicts
+
+| ID | Prediction | Observed | Verdict |
+|---|---|---|---|
+| **P1** | 100% Corpus C sessions resolve without unknown-model warning | 10/10 on Day 2 sample (109/109 pricing test cases pass) | ✅ **PASS** |
+| **P2** | Day 2 re-run has zero fallback warnings | 0 warnings across all 10 sessions | ✅ **PASS** |
+| **P3** | Median per-session `wr_cost` on the Day 2 sample *decreases* relative to pre-expansion | Median unchanged (0.9056 → 0.9056); all 10 per-session `wr_cost` values identical to pre-expansion to 4 decimal places | ❌ **MISS** (see §9.5) |
+| **P4** | `wr_char` invariant to pricing change (byte metric) | All 10 per-session `wr_char` values identical to pre-expansion | ✅ **PASS** |
+
+**3/4 pass.** No prediction band was adjusted post-hoc.
+
+### 9.5 P3 miss — root cause analysis
+
+**The prediction was wrong in principle, not in magnitude.**
+
+`wr_cost` on the uncached-only path decomposes to:
+`wr_cost = resent_cost / total_llm_input_cost`
+       `= (resent_input_tokens × input_rate) / (total_input_tokens × input_rate)`
+       `= resent_input_tokens / total_input_tokens`
+       `= wr_char`.
+
+The `input_rate` factor **cancels** between numerator and denominator
+whenever the same rate applies to every LLM call in the session. Since
+each Exgentic session uses a single model (verified from the `models`
+top-level column, always a single-element list on all 10 sessions),
+every rate change on that model shifts `resent_cost` and
+`total_llm_input_cost` by the same multiplier, leaving the ratio
+unchanged.
+
+The rate change **did land** (§9.3 absolute `resent_cost_usd` for the
+2 Kimi sessions dropped by exactly the factor `0.375 / 3.00 = 0.125`,
+matching the Sonnet 4.5 → Kimi K2.5 rate ratio), it just does not
+propagate to the per-session `wr_cost` ratio.
+
+**Where P3 would have been correct:** cross-session aggregates that
+weight cost across a *mix* of models (e.g. a Corpus C `union_wr_cost`
+computed as `sum(resent_cost_i) / sum(total_cost_i)` across all
+10,057 sessions). There, a Kimi rate correction re-weights that
+model's contribution to the numerator/denominator separately from
+DeepSeek / gpt-5.2 / Opus / Gemini contributions, and the aggregate
+`wr_cost` *does* shift. The Day 2 stratified-10 sample was too small
+and per-session displayed for that effect to surface. P3 as written
+predicted a per-session-median shift that is structurally impossible
+on the uncached path.
+
+**Documented lesson (not a metric change):** in the Corpus C
+amendment prereg (Week 2 Day 4, separate PR), `union_wr_cost`
+prediction bands must be framed as cross-session aggregates, not as
+per-session medians. The per-session `wr_cost` is byte-equivalent
+under the uncached-only path shared across Corpus B and Corpus C.
+
+### 9.6 What is verified by this re-run
+
+- The 2 new PRICING entries (`kimi-k2.5`, `gpt-5.2`) and 3 aliases
+  land in `get_pricing()` per §5.1-5.2.
+- All 5 Exgentic canonical strings — including the 3 with silent-wrong
+  behavior before this expansion — now route to their intended canonical
+  keys without warnings.
+- Absolute `total_llm_input_cost_usd` on Kimi K2.5 sessions correctly
+  reflects the new rate (~8× drop from the Sonnet 4.5 fallback).
+- `wr_char` invariance to pricing is preserved (byte metric).
+- Adapter converter (`exgentic_convert_and_ingest.py`) and detector
+  code paths are untouched, per §3.
+
+### 9.7 What is NOT verified by this re-run
+
+- Full-corpus (10,056 sessions) resolution — inferred from test suite
+  coverage (109 pricing-key permutations, no fallback path exercised),
+  not empirically re-run. The Corpus C amendment prereg's Day 3 full
+  scan will produce the direct empirical proof point.
+- Cross-session `union_wr_cost` — out of scope for this pricing prereg
+  (Corpus C amendment prereg owns that number).
+- Kimi K2.5 cache tier — Moonshot no longer publishes cache-tier split
+  for this model on their platform; the base-fallback used here is
+  documented in §1.1 and §6 explicit non-commitments.
