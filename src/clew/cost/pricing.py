@@ -159,6 +159,18 @@ PRICING: dict[str, ModelPricing] = {
         cache_write_1h_per_mtok=0.25,
         output_per_mtok=2.0,
     ),
+    # ── OpenAI GPT-5.2 (Cost Table Exgentic Expansion prereg §1.2) ────────
+    # Source: https://developers.openai.com/api/docs/pricing
+    # Verified: 2026-08-13 · Standard tier; cache_write not separately
+    # published, defaults to base_input per prereg §2.2.
+    "gpt-5.2": ModelPricing(
+        name="gpt-5.2",
+        base_input_per_mtok=1.75,
+        cache_read_per_mtok=0.175,
+        cache_write_5m_per_mtok=1.75,
+        cache_write_1h_per_mtok=1.75,
+        output_per_mtok=14.0,
+    ),
     # ── OpenAI o-series reasoning models ──────────────────────────────────
     # NOTE: o-series bills internal reasoning tokens at output rate. The
     # per-token cost figure below is the CONTRACT rate; effective cost per
@@ -272,6 +284,21 @@ PRICING: dict[str, ModelPricing] = {
         cache_write_1h_per_mtok=0.60,
         output_per_mtok=2.40,
     ),
+    # ── Moonshot Kimi K2.5 (Cost Table Exgentic Expansion prereg §1.1) ────
+    # Source: https://openrouter.ai/moonshotai/kimi-k2.5
+    # Verified: 2026-08-13 · Moonshot's own platform.kimi.ai no longer
+    # lists K2.5 (superseded by K2.6 / K2.7 / K3); OpenRouter is used per
+    # prereg §2.1 second-choice as a provider-facing aggregator.
+    # Cache tier not published on the vendor rate — defaults to base_input
+    # per prereg §2.2.
+    "kimi-k2.5": ModelPricing(
+        name="kimi-k2.5",
+        base_input_per_mtok=0.375,
+        cache_read_per_mtok=0.375,
+        cache_write_5m_per_mtok=0.375,
+        cache_write_1h_per_mtok=0.375,
+        output_per_mtok=2.025,
+    ),
     # ── Moonshot Kimi K2 ──────────────────────────────────────────────────
     # Source: https://platform.moonshot.cn/docs/pricing
     # Verified: 2026-08-11 · K2-0905 (Sep 5) family rate.
@@ -326,6 +353,10 @@ _ALIASES: tuple[tuple[str, str], ...] = (
     ("claude-sonnet-4.6", "sonnet-4.6"),
     ("claude-opus-4-7", "opus-4.7"),
     ("claude-opus-4.7", "opus-4.7"),
+    # Exgentic canonical `claude-opus-4-5`: Opus 4.5 rate ($5/$25 per
+    # Anthropic pricing 2026-08-13) matches opus-4.7 exactly; explicit
+    # alias documents intent and locks against `claude-opus-4` drift.
+    ("claude-opus-4-5", "opus-4.7"),
     ("claude-opus-4", "opus-4.7"),  # falls to nearest known Opus
     ("claude-haiku-4-5", "haiku-4.5"),
     ("claude-haiku-4.5", "haiku-4.5"),
@@ -338,6 +369,10 @@ _ALIASES: tuple[tuple[str, str], ...] = (
     # prefix match. Order matters: more-specific prefixes must precede
     # less-specific ones (e.g. gpt-5-mini before gpt-5).
     # OpenAI GPT-5 / o-series family (longest first)
+    # Cost Table Exgentic Expansion prereg §1.4: gpt-5.2 must precede
+    # gpt-5.1 / gpt-5-mini / gpt-5-high / gpt-5 so the Exgentic canonical
+    # `gpt-5.2-2025-12-11` resolves via startswith on `gpt-5.2`.
+    ("gpt-5.2", "gpt-5.2"),
     ("gpt-5.1", "gpt-5"),        # minor variant, same base rate
     ("gpt-5-mini", "gpt-5-mini"),
     ("gpt-5-high", "gpt-5"),      # high-throughput variant, same base rate
@@ -363,6 +398,9 @@ _ALIASES: tuple[tuple[str, str], ...] = (
     ("deepseek-v3.2", "deepseek-v3.2"),
     # Others
     ("glm-4.6", "glm-4.6"),
+    # Cost Table Exgentic Expansion prereg §1.4: kimi-k2.5 must precede
+    # kimi-k2-0905 (Moonshot K2.5 is a distinct rate tier from K2-0905).
+    ("kimi-k2.5", "kimi-k2.5"),
     ("kimi-k2-0905", "kimi-k2-0905"),
     ("minimax-m2", "minimax-m2"),
     ("qwen-3-coder", "qwen-3-coder"),

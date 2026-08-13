@@ -229,3 +229,95 @@ def test_expansion_cache_tier_defaults_when_provider_uniform():
         )
         assert p.cache_write_5m_per_mtok == p.base_input_per_mtok
         assert p.cache_write_1h_per_mtok == p.base_input_per_mtok
+
+
+# ─── Cost Table Exgentic Expansion prereg §5 ──────────────────────────────
+
+
+EXGENTIC_CANONICAL_MODELS = [
+    # Prereg §1 · 5 Exgentic canonical model strings resolve as follows:
+    ("DeepSeek-V3.2", "deepseek-v3.2"),          # unchanged — pre-existing exact match
+    ("Kimi-K2.5", "kimi-k2.5"),                  # new entry (§1.1)
+    ("claude-opus-4-5", "opus-4.7"),             # alias-only, rate same as Opus 4.7 (§1.3)
+    ("gemini-3-pro-preview", "gemini-3-pro-preview"),  # unchanged — pre-existing exact match
+    ("gpt-5.2-2025-12-11", "gpt-5.2"),           # new entry via startswith `gpt-5.2` (§1.2 + §1.4)
+]
+
+
+@pytest.mark.parametrize("exgentic_name,expected_canonical", EXGENTIC_CANONICAL_MODELS)
+def test_exgentic_canonical_resolves_without_warning(
+    exgentic_name: str, expected_canonical: str,
+):
+    """§4 P1: all 5 Exgentic canonical strings resolve to the correct canonical
+    key with no `unknown model` UserWarning."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # fail on UserWarning
+        pricing = get_pricing(exgentic_name)
+    assert pricing is PRICING[expected_canonical], (
+        f"{exgentic_name} resolved to {pricing.name!r}, expected {expected_canonical!r}"
+    )
+
+
+def test_exgentic_expansion_alias_ordering_avoids_shadow():
+    """Prereg §1.4: new aliases must not be shadowed by more-general ones."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        # kimi-k2.5 must NOT fall through to kimi-k2-0905 (different rates)
+        assert get_pricing("kimi-k2.5") is PRICING["kimi-k2.5"]
+        assert PRICING["kimi-k2.5"] is not PRICING["kimi-k2-0905"]
+        # gpt-5.2 must NOT resolve to gpt-5, gpt-5.1, gpt-5-mini, gpt-5-high
+        assert get_pricing("gpt-5.2") is PRICING["gpt-5.2"]
+        assert get_pricing("gpt-5.2-2025-12-11") is PRICING["gpt-5.2"]
+        assert PRICING["gpt-5.2"] is not PRICING["gpt-5"]
+        assert PRICING["gpt-5.2"] is not PRICING["gpt-5-mini"]
+        # claude-opus-4-5 must resolve via its explicit alias, not fall to the
+        # more-general claude-opus-4 alias (same target, but the explicit one
+        # locks intent per prereg §1.3)
+        assert get_pricing("claude-opus-4-5") is PRICING["opus-4.7"]
+
+
+def test_exgentic_expansion_new_entries_have_verification_date():
+    """§2.3: each new §1 entry carries the 2026-08-13 fetch date inline."""
+    path = Path(__file__).resolve().parents[2] / "src" / "clew" / "cost" / "pricing.py"
+    text = path.read_text(encoding="utf-8")
+    # Two new provider groups added (Kimi K2.5 + GPT-5.2); each block plus the
+    # explicit Opus 4.5 alias comment references 2026-08-13. Guard at >= 3.
+    assert text.count("2026-08-13") >= 3, (
+        f"expected at least 3 occurrences of 2026-08-13 (Kimi K2.5 block, "
+        f"GPT-5.2 block, Opus 4.5 alias comment), found {text.count('2026-08-13')}"
+    )
+
+
+def test_exgentic_expansion_kimi_k25_rate_matches_openrouter():
+    """§1.1: Kimi-K2.5 base_input $0.375 / output $2.025 per OpenRouter
+    (verified 2026-08-13; guards against silent rate drift)."""
+    p = PRICING["kimi-k2.5"]
+    assert p.base_input_per_mtok == 0.375
+    assert p.output_per_mtok == 2.025
+    # Cache tier unpublished → base_input fallback (prereg §2.2)
+    assert p.cache_read_per_mtok == p.base_input_per_mtok
+    assert p.cache_write_5m_per_mtok == p.base_input_per_mtok
+    assert p.cache_write_1h_per_mtok == p.base_input_per_mtok
+
+
+def test_exgentic_expansion_gpt_52_rate_matches_openai_docs():
+    """§1.2: GPT-5.2 base_input $1.75 / output $14.00 / cache_read $0.175
+    per OpenAI developer pricing docs (verified 2026-08-13)."""
+    p = PRICING["gpt-5.2"]
+    assert p.base_input_per_mtok == 1.75
+    assert p.output_per_mtok == 14.0
+    assert p.cache_read_per_mtok == 0.175
+    # Cache write not separately published → base_input fallback (§2.2)
+    assert p.cache_write_5m_per_mtok == p.base_input_per_mtok
+    assert p.cache_write_1h_per_mtok == p.base_input_per_mtok
+
+
+def test_exgentic_expansion_opus_4_5_alias_matches_opus_4_7_rate():
+    """§1.3: Anthropic Opus 4.5 rate ($5/$25) equals existing opus-4.7 entry;
+    explicit alias resolves rather than falling through to `claude-opus-4`."""
+    # Rate equality: no new PRICING entry needed
+    opus_4_5 = get_pricing("claude-opus-4-5")
+    opus_4_7 = PRICING["opus-4.7"]
+    assert opus_4_5 is opus_4_7
+    assert opus_4_5.base_input_per_mtok == 5.0
+    assert opus_4_5.output_per_mtok == 25.0
