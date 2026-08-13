@@ -1,6 +1,18 @@
 # Clew
 
-**Find where your coding agent wastes work: which file, which turn, why.**
+<div align="center">
+
+**Open source LLM observability for the waste axis no one else measures.**
+
+[![PyPI](https://img.shields.io/pypi/v/clew-custos)](https://pypi.org/project/clew-custos/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python](https://img.shields.io/badge/python-%E2%89%A53.12-blue)](https://www.python.org/)
+[![Tests](https://img.shields.io/badge/tests-668%20passing-brightgreen)](https://github.com/JEONSEWON/Clew-by-Custos/tree/main/tests)
+[![Corpora](https://img.shields.io/badge/corpora-3%20%C2%B7%2016%2C857%2B%20sessions-blueviolet)](#-where-it-stands--measured-not-marketed)
+
+</div>
+
+Clew observes what your agent **repeats, resends, re-reads, and re-creates** — the waste axis that Langfuse, Arize, LangSmith, Braintrust, and Helicone do not measure. Four deterministic detectors + an opt-in LLM-as-judge semantic check, applied to trace files your agent already writes. Zero instrumentation. Pre-registered, frozen parameters, honesty preface on every claim.
 
 ```bash
 pip install "clew-custos[detect]"
@@ -9,7 +21,20 @@ python -m clew analyze <trace>.jsonl --out report.md
 
 > PyPI name is `clew-custos` (the bare name `clew` is an unrelated placeholder). The module still imports as `clew`.
 
-**No instrumentation. No SDK. No code changes.** Clew reads trace files your agent already writes: Claude Code JSONL, OpenTelemetry SDK JSON, OpenInference (Phoenix / TRAIL), or its own native JSON.
+---
+
+## ✨ Core Features
+
+- **Deterministic waste detectors (4)** — `repeat` (tool-call cascade), `context_resend` (input-side chunk resend), `redundant_read` (Read-tool duplicates with interval gating), `duplicate_creation` (creation-tool ID-bridge on 26 mapped tools).
+- **Cross-corpus waste-rate metric** — `WR_char` (byte ratio), `WR_cost` (dollar ratio with cache-tier-aware pricing), `SDR@10` (share of sessions with meaningful waste). Union across detectors. See §Where it stands.
+- **Opt-in LLM-as-Judge semantic duplicate** — Claude Haiku 4.5 judges chunk pairs the deterministic gate cannot separate (paraphrased re-sends, non-byte-identical tool responses). Hard cost cap per session.
+- **Zero-instrumentation ingest** — reads Claude Code JSONL, OpenTelemetry SDK JSON, OpenInference (Phoenix / TRAIL), Toolathlon trajectories, RedundancyBench, and (in-flight) Exgentic Agent LLM Traces v2. No SDK, no code change in your agent.
+- **Cost attribution with source-URL-pinned pricing** — per-model rates for Sonnet 4.5 / 4.6, Opus 4.7, Haiku 4.5, GPT-4o family, GPT-5 / 5.2 / mini / o-series, Gemini 1.5 / 2.5 / 3-pro-preview, Grok 4 / fast / code-fast, DeepSeek v3.2, GLM 4.6, Kimi K2-0905 / K2.5, MiniMax M2, Qwen 3 Coder. Every entry carries `Source: URL (verified YYYY-MM-DD)`.
+- **Anti-hype rigor** — pre-registration on every detector change, frozen parameters enforced as failing tests, published corrections on retracted numbers, honesty preface on p-hacking risk. See §How we keep ourselves honest.
+
+**Coming next (Beta · Q4 2026):** hosted web dashboard, live monitoring endpoints, alerts (Slack / webhook), history & time-series, CI PR auto-comment. See §Roadmap.
+
+**No instrumentation. No SDK. No code changes.** Clew reads trace files your agent already writes.
 
 Ran on 6,780 public benchmark trajectories. One Toolathlon Canvas session (`grok-4_2`, task `canvas-art-manager`) shows the shape of what falls out:
 
@@ -56,13 +81,13 @@ python -m clew analyze grok-4_2.jsonl --out report.md
 
 ---
 
-## Why diagnosis (and not another dashboard)
+## Why the waste axis
 
-Observability tools (Langfuse, Phoenix, LangSmith) show you the trace. Clew tells you which spans are waste, and why: the exact file, the turns, whether the file was modified in between.
-
-Clew diagnoses; it does not fix. What to change in your agent (prompt, context caching, tool routing) is a call only you can make.
+Observability platforms (Langfuse, Arize, LangSmith, Braintrust, Helicone) capture, store, and visualize traces. None of them measure the waste axis: how much of the input bill is context you already sent, files you already read, entities you already created, or tool calls that got the exact same answer as before. That is where Clew starts, and it is complementary to the trace layer — a Langfuse trace fed into Clew produces a waste report Langfuse itself does not compute.
 
 Scope is deterministic-first: four deterministic detectors used in the waste-rate metric (`repeat` / `requery`, `context_resend`, `redundant_read`, `duplicate_creation`), the `pingpong` code path (implemented but not yet observed on real traces), and one opt-in LLM-as-judge check for semantic duplicates. Each detector is pre-registered with a frozen spec before results are measured.
+
+The current release is the analyzer CLI you install with pip. The **hosted dashboard, live monitoring, and alert layer** (Beta · Q4 2026) live in a separate repo and share the same detectors + waste-rate metric; see §Roadmap for the split.
 
 ---
 
@@ -212,6 +237,7 @@ Union of the four deterministic detectors (`repeat`, `context_resend`, `redundan
 |---|---:|---:|---:|---:|---|
 | A · trace-commons (28 CC sessions) | 28 / 28 | **0.9930** | **0.2903** | **0.9643** | [0.9892, 0.9944] |
 | B · Toolathlon (6,780 non-coding trajectories, 22 frontier models) | 6,659 / 6,780 | **0.9342** | **0.9189** | **0.9908** | [0.9314, 0.9368] |
+| C · Exgentic Agent LLM Traces v2 · in-flight (10,057 sessions, 5 frontier models × 6 benchmarks, up to 3.7M tokens / session) | see [amendment prereg](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/WASTE_RATE_EXGENTIC_ADAPTER_AMENDMENT_PREREG.md) | *pending Rule 8 chain 3/3* | *pending* | *pending* | *pending* |
 
 Corpus B `WR_cost = 0.9189` after the [Cost Table Toolathlon Expansion](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/COST_TABLE_TOOLATHLON_EXPANSION_PREREG.md) (2026-08-11) closed the 98.2% pricing gap — 6,780 / 6,780 (100%) built trajectories now priced, median `cost_ratio = 1.000` against Toolathlon's own provider-billed totals. Corpus B fidelity: 5,445 / 6,659 (81.8%) exact count-match against `agent_llm_requests`; the remaining 18.2% differ by exactly `+1` due to trajectories ending on a `role=tool` message (root-caused in amendment §10.2). Token sum invariant preserved on 100% of built traces.
 
@@ -261,6 +287,20 @@ Pre-registration: [`docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md`](https://github
 Prior versions priced only Claude Sonnet 4.5. As of the Cost Attribution Completion prereg, pricing tables now cover Sonnet 4.5 / 4.6, Opus 4.7, Haiku 4.5, GPT-4o and GPT-4o mini, Gemini 1.5 Pro and 1.5 Flash — with 4-tier cache-aware rates where the provider exposes them. The report emits a unified `Total analyzed / Total waste / Waste ratio` block at the top, plus per-detector breakdown in dollars. Each pricing entry carries a source URL and ISO-8601 verification date.
 
 Pre-registration: [`docs/COST_ATTRIBUTION_COMPLETION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/COST_ATTRIBUTION_COMPLETION_PREREG.md).
+
+---
+
+## 🚀 Roadmap · hosted dashboard (Beta · Q4 2026)
+
+The analyzer CLI in this repo is the deterministic core. The hosted layer will bring the same detectors and waste-rate metric to the browser:
+
+- **Mode A · Try Clew (anonymous)** — upload a trace file or connect a LangSmith / Langfuse API key. 30-second waste report in-browser. No account.
+- **Mode B · Live monitoring (account)** — personal ingest endpoint. Real-time waste alerts. Per-session dashboard with history and time-series. Slack / webhook notifications. CI PR auto-comment on your GitHub repos.
+- **Team collaboration (post-Beta)** — accounts, permissions, shared datasets.
+
+**Stack:** Vercel Next.js (frontend) · Modal serverless Python (detector runtime, same code as this repo) · Supabase (Postgres + Auth + Storage) · Resend (email). Domain: `custos.ai`.
+
+The hosted layer imports Langfuse / LangSmith traces natively — the analyzer stays framework-neutral.
 
 ---
 
