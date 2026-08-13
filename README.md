@@ -236,13 +236,25 @@ Two data points from Go/No-go measurement on 5 CC sessions (`seed=42`, `data/hf_
 | Measurement | Matches / Pairs | Ratio | Cost | Verdict |
 |---|---|---|---|---|
 | Pre-amendment (base spec) | 4 / 159 | 0.0252 | $0.131 | SHIP-AS-IS |
-| Post-amendment v1 | 83 / 159 | **0.5220** | $0.133 | **GO** |
+| Post-amendment v1 (n=5 CC) | 83 / 159 | **0.5220** | $0.133 | **GO** |
 
 Amendment v1 changes: (1) response parser strips markdown code fences (all 159 base responses were fence-wrapped); (2) rubric explicitly ignores randomly-generated per-invocation identifiers (`tool_use_id`, etc.) as non-semantic. Both changes were made **after** seeing the 2.52% baseline; the amendment document's honesty preface acknowledges the p-hacking risk and retains both data points as a joint record.
 
-**The 52.20% is a detector precision figure** — of judge-evaluated candidate pairs, how many were confirmed equivalent. It is **not** a trace-level waste rate. A separate metric would be needed to answer "what fraction of input tokens are wasted by semantic duplicates".
+**Scale expansion (Amendment v2 · 2026-08-11 → 2026-08-12).** The n=5 v1 headline was recomputed on **n=48 sessions** (28 CC + 20 Toolathlon, `seed=42`, ~12h, $2.58):
 
-Pre-registration: [`docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md); amendment: [`docs/LLM_JUDGE_AMENDMENT_v1.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/LLM_JUDGE_AMENDMENT_v1.md).
+| Corpus | n | Matches / Pairs | Precision |
+|---|---:|---|---:|
+| CC | 28 | 571 / 1,178 | **0.4847** |
+| Toolathlon | 20 | 96 / 924 | **0.1039** |
+| Unified | 48 | 667 / 2,102 | **0.3173** |
+
+Bootstrap 95% CI on unified precision: **[0.2311, 0.4103]** (`n_boot=1000, seed=42`).
+
+**Headline correction.** The 52.20% figure was measured on n=5 CC and did not survive scale. The corrected number for pitch material is **31.7% unified** (n=48, CI [23.1%, 41.0%]) — or **48.5% CC-only** for the same-corpus comparison. The v1 GO judgment stands (0.317 remains well above the base prereg 5% GO threshold); v1 and v2 data points are retained together per the honesty preface.
+
+**These are detector precision figures** — of judge-evaluated candidate pairs, how many were confirmed equivalent. They are **not** trace-level waste rates. A separate metric would be needed to answer "what fraction of input tokens are wasted by semantic duplicates".
+
+Pre-registration: [`docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md); amendment v1: [`docs/LLM_JUDGE_AMENDMENT_v1.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/LLM_JUDGE_AMENDMENT_v1.md); scale expansion (v2): [`docs/LLM_JUDGE_SCALE_EXPANSION_AMENDMENT_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/LLM_JUDGE_SCALE_EXPANSION_AMENDMENT_PREREG.md).
 
 ### Cost attribution (Tier 1 · unified summary)
 
