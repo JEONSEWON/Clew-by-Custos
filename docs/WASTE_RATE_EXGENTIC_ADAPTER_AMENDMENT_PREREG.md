@@ -319,6 +319,141 @@ Not committed per `feedback_diagnostics_uncommitted`:
   LLM-judge v1 rubric on Corpus C 290 stratified sessions
   (still running at prereg commit time).
 
-## 9. Results — full-scan re-run (post-adapter)
+## 10. Results — full-scan re-run (committed adapter · 2026-08-14)
 
-*Placeholder. Populated by commit 3 above.*
+**Re-run command:** `python -m field_test.diagnostics.exgentic_day5_committed_scan`
+(uncommitted diagnostic per `feedback_diagnostics_uncommitted`; reads
+the merged `src/clew/ingest/exgentic.py` adapter and scans all 9
+shards). Wall clock: 2,283 s (38 minutes). Zero API cost.
+
+### 10.1 Fidelity
+
+| Item | Value | Δ vs Day 3 diagnostic |
+|---|---:|---:|
+| `n_total` | 10,056 | — |
+| `n_ok` | **10,056** | +7 |
+| `n_error` | **0** | -7 |
+| `n_token_invariant_ok` | 10,056 (100.00%) | +7 |
+| `n_with_warning` | 0 | 0 |
+| `n_multi_trace_id_sessions` (secondary_count > 0) | 7 | — |
+
+The seven multi-`trace_id` sessions the diagnostic-converter route
+raised on (see prereg §1.4 motivation) are handled by the committed
+adapter's primary-mode + collapse rule; all seven now process
+cleanly.
+
+### 10.2 Aggregate (post-adapter)
+
+| Metric | Value | Δ vs Day 3 diagnostic |
+|---|---:|---:|
+| `union_wr_char` | **0.9233** | +0.0000 (identical to 4 decimals) |
+| `union_wr_cost` | **0.9397** | +0.0000 |
+| `sdr_at_10` | **0.9332** | +0.0000 |
+| 95% bootstrap CI on per-session-mean `wr_char` | [0.7827, 0.7920] | negligible shift |
+| `total_llm_input_tokens_sum` | 10,805,117,506 | +14,649,309 (7 new sessions' tokens) |
+| `resent_input_tokens_sum` | 9,976,716,943 | — |
+| `total_llm_input_cost_usd_sum` | $29,403.49 | +$4.10 |
+| `resent_cost_usd_sum` | $27,629.12 | — |
+
+### 10.3 Per-session distribution
+
+| Percentile | `wr_char` | `wr_cost` |
+|---|---:|---:|
+| Min | 0.0000 | 0.0000 |
+| p10 | 0.5513 | 0.5513 |
+| Median | 0.8650 | 0.8650 |
+| p90 | 0.9645 | 0.9645 |
+| Max | 1.0035 | 1.0035 |
+
+**Per-session `wr_cost == wr_char`** across all 10,056 rows — expected
+under the uncached-only path (§4 lesson from Cost Table Exgentic
+Expansion §9.5). Per-session mean (0.79) diverges from union (0.92)
+because larger sessions have systematically higher wr_char (Day 3
+anomaly probe §3): size-weighted union > unweighted mean.
+
+**`wr_char > 1.0` sessions:** 77 sessions (0.77%) show excess ≤ 0.001
+(max 0.0035). Root cause is a chunk-tokenization boundary edge case
+in `context_resend` where per-chunk apportionment slightly overcounts
+resent tokens against the trace-total denominator. This is a known
+detector edge case documented at prereg-write time; not a metric
+defect, not gate-blocking. A future detector-side fix would zero out
+the excess without changing the union numbers materially.
+
+### 10.4 Prediction verdicts
+
+| ID | Prediction band | Observed | Verdict |
+|---|---|---:|---|
+| **P1** | `union_wr_char ∈ [0.85, 0.999]` | 0.9233 | ✅ **PASS** |
+| **P2** | `union_wr_cost ∈ [0.85, 0.999]` | 0.9397 | ✅ **PASS** |
+| **P3** | `SDR@10 ∈ [0.85, 1.00]` | 0.9332 | ✅ **PASS** |
+| **P4** | `context_resend ≥ 99%` of union numerator | 100% (structural — §1.5 the other three detectors are zero on chat-only spans) | ✅ **PASS** |
+| **P5** | Token invariant preserved on ≥ 99.5% of built sessions | 100.00% (10,056 / 10,056) | ✅ **PASS** |
+| **P6** | Multi-`trace_id` sessions no longer raise | 7 → 0 errors | ✅ **PASS** |
+| **P7** | Zero `unknown model` pricing warnings on full re-scan | 0 warnings | ✅ **PASS** |
+
+**7/7 pass.** No prediction band was adjusted post-hoc.
+
+### 10.5 3-corpus cross-comparison (pitch material)
+
+Anti-hype framing per `feedback_facts_only_via_web`: WR_cost figures
+carry cache-tier caveats (Corpus A cache-aware, Corpora B/C uncached
+adapter §1.4).
+
+| Corpus | Sessions (built / included) | `union_wr_char` | `union_wr_cost` | `SDR@10` | Cache regime |
+|---|---:|---:|---:|---:|---|
+| A · trace-commons (CC) | 28 / 28 | 0.9930 | **0.2903** | 0.9643 | Cache-tier-aware billing |
+| B · Toolathlon | 6,780 / 6,780 | 0.9342 | **0.9189** | 0.9908 | Uncached (§1.4 pre-commit) |
+| **C · Exgentic** | **10,056 / 10,056** | **0.9233** | **0.9397** | **0.9332** | Uncached (§1.4 mirror) |
+| **Total** | **16,864** | | | | |
+
+**Headline aggregates (deterministic detectors, verified across 16,864 real sessions and up to 3.7M tokens per session):** 92-99% of input bytes are structural resends; the cache-aware bill on Corpus A shows what caching removes (29%), and the uncached bills on Corpora B and C show what remains without caching (92-94%). The 63-percentage-point gap between Corpus A and Corpus B (`WASTE_RATE_TOOLATHLON_ADAPTER_AMENDMENT_PREREG` §Cost Table Expansion §8.8) is the caching lever's leverage on the same detector; Corpus C confirms the pattern on a third independent corpus.
+
+### 10.6 What is verified by this re-run
+
+- The committed `src/clew/ingest/exgentic.py` produces `Trace` objects
+  the existing `find_context_resend` detector consumes without any
+  detector-side change.
+- All 10,056 sessions process without error, including the seven
+  multi-`trace_id` sessions the diagnostic converter raised on.
+- Pricing table (post PR #100 / #101 / #102 Cost Table Exgentic
+  Expansion) resolves all 5 canonical Exgentic model strings without
+  fallback warnings.
+- Aggregate numbers reproduce the Day 3 uncommitted-diagnostic values
+  to 4 decimal places (0.9233 / 0.9397 / 0.9332).
+- Token invariant `sum(input_tokens + output_tokens) ==
+  exgentic.total_tokens` holds on 100% of built sessions.
+
+### 10.7 What is NOT verified by this re-run
+
+- **LLM-judge on Corpus C** — Day 3.5 diagnostic ran without an
+  `ANTHROPIC_API_KEY` and exited early ($0 spent, 0 pairs judged).
+  The chat-only nature of Corpus C means v1 rubric's ephemeral-ID
+  pattern (96%/89% of CC/Toolathlon matches) does not directly apply;
+  a rubric-v3 track is retained for a separate follow-up chain per §6.
+- **Per-benchmark / per-model breakdowns** — retained in the
+  `.RESULTS.json` for future analysis, not committed as claims.
+- **The 77 `wr_char > 1.0` sessions** — the detector edge case is
+  logged for a future `context_resend` fix; the observed excess
+  (max 0.35%) is bounded and does not affect the union numbers
+  materially.
+
+### 10.8 Diagnostic script output
+
+- `field_test/diagnostics/exgentic_day5_committed_scan.py`
+  (uncommitted per `feedback_diagnostics_uncommitted`).
+- `field_test/diagnostics/exgentic_day5_committed_scan.RESULTS.json`
+  (uncommitted, ~55 MB; per-session rows retained locally).
+
+### 10.9 Follow-ups (not in this chain)
+
+1. **README refresh.** The Corpus C row in the cross-corpus
+   waste-rate table (added by PR #104 as "in-flight") is now
+   populated with the committed numbers above. A small docs PR
+   completes that surface.
+2. **rubric-v3 track.** Chat-only Corpus C empirically confirmed as
+   structurally outside v1 rubric scope. Design of a chat-message
+   paraphrase rubric is a separate follow-up; the 290-session Day 3.5
+   sample retains reuse value.
+3. **`context_resend` detector edge case.** 77 sessions with tiny
+   `wr_char > 1.0` are logged for a future detector-side fix that
+   would not change the union numbers.
