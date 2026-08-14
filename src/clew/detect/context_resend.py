@@ -291,6 +291,12 @@ def find_context_resend(trace: Trace, n: int = 2) -> ContextResendResult:
         if share_total == 0:
             continue
 
+        # Per-call budget so Σ resent_toks_within_call never exceeds
+        # input_tokens for that call — rounding on `int(round(share * X))`
+        # can push the sum a few tokens over otherwise (Corpus C amendment
+        # §10.3 · 77/10,056 sessions previously showed wr_char up to 1.0035).
+        remaining_budget = input_tokens
+
         for chunk_text, role, chunk_toks in annotated:
             chash = _sha256_hex(chunk_text)
 
@@ -313,6 +319,10 @@ def find_context_resend(trace: Trace, n: int = 2) -> ContextResendResult:
 
             share = chunk_toks / share_total
             resent_toks = int(round(share * input_tokens))
+            # Clamp: keeps Σ_within_call ≤ input_tokens_call so per-session
+            # wr_char cannot exceed 1.0. Order-deterministic (trace order).
+            resent_toks = max(0, min(resent_toks, remaining_budget))
+            remaining_budget -= resent_toks
             # Tier-aware apportionment uses the effective per-token rate for
             # this call — that rate already reflects the uncached/cache_read/
             # cache_write split via _rate_and_cost_for_call.
