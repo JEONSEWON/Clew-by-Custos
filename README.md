@@ -28,7 +28,7 @@ python -m clew analyze <trace>.jsonl --out report.md
 - **Deterministic waste detectors (4)** — `repeat` (tool-call cascade), `context_resend` (input-side chunk resend), `redundant_read` (Read-tool duplicates with interval gating), `duplicate_creation` (creation-tool ID-bridge on 26 mapped tools).
 - **Cross-corpus waste-rate metric** — `WR_char` (byte ratio), `WR_cost` (dollar ratio with cache-tier-aware pricing), `SDR@10` (share of sessions with meaningful waste). Union across detectors. See §Where it stands.
 - **Opt-in LLM-as-Judge semantic duplicate** — Claude Haiku 4.5 judges chunk pairs the deterministic gate cannot separate (paraphrased re-sends, non-byte-identical tool responses). Hard cost cap per session.
-- **Zero-instrumentation ingest** — reads Claude Code JSONL, OpenTelemetry SDK JSON, OpenInference (Phoenix / TRAIL), Toolathlon trajectories, RedundancyBench, and (in-flight) Exgentic Agent LLM Traces v2. No SDK, no code change in your agent.
+- **Zero-instrumentation ingest** — reads Claude Code JSONL, OpenTelemetry SDK JSON, OpenInference (Phoenix / TRAIL), Toolathlon trajectories, RedundancyBench, and Exgentic Agent LLM Traces v2. No SDK, no code change in your agent.
 - **Cost attribution with source-URL-pinned pricing** — per-model rates for Sonnet 4.5 / 4.6, Opus 4.7, Haiku 4.5, GPT-4o family, GPT-5 / 5.2 / mini / o-series, Gemini 1.5 / 2.5 / 3-pro-preview, Grok 4 / fast / code-fast, DeepSeek v3.2, GLM 4.6, Kimi K2-0905 / K2.5, MiniMax M2, Qwen 3 Coder. Every entry carries `Source: URL (verified YYYY-MM-DD)`.
 - **Anti-hype rigor** — pre-registration on every detector change, frozen parameters enforced as failing tests, published corrections on retracted numbers, honesty preface on p-hacking risk. See §How we keep ourselves honest.
 
@@ -237,7 +237,7 @@ Union of the four deterministic detectors (`repeat`, `context_resend`, `redundan
 |---|---:|---:|---:|---:|---|
 | A · trace-commons (28 CC sessions) | 28 / 28 | **0.9930** | **0.2903** | **0.9643** | [0.9892, 0.9944] |
 | B · Toolathlon (6,780 non-coding trajectories, 22 frontier models) | 6,659 / 6,780 | **0.9342** | **0.9189** | **0.9908** | [0.9314, 0.9368] |
-| C · Exgentic Agent LLM Traces v2 · in-flight (10,057 sessions, 5 frontier models × 6 benchmarks, up to 3.7M tokens / session) | see [amendment prereg](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/WASTE_RATE_EXGENTIC_ADAPTER_AMENDMENT_PREREG.md) | *pending Rule 8 chain 3/3* | *pending* | *pending* | *pending* |
+| C · Exgentic Agent LLM Traces v2 (10,056 sessions, 5 frontier models × 6 benchmarks, up to 3.7M tokens / session) | 10,056 / 10,056 | **0.9233** | **0.9397** | **0.9332** | per-session mean [0.7827, 0.7920] — union CI not computed, see [amendment §10.2](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/WASTE_RATE_EXGENTIC_ADAPTER_AMENDMENT_PREREG.md#102-aggregate-post-adapter) |
 
 Corpus B `WR_cost = 0.9189` after the [Cost Table Toolathlon Expansion](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/COST_TABLE_TOOLATHLON_EXPANSION_PREREG.md) (2026-08-11) closed the 98.2% pricing gap — 6,780 / 6,780 (100%) built trajectories now priced, median `cost_ratio = 1.000` against Toolathlon's own provider-billed totals. Corpus B fidelity: 5,445 / 6,659 (81.8%) exact count-match against `agent_llm_requests`; the remaining 18.2% differ by exactly `+1` due to trajectories ending on a `role=tool` message (root-caused in amendment §10.2). Token sum invariant preserved on 100% of built traces.
 
