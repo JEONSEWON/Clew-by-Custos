@@ -259,3 +259,28 @@ def test_deterministic_repeat_run():
     r2 = find_context_resend(trace)
 
     assert repr(r1) == repr(r2)
+
+
+def test_apportionment_never_exceeds_input_tokens():
+    """Corpus C amendment §10.3: per-call Σ resent_toks ≤ input_tokens.
+
+    18 tiny chunks, all resent in call 2, input_tokens=573. Pre-fix,
+    `int(round(share * 573))` on each chunk summed to 576 (+3 excess).
+    Post-fix, the per-call budget clamp keeps the sum at 573.
+    """
+    msgs = [{"role": "user", "content": f"m{i}"} for i in range(18)]
+    llm_calls = [
+        _mk_llm_call("llm-1", msgs, input_tokens=573),
+        _mk_llm_call("llm-2", msgs, input_tokens=573),
+    ]
+    trace = _root_only_trace("tclamp", llm_calls)
+
+    result = find_context_resend(trace)
+
+    per_call_resent: dict[str, int] = {}
+    for e in result.resent_events:
+        per_call_resent[e.llm_span_id] = per_call_resent.get(e.llm_span_id, 0) + e.resent_input_tokens
+    for span_id, r in per_call_resent.items():
+        assert r <= 573, f"span {span_id}: resent={r} exceeds input_tokens=573"
+    # Global invariant that the amendment §10.3 diagnostic was checking:
+    assert result.resent_input_tokens <= result.total_llm_input_tokens
