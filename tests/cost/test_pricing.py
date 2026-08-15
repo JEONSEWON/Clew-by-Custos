@@ -16,8 +16,10 @@ from clew.cost.pricing import (
     DEFAULT_MODEL_KEY,
     PRICING,
     ModelPricing,
+    build_default_cost_tables,
     get_pricing,
 )
+from clew.cost.pricing import _ALIASES
 
 
 def test_default_model_returned_when_none():
@@ -321,3 +323,36 @@ def test_exgentic_expansion_opus_4_5_alias_matches_opus_4_7_rate():
     assert opus_4_5 is opus_4_7
     assert opus_4_5.base_input_per_mtok == 5.0
     assert opus_4_5.output_per_mtok == 25.0
+
+
+# ── build_default_cost_tables (CLI auto-population) ────────────────────────
+
+def test_build_default_cost_tables_sonnet_45_all_keys_route_to_same_rate():
+    """Canonical key + `.name` + alias prefix all yield 3e-6 input / 15e-6 output."""
+    input_ct, output_ct = build_default_cost_tables()
+    for key in ("sonnet-4.5", "claude-sonnet-4-5", "claude-sonnet-4.5"):
+        assert input_ct[key] == 3.0 / 1_000_000
+        assert output_ct[key] == 15.0 / 1_000_000
+
+
+def test_build_default_cost_tables_toolathlon_run_suffixes_present():
+    """Every base key has `_1`/`_2`/`_3` variants at the same rate — matches
+    Toolathlon `modelname_run` naming convention."""
+    input_ct, _ = build_default_cost_tables()
+    for base in ("gpt-5-mini", "claude-sonnet-4-5", "grok-4-fast"):
+        assert base in input_ct
+        for suffix in ("_1", "_2", "_3"):
+            assert input_ct[base + suffix] == input_ct[base], (
+                f"{base + suffix} should equal {base}"
+            )
+
+
+def test_build_default_cost_tables_covers_all_pricing_canonical_and_aliases():
+    """Every PRICING key, `.name`, and `_ALIASES` prefix appears in the table."""
+    input_ct, output_ct = build_default_cost_tables()
+    for canonical_key, pricing in PRICING.items():
+        assert canonical_key in input_ct
+        assert pricing.name in input_ct
+    for prefix, _target_key in _ALIASES:
+        assert prefix in input_ct
+        assert prefix in output_ct

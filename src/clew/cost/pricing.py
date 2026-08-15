@@ -407,6 +407,39 @@ _ALIASES: tuple[tuple[str, str], ...] = (
 )
 
 
+def build_default_cost_tables() -> tuple[dict[str, float], dict[str, float]]:
+    """Build ($/input-token, $/output-token) exact-match tables covering PRICING
+    canonical keys + `.name` values + `_ALIASES` prefixes, each with the
+    Toolathlon run-suffix variants (`_1`, `_2`, `_3`).
+
+    Used by the CLI (`python -m clew`) to auto-populate cost tables so `WR_cost`
+    fires on default runs. Diagnostic scripts (`field_test/diagnostics/`) build
+    their own tables against the same source of truth. Only `base_input_per_mtok`
+    and `output_per_mtok` are exposed — cache-tier splits stay opt-in via the
+    detector-side APIs.
+    """
+    input_ct: dict[str, float] = {}
+    output_ct: dict[str, float] = {}
+
+    seed: list[tuple[str, ModelPricing]] = []
+    for canonical_key, pricing in PRICING.items():
+        seed.append((canonical_key, pricing))
+        seed.append((pricing.name, pricing))
+    for prefix, target_key in _ALIASES:
+        seed.append((prefix, PRICING[target_key]))
+
+    for key, pricing in seed:
+        input_rate = pricing.base_input_per_mtok / _USD_PER_MTOK
+        output_rate = pricing.output_per_mtok / _USD_PER_MTOK
+        input_ct[key] = input_rate
+        output_ct[key] = output_rate
+        for suffix in ("_1", "_2", "_3"):
+            input_ct[key + suffix] = input_rate
+            output_ct[key + suffix] = output_rate
+
+    return input_ct, output_ct
+
+
 def get_pricing(model_key: str | None = None) -> ModelPricing:
     """Resolve a model identifier to a `ModelPricing` entry.
 
