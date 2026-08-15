@@ -22,6 +22,9 @@ from clew.detect.semantic import Embedder
 from clew.metrics.waste_rate import (
     DETECTOR_ORDER,
     SDR_THRESHOLD,
+    PerDetectorMetric,
+    WasteRateMetric,
+    aggregate_sdr_at_10,
     compute_waste_rate,
 )
 from clew.model import Span, Trace
@@ -338,3 +341,109 @@ def test_context_resend_chunk_bytes_do_not_dedup_against_tool_bytes(embedder: Em
     assert m.per_detector["repeat"].waste_bytes == span_bytes
     assert m.per_detector["context_resend"].waste_bytes == chunk_bytes
     assert m.union_waste_bytes == span_bytes + chunk_bytes
+
+
+# ── aggregate_sdr_at_10 (corpus-level API) ─────────────────────────────────
+
+def _mk_metric(
+    trace_id: str,
+    *,
+    union_wr_char: float | None = 0.0,
+    per_detector_wr_char: dict[str, float | None] | None = None,
+    excluded_reason: str | None = None,
+) -> WasteRateMetric:
+    """Hand-build a WasteRateMetric for aggregation-logic unit tests."""
+    det_char = per_detector_wr_char or {}
+    per_det = {
+        det: PerDetectorMetric(
+            detector=det,
+            waste_bytes=0,
+            waste_cost=0.0,
+            wr_char=det_char.get(det),
+            wr_cost=None,
+        )
+        for det in DETECTOR_ORDER
+    }
+    return WasteRateMetric(
+        trace_id=trace_id,
+        total_input_bytes=1000,
+        total_input_cost=1.0,
+        per_detector=per_det,
+        union_waste_bytes=0,
+        union_waste_cost=0.0,
+        union_wr_char=union_wr_char,
+        union_wr_cost=None,
+        excluded_reason=excluded_reason,
+    )
+
+
+def test_aggregate_sdr_at_10_basic_union_ratio():
+    """3 traces (0.05, 0.15, 0.20 union_wr_char) → union_sdr_at_10 = 2/3."""
+    metrics = [
+        _mk_metric("t1", union_wr_char=0.05),
+        _mk_metric("t2", union_wr_char=0.15),
+        _mk_metric("t3", union_wr_char=0.20),
+    ]
+    agg = aggregate_sdr_at_10(metrics)
+    assert agg["union_sdr_at_10"] == pytest.approx(2 / 3)
+
+
+def test_aggregate_sdr_at_10_boundary_is_inclusive():
+    """A trace with wr_char exactly 0.10 counts toward the numerator (>=)."""
+    metrics = [_mk_metric("t1", union_wr_char=SDR_THRESHOLD)]
+    agg = aggregate_sdr_at_10(metrics)
+    assert agg["union_sdr_at_10"] == 1.0
+
+
+def test_aggregate_sdr_at_10_excluded_traces_dropped_from_denominator():
+    """`excluded_reason` traces don't count in numerator OR denominator."""
+    metrics = [
+        _mk_metric("t1", union_wr_char=0.15),
+        _mk_metric("t2", union_wr_char=None, excluded_reason="no_llm_calls"),
+    ]
+    agg = aggregate_sdr_at_10(metrics)
+    assert agg["union_sdr_at_10"] == 1.0  # 1 hit / 1 included
+
+
+def test_aggregate_sdr_at_10_all_excluded_returns_none():
+    """When every input trace is excluded, all keys are None (denominator 0)."""
+    metrics = [
+        _mk_metric("t1", excluded_reason="no_llm_calls"),
+        _mk_metric("t2", excluded_reason="no_llm_calls"),
+    ]
+    agg = aggregate_sdr_at_10(metrics)
+    for det in DETECTOR_ORDER:
+        assert agg[f"{det}_sdr_at_10"] is None
+    assert agg["union_sdr_at_10"] is None
+
+
+def test_aggregate_sdr_at_10_none_wr_char_not_counted():
+    """A None wr_char (undefined for that trace) contributes 0 to numerator."""
+    metrics = [
+        _mk_metric("t1", union_wr_char=None),
+        _mk_metric("t2", union_wr_char=0.20),
+    ]
+    agg = aggregate_sdr_at_10(metrics)
+    assert agg["union_sdr_at_10"] == 0.5
+
+
+def test_aggregate_sdr_at_10_per_detector_independent():
+    """Each detector's SDR@10 is computed from its own wr_char, not union's."""
+    metrics = [
+        _mk_metric(
+            "t1",
+            union_wr_char=0.20,
+            per_detector_wr_char={
+                "repeat": 0.15,
+                "context_resend": 0.05,
+                "redundant_read": None,
+                "duplicate_creation": 0.0,
+            },
+        ),
+    ]
+    agg = aggregate_sdr_at_10(metrics)
+    assert agg["repeat_sdr_at_10"] == 1.0
+    assert agg["context_resend_sdr_at_10"] == 0.0
+    assert agg["redundant_read_sdr_at_10"] == 0.0
+    assert agg["duplicate_creation_sdr_at_10"] == 0.0
+    assert agg["union_sdr_at_10"] == 1.0

@@ -5,6 +5,7 @@ from clew.metrics.waste_rate import (
     SDR_THRESHOLD,
     PerDetectorMetric,
     WasteRateMetric,
+    aggregate_sdr_at_10,
     compute_waste_rate,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "SDR_THRESHOLD",
     "PerDetectorMetric",
     "WasteRateMetric",
+    "aggregate_sdr_at_10",
     "compute_waste_rate",
 ]

@@ -20,6 +20,7 @@ only.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -340,3 +341,49 @@ def compute_waste_rate(
         union_wr_cost=_ratio(union_waste_cost, total_cost),
         excluded_reason=excluded,
     )
+
+
+# ── corpus-level aggregate ─────────────────────────────────────────────────
+
+def aggregate_sdr_at_10(
+    metrics: Iterable[WasteRateMetric],
+) -> dict[str, float | None]:
+    """Session Detection Rate at 10% aggregated across a corpus of traces.
+
+    For each detector (and the union), computes the share of included traces
+    with `wr_char >= SDR_THRESHOLD`. Traces with `excluded_reason` set are
+    dropped from both numerator and denominator (prereg §5).
+
+    Args:
+        metrics: iterable of per-trace `WasteRateMetric` records (typically
+            the outputs of successive `compute_waste_rate()` calls).
+
+    Returns:
+        dict with `{det}_sdr_at_10` for each detector in `DETECTOR_ORDER`,
+        plus `union_sdr_at_10`. Values are `None` when every input trace is
+        excluded (denominator would be zero).
+    """
+    included = [m for m in metrics if m.excluded_reason is None]
+    result: dict[str, float | None] = {}
+    if not included:
+        for det in DETECTOR_ORDER:
+            result[f"{det}_sdr_at_10"] = None
+        result["union_sdr_at_10"] = None
+        return result
+
+    n = len(included)
+    for det in DETECTOR_ORDER:
+        hits = sum(
+            1
+            for m in included
+            if m.per_detector[det].wr_char is not None
+            and m.per_detector[det].wr_char >= SDR_THRESHOLD
+        )
+        result[f"{det}_sdr_at_10"] = hits / n
+    hits_union = sum(
+        1
+        for m in included
+        if m.union_wr_char is not None and m.union_wr_char >= SDR_THRESHOLD
+    )
+    result["union_sdr_at_10"] = hits_union / n
+    return result
