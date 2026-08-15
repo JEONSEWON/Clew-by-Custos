@@ -13,6 +13,8 @@ import json as _json
 import sys
 from pathlib import Path
 
+from clew.cost.pricing import build_default_cost_tables
+
 
 def _load_trace_auto(path: Path) -> "Trace":
     """Auto-detect file format and return a Trace.
@@ -61,10 +63,18 @@ def _load_trace_auto(path: Path) -> "Trace":
             )
         if cc_marker:
             from clew.ingest.claude_code import ingest_claude_code_jsonl
-            return ingest_claude_code_jsonl(path)
+            return ingest_claude_code_jsonl(
+                path,
+                input_cost_table=_INPUT_COST_TABLE,
+                output_cost_table=_OUTPUT_COST_TABLE,
+            )
         if toolathlon_marker:
             from clew.ingest.toolathlon import ingest_toolathlon_jsonl
-            return ingest_toolathlon_jsonl(path)
+            return ingest_toolathlon_jsonl(
+                path,
+                input_cost_table=_INPUT_COST_TABLE,
+                output_cost_table=_OUTPUT_COST_TABLE,
+            )
         raise ValueError(
             f"{path}: JSONL 형식 판별 실패 — 최상위 키 {list(first_obj.keys())[:8]}. "
             f"'sessionId' (CC) 또는 'modelname_run'+'task_status'+'messages' (Toolathlon) 필요."
@@ -97,7 +107,11 @@ def _load_trace_auto(path: Path) -> "Trace":
             if "span_attributes" in first_span or "child_spans" in first_span:
                 # Format C: OpenInference nested dict (TRAIL, etc.)
                 from clew.ingest.otel_json import ingest_from_openinference_json
-                return ingest_from_openinference_json(path)
+                return ingest_from_openinference_json(
+                    path,
+                    input_cost_table=_INPUT_COST_TABLE,
+                    output_cost_table=_OUTPUT_COST_TABLE,
+                )
             # Clew serialized Trace JSON
             from clew.io import load_trace
             return load_trace(path)
@@ -109,11 +123,19 @@ def _load_trace_auto(path: Path) -> "Trace":
         if obj and isinstance(obj[0], dict) and "context" in obj[0]:
             # Format A: OTel SDK JSON array
             from clew.ingest.otel_json import ingest_from_otel_json
-            return ingest_from_otel_json(path)
+            return ingest_from_otel_json(
+                path,
+                input_cost_table=_INPUT_COST_TABLE,
+                output_cost_table=_OUTPUT_COST_TABLE,
+            )
         if obj and isinstance(obj[0], dict) and "span_id" in obj[0]:
             # Format C flat: OpenInference flat array
             from clew.ingest.otel_json import ingest_from_openinference_json
-            return ingest_from_openinference_json(path)
+            return ingest_from_openinference_json(
+                path,
+                input_cost_table=_INPUT_COST_TABLE,
+                output_cost_table=_OUTPUT_COST_TABLE,
+            )
         raise ValueError(
             "JSON 배열이지만 알 수 없는 형식입니다. "
             "각 스팬에 'context' 키(Format A) 또는 'span_id' 키(Format C)가 있어야 합니다."
@@ -127,6 +149,11 @@ _N = 2
 _MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 _REV = "e8f8c211226b894fcb81acc59f3b34ba3efd5f42"
 _CACHE_DIR = Path.home() / ".cache" / "clew" / "embeddings"
+
+# Auto-populated pricing tables — makes WR_cost / cost-attribution fire on
+# default CLI runs. Diagnostic scripts build their own tables against the
+# same source of truth (`src/clew/cost/pricing.py`).
+_INPUT_COST_TABLE, _OUTPUT_COST_TABLE = build_default_cost_tables()
 
 
 def _build_details(trace, cr, embedder):
