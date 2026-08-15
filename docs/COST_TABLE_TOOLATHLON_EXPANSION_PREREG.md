@@ -1,5 +1,7 @@
 # Cost Table Toolathlon Expansion — Pre-registration
 
+> **Post-amendment note (2026-08-15):** Corpus B `union_wr_cost` observed here (0.9189) was subsequently corrected to **0.9202** per [WASTE_RATE_METRIC_PREREG §14](WASTE_RATE_METRIC_PREREG.md#14-amendment--union_wr_cost-per-span-attribution-2026-08-15). The per-detector `WR_cost` values (`context_resend = 0.9189`, `redundant_read = 0.0016`, etc.) recorded in §13 of that prereg are unchanged and remain the source of truth for this document's derivations. The 0.9189 references below are preserved as the historic 2026-08-11 union figure.
+
 **Status.** Pre-registration. Per `feedback_rule_8`, this document is
 pushed and PR-opened before any pricing entry, alias, or diagnostic
 code lands. Model set, sourcing method, verification format, and

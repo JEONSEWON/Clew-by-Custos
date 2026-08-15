@@ -60,6 +60,12 @@ class PerDetectorMetric:
     flagged_span_ids: frozenset[str] = field(default_factory=frozenset)
     # Chunk-level flags (context_resend only). Tuple of (llm_span_id, chunk_hash).
     flagged_chunks: frozenset[tuple[str, str]] = field(default_factory=frozenset)
+    # Per-span waste_cost attribution — needed so that union_waste_cost can
+    # apply the §4.2 tie-break rule at span granularity rather than
+    # recomputing from `span.token_count × cost_rate` (which yields 0 on tool
+    # spans whose LLM-tokens are stored on the parent LLM call). Chunk-level
+    # detectors (context_resend) leave this empty.
+    waste_cost_by_span: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -137,7 +143,17 @@ def _repeat_metric(
         for sid in flagged
         if sid in spans_by_id
     )
-    waste_cost = float(result.waste_cost)
+    # Per-span cost using cascade's formula (cascade.py:80-86). Sum equals
+    # `result.waste_cost` by construction; kept per-span for §4.2 tie-break.
+    waste_cost_by_span: dict[str, float] = {}
+    for sid in flagged:
+        s = spans_by_id.get(sid)
+        if s is None:
+            continue
+        tokens = s.token_count or 0
+        rate = s.cost_rate or 0.0
+        waste_cost_by_span[sid] = tokens * rate
+    waste_cost = sum(waste_cost_by_span.values())
     return PerDetectorMetric(
         detector="repeat",
         waste_bytes=waste_bytes,
@@ -145,6 +161,7 @@ def _repeat_metric(
         wr_char=_ratio(waste_bytes, total_bytes),
         wr_cost=_ratio(waste_cost, total_cost),
         flagged_span_ids=flagged,
+        waste_cost_by_span=waste_cost_by_span,
     )
 
 
@@ -201,7 +218,14 @@ def _redundant_read_metric(
         for sid in flagged
         if sid in spans_by_id
     )
-    waste_cost = float(result.total_waste_cost)
+    # Group per-event waste_cost by read_span_id so §4.2 tie-break can
+    # attribute at span granularity. Sum matches `result.total_waste_cost`.
+    waste_cost_by_span: dict[str, float] = {}
+    for ev in result.events:
+        waste_cost_by_span[ev.read_span_id] = (
+            waste_cost_by_span.get(ev.read_span_id, 0.0) + float(ev.waste_cost)
+        )
+    waste_cost = sum(waste_cost_by_span.values())
     return PerDetectorMetric(
         detector="redundant_read",
         waste_bytes=waste_bytes,
@@ -209,6 +233,7 @@ def _redundant_read_metric(
         wr_char=_ratio(waste_bytes, total_bytes),
         wr_cost=_ratio(waste_cost, total_cost),
         flagged_span_ids=flagged,
+        waste_cost_by_span=waste_cost_by_span,
     )
 
 
@@ -232,14 +257,15 @@ def _duplicate_creation_metric(
         for sid in flagged
         if sid in spans_by_id
     )
-    waste_cost = 0.0
+    waste_cost_by_span: dict[str, float] = {}
     for sid in flagged:
         s = spans_by_id.get(sid)
         if s is None:
             continue
         tokens = s.token_count or 0
         rate = s.cost_rate or 0.0
-        waste_cost += tokens * rate
+        waste_cost_by_span[sid] = tokens * rate
+    waste_cost = sum(waste_cost_by_span.values())
     return PerDetectorMetric(
         detector="duplicate_creation",
         waste_bytes=waste_bytes,
@@ -247,6 +273,7 @@ def _duplicate_creation_metric(
         wr_char=_ratio(waste_bytes, total_bytes),
         wr_cost=_ratio(waste_cost, total_cost),
         flagged_span_ids=flagged,
+        waste_cost_by_span=waste_cost_by_span,
     )
 
 
@@ -320,14 +347,15 @@ def compute_waste_rate(
             continue
         for sid in per_detector[det].flagged_span_ids:
             span_first_flagger.setdefault(sid, det)
+    # Per §1.2 + §4.2: sum each flagged span's detector-attributed `waste_cost`
+    # (from the tie-break winner). This replaces the earlier
+    # `span.token_count × cost_rate` recomputation, which yielded 0 on tool
+    # spans (LLM tokens live on the parent LLM call, not on tool spans),
+    # thereby dropping non-context_resend contributions from `union_wr_cost`.
+    # See §14 Amendment.
     span_cost = 0.0
-    for sid in span_first_flagger:
-        s = spans_by_id.get(sid)
-        if s is None:
-            continue
-        tokens = s.token_count or 0
-        rate = s.cost_rate or 0.0
-        span_cost += tokens * rate
+    for sid, det in span_first_flagger.items():
+        span_cost += per_detector[det].waste_cost_by_span.get(sid, 0.0)
     union_waste_cost = span_cost + per_detector["context_resend"].waste_cost
 
     return WasteRateMetric(

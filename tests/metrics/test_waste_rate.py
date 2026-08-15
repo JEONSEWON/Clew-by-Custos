@@ -343,6 +343,65 @@ def test_context_resend_chunk_bytes_do_not_dedup_against_tool_bytes(embedder: Em
     assert m.union_waste_bytes == span_bytes + chunk_bytes
 
 
+# ── union_wr_cost spec compliance (§14 Amendment) ──────────────────────────
+
+def test_union_wr_cost_uses_per_span_waste_cost_from_detector(embedder: Embedder):
+    """Regression: pre-§14, union re-derived span cost from `span.token_count
+    × cost_rate`, yielding 0 on tool spans (LLM tokens live on the parent
+    LLM call). This dropped `redundant_read`'s non-zero waste_cost from
+    `union_waste_cost` entirely.
+
+    Fixture: two `Read` spans, same target, *different* outputs → cascade
+    (`repeat`) skips (sha256 differs); redundant_read fires (interval-clean
+    re-read on same target). span.token_count is 0 on both. Detector's own
+    cost model uses output-text tokens × next-turn rate, so its `waste_cost`
+    is non-zero. Union must reflect it via `waste_cost_by_span[r2]`.
+    """
+    root = _root()
+    r1 = _tool_span("r1", "Read", t=1, input_text='{"path":"a.py"}',
+                    output_text="content A", tokens=0)
+    r2 = _tool_span("r2", "Read", t=3, input_text='{"path":"a.py"}',
+                    output_text="content B", tokens=0)
+    trace = Trace(
+        trace_id="t",
+        spans=[root, r1, r2],
+        metadata={"llm_calls": [_mk_llm_call("llm-1", "x", input_tokens=1000)]},
+    )
+    m = compute_waste_rate(trace, embedder=embedder, n=2, phi=0.514345)
+
+    # Repeat did not fire (different outputs).
+    assert m.per_detector["repeat"].waste_cost == 0.0
+    # Redundant_read fired and priced r2 via its own cost model.
+    rr_cost = m.per_detector["redundant_read"].waste_cost
+    assert rr_cost > 0.0
+    assert m.per_detector["redundant_read"].waste_cost_by_span.get("r2") == rr_cost
+    # Union preserves redundant_read's contribution (pre-fix this was 0).
+    assert m.union_waste_cost == pytest.approx(rr_cost)
+
+
+def test_waste_cost_by_span_sum_matches_detector_total(embedder: Embedder):
+    """Invariant: for every span-level detector, sum of `waste_cost_by_span`
+    equals `waste_cost` and every `flagged_span_id` has an entry."""
+    root = _root()
+    out = "shared"
+    r1 = _tool_span("r1", "Read", t=1, input_text='{"path":"z"}', output_text=out,
+                    tokens=1000, cost_rate=2e-6)
+    r2 = _tool_span("r2", "Read", t=2, input_text='{"path":"z"}', output_text=out,
+                    tokens=1000, cost_rate=2e-6)
+    trace = Trace(
+        trace_id="t",
+        spans=[root, r1, r2],
+        metadata={"llm_calls": [_mk_llm_call("llm-1", "abc", input_tokens=1000)]},
+    )
+    m = compute_waste_rate(trace, embedder=embedder, n=2, phi=0.514345)
+
+    for det in ("repeat", "redundant_read", "duplicate_creation"):
+        pd = m.per_detector[det]
+        assert sum(pd.waste_cost_by_span.values()) == pytest.approx(pd.waste_cost)
+        for sid in pd.flagged_span_ids:
+            assert sid in pd.waste_cost_by_span
+
+
 # ── aggregate_sdr_at_10 (corpus-level API) ─────────────────────────────────
 
 def _mk_metric(
