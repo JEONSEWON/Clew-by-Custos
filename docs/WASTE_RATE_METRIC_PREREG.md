@@ -449,6 +449,8 @@ are the record of record.
 
 ### 13.5 Cross-corpus summary
 
+> **Post-§14 amendment (2026-08-15):** Corpus B `union_wr_cost` corrected 0.9189 → **0.9202** per per-span attribution fix. Other cells unchanged. See §14.4 for the shift table and root cause. This §13.5 table preserves the original 2026-08-10 measurement for historic reference.
+
 | Corpus | Scan status | Included | union_wr_char | union_wr_cost | union_sdr_at_10 |
 |---|---|---:|---:|---:|---:|
 | A · trace-commons | Executed 2026-08-10 | 28 / 28 | **0.9930** | **0.2903** | **0.9643** |
@@ -459,3 +461,109 @@ are the record of record.
 > "On 28 measured Claude Code sessions from the public trace-commons corpus, Clew flags waste on 96.4% of sessions (`SDR@10`), with union WR_char = 99.3% (95% bootstrap CI [98.9%, 99.4%]) and union WR_cost = 29.0%."
 
 Any pitch statement drawing on "all measured corpora" must acknowledge Corpus B contributed 0 traces (§13.2 root cause).
+
+## 14. Amendment — `union_wr_cost` per-span attribution (2026-08-15)
+
+### 14.1 Motivation
+
+External code review flagged that `union_wr_cost` computed in
+`compute_waste_rate()` (`src/clew/metrics/waste_rate.py`) deviated from
+§1.2. The implementation summed `span.token_count × span.cost_rate` over
+span-detector-flagged spans, then added `context_resend.waste_cost`. On
+tool-heavy corpora (Toolathlon, Exgentic) tool-span `token_count` is
+`None`/0 by construction — LLM tokens live on the parent LLM call, not
+on the tool span — so the span-level cost path returned 0 across all
+non-`context_resend` detectors. On CC-heavy sessions where no
+non-`context_resend` detector fires (Corpus A), the deviation had no
+numerical impact; on Corpus B, `redundant_read`'s `WR_cost = 0.0016`
+was dropped from union entirely (verified: `union_wr_cost = 0.9189`
+matched `context_resend_wr_cost` to 6 decimals).
+
+Root cause: the per-span `waste_cost` needed for §4.2 tie-break was not
+carried through the per-detector metric record; the code recomputed
+from span metadata instead of consuming each detector's own cost model.
+
+### 14.2 Change
+
+`PerDetectorMetric` gains one additive field:
+
+```python
+waste_cost_by_span: dict[str, float] = field(default_factory=dict)
+```
+
+Each span-level detector (`repeat`, `redundant_read`, `duplicate_creation`)
+populates it during its iteration using its own cost formula (unchanged
+from before, just retained per-span). `context_resend` leaves it empty
+(chunks aggregate at input-side; separate bucket per §4.2).
+
+The union-cost path in `compute_waste_rate()` becomes:
+
+```python
+span_cost = 0.0
+for sid, det in span_first_flagger.items():
+    span_cost += per_detector[det].waste_cost_by_span.get(sid, 0.0)
+union_waste_cost = span_cost + per_detector["context_resend"].waste_cost
+```
+
+Frozen order tie-break (§4.2 point 3) preserved — a span flagged by
+multiple detectors is attributed to the first detector in `DETECTOR_ORDER`.
+Per-detector `waste_cost` values themselves are unchanged (already
+computed per-span by each detector); only the union arithmetic changes.
+
+### 14.3 Predicted shift
+
+Direction is monotone-upward (fix restores previously-dropped
+contributions; never subtracts). Magnitude is bounded above by
+`sum(per_detector[det].waste_cost for det in DETECTOR_ORDER)` and
+below by `max(per_detector[det].waste_cost)`.
+
+- **Corpus A (2026-08-10 record 0.2903):** predicted **unchanged**.
+  Per-detector `WR_cost` was 0.0000 for `repeat`, `redundant_read`,
+  `duplicate_creation` (§13.1.1). Nothing to restore.
+- **Corpus B (2026-08-11 record 0.9189):** predicted **≈ 0.9205**, an
+  upward shift ≤ +0.0016 driven entirely by `redundant_read`
+  (`WR_cost = 0.0016`); other span detectors reported 0.
+- **Corpus C (2026-08-14 record 0.9397):** predicted **monotone-upward**,
+  magnitude pending per-detector data (Corpus C RESULTS artifact did not
+  emit per-detector `WR_cost`). Bound ≤ small (Corpus C is chat-heavy;
+  span-level detectors fire sparsely by design).
+
+### 14.4 Post-fix observed shift
+
+Corpus B and Corpus C re-scanned on 2026-08-15 against the same
+manifests (`9648d18876685ae54ee20abcb88e191f0914f20f2025ff38a9d2cedb0699d4f7` /
+Corpus C manifest identical to Day 5). Same seed, same detectors,
+same corpora — only the union-cost arithmetic changed.
+
+| Corpus | Pre-§14 | Post-§14 | Δ | Direction |
+|---|---:|---:|---:|---|
+| A · trace-commons (28 CC sessions) | 0.2903 | *analytically unchanged* | 0.0000 | flat (§13.1.1 all non-CR detectors reported `WR_cost = 0`) |
+| B · Toolathlon (6,659 included) | 0.9189 | **0.9202** | +0.0013 | ↑ observed +0.00126 (within predicted bound ≤ 0.0016). Delta traces to `redundant_read.wr_cost = 0.0016`; the small shortfall vs the naive sum reflects §4.2 tie-break — a subset of redundant_read-flagged spans overlap with repeat/duplicate flag sets whose per-span `waste_cost = 0` wins per DETECTOR_ORDER. |
+| C · Exgentic (10,056 sessions) | 0.9397 | **0.9397** | 0.0000 | flat (repeat / redundant_read / duplicate_creation fire sparsely on chat-heavy Exgentic; no non-CR contribution to restore) |
+
+**Corpus B re-scan details (2026-08-15):**
+- Manifest sha256 unchanged (`9648d18876685ae54ee20abcb88e191f0914f20f2025ff38a9d2cedb0699d4f7`).
+- `n_included = 6659 / 6780` (identical to 2026-08-11).
+- Per-detector `WR_cost` unchanged: repeat=0.0, context_resend=0.9189, redundant_read=0.0016, duplicate=0.0. Only union arithmetic changed.
+- `union_wr_char = 0.9342` unchanged (char metric doesn't depend on cost arithmetic).
+- Bootstrap CI: `[0.9314, 0.9368]` on `union_wr_char` (matches 2026-08-11 within floating-point noise).
+
+**Corpus C re-scan details (2026-08-15):**
+- Manifest sha256 unchanged (same corpus as Day 5).
+- `n_ok = 10056 / 10056`, `n_error = 0`, `n_token_invariant_ok = 10056`.
+- `union_wr_char = 0.9233`, `sdr_at_10 = 0.9332` — unchanged.
+- Bootstrap CI floating-point noise: `lo` shifted 0.7827063 → 0.7826877 (delta 1.86e-5); non-meaningful.
+- `wall_clock_seconds = 3,431` (elapsed grew from 2,283s vs Day 5 due to parallel Corpus B scan CPU contention; not a fix effect).
+
+### 14.5 Scope non-changes
+
+The following remain untouched:
+
+- Metric definitions §1.1 (WR_char) and §1.3 (SDR@10).
+- Per-detector `waste_cost` formulas (each detector's own cost model).
+- Detector set (§3) and tie-break order (§3, §4.2).
+- Corpus contents, embedder revision, `φ` / `N`.
+- Test suite — 2 new regression tests added
+  (`test_union_wr_cost_uses_per_span_waste_cost_from_detector`,
+  `test_waste_cost_by_span_sum_matches_detector_total`) but no
+  existing test modified.

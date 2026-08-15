@@ -1,5 +1,7 @@
 # Waste-rate Metric — Exgentic Adapter Amendment (Pre-registration)
 
+> **Post-amendment note (2026-08-15):** references to Corpus B `union_wr_cost = 0.9189` below reflect the 2026-08-11 measurement and are preserved as historic. The current value is **0.9202** per [WASTE_RATE_METRIC_PREREG §14](WASTE_RATE_METRIC_PREREG.md#14-amendment--union_wr_cost-per-span-attribution-2026-08-15). Corpus C figures (0.9397 / 0.9233 / 0.9332) were re-scanned on 2026-08-15 and are unchanged.
+
 **Status.** Pre-registration amendment to
 `docs/WASTE_RATE_METRIC_PREREG.md`. Per `feedback_rule_8`, this
 document is pushed and PR-opened before any committed adapter code
