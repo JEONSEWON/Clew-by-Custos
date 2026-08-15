@@ -7,8 +7,8 @@
 [![PyPI](https://img.shields.io/pypi/v/clew-custos)](https://pypi.org/project/clew-custos/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.12-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-668%20passing-brightgreen)](https://github.com/JEONSEWON/Clew-by-Custos/tree/main/tests)
-[![Corpora](https://img.shields.io/badge/corpora-3%20%C2%B7%2016%2C857%2B%20sessions-blueviolet)](#-where-it-stands--measured-not-marketed)
+[![Tests](https://img.shields.io/badge/tests-691%20passing-brightgreen)](https://github.com/JEONSEWON/Clew-by-Custos/tree/main/tests)
+[![Corpora](https://img.shields.io/badge/corpora-3%20%C2%B7%2016%2C864%20sessions-blueviolet)](#-where-it-stands--measured-not-marketed)
 
 </div>
 
@@ -325,7 +325,7 @@ The hosted layer imports Langfuse / LangSmith traces natively — the analyzer s
 - **Published corrections.** Small-sample numbers that did not survive larger samples were retracted in the open (Toolathlon `1,343 → 1,195`, `4,251 → 4,249`; `"90% CI"` label corrected to `"95% two-sided"`). See [CHANGELOG.md](CHANGELOG.md).
 - **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues no synthetic test caught: session mid-run abort (3 / 28 crashes, recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false positives across 269 error responses, gated at the report layer). See [`docs/CC_TRANSCRIPT.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/CC_TRANSCRIPT.md) §29.
 
-548 tests, CI on every PR, frozen parameters enforced as failing tests.
+691 tests, CI on every PR, frozen parameters enforced as failing tests.
 
 ---
 
