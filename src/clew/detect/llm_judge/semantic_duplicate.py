@@ -236,7 +236,7 @@ def find_llm_judge_semantic_duplicates(
     # Pre-run cost estimate (prereg §5).
     est_max_cost = _estimate_max_cost(judge_model, len(candidates))
     print(
-        f"clew: LLM judge enabled — {len(candidates)} candidate pairs, "
+        f"boxdawn: LLM judge enabled — {len(candidates)} candidate pairs, "
         f"est. max cost ${est_max_cost:.4f}",
         file=sys.stderr,
     )
@@ -256,7 +256,7 @@ def find_llm_judge_semantic_duplicates(
     for i, j, _jac in candidates:
         if accumulated_cost >= cost_cap:
             warnings.warn(
-                f"clew judge: cost cap ${cost_cap} reached "
+                f"boxdawn judge: cost cap ${cost_cap} reached "
                 f"({accumulated_cost:.4f} spent); stopping",
                 stacklevel=2,
             )

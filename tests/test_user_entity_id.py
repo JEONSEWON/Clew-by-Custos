@@ -355,7 +355,7 @@ def test_suspicious_tails_produce_warn(tail: str):
     # summary + Full context URL. The 요지 for correlation-style tails is
     # "identify calls, not entities".
     assert "identify calls" in combined
-    assert "https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/ID_BRIDGE_SCOPE_PRINCIPLE.md" in combined
+    assert "https://github.com/boxdawn/boxdawn/blob/main/docs/ID_BRIDGE_SCOPE_PRINCIPLE.md" in combined
 
 
 def test_transaction_id_uses_ambiguous_wording():
@@ -368,7 +368,7 @@ def test_transaction_id_uses_ambiguous_wording():
     assert "payment/financial" in warn
     # Payment-domain 요지 + URL.
     assert "payment_id or ticket_id" in warn
-    assert "https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/ID_BRIDGE_SCOPE_PRINCIPLE.md" in warn
+    assert "https://github.com/boxdawn/boxdawn/blob/main/docs/ID_BRIDGE_SCOPE_PRINCIPLE.md" in warn
 
 
 def test_message_id_produces_no_warn():

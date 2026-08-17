@@ -23,10 +23,10 @@ _SUPPORTED_VERSIONS = frozenset({1})
 _WALK_UP_LIMIT = 5
 
 # User-facing messages reference the ID bridge scope doc via URL rather than
-# a local docs/ path — `pip install clew-custos` users have no docs/ tree.
+# a local docs/ path — `pip install boxdawn` users have no docs/ tree.
 # The message body still carries the one-line summary so the URL is only for
 # extra context, not required reading.
-_GITHUB_BASE = "https://github.com/JEONSEWON/Clew-by-Custos/blob/main"
+_GITHUB_BASE = "https://github.com/boxdawn/boxdawn/blob/main"
 _ID_BRIDGE_URL = f"{_GITHUB_BASE}/docs/ID_BRIDGE_SCOPE_PRINCIPLE.md"
 
 # Phase 2 entity_id validation
@@ -178,7 +178,7 @@ def load_user_config(path: Path) -> ResolvedTools:
     version = data["version"]
     if version not in _SUPPORTED_VERSIONS:
         raise UserToolConfigError(
-            f"{path}: unsupported version {version!r} (this Clew supports "
+            f"{path}: unsupported version {version!r} (this Boxdawn supports "
             f"version {sorted(_SUPPORTED_VERSIONS)})"
         )
 
@@ -208,7 +208,7 @@ def _reject_phase3_fields(path: Path, tools_raw: dict) -> None:
         if offenders:
             raise UserToolConfigError(
                 f"{path}: tool {tool_name!r} contains reserved field(s) "
-                f"{sorted(offenders)} — not supported in this Clew version"
+                f"{sorted(offenders)} — not supported in this Boxdawn version"
             )
 
 
@@ -320,7 +320,7 @@ def _suspicious_warn_for(name: str, path_str: str) -> str | None:
         return None
     if normalized in _AMBIGUOUS_TAIL_PATTERNS:
         return (
-            f"clew: entity_id path for {name!r} ends in {tail!r} — transaction "
+            f"boxdawn: entity_id path for {name!r} ends in {tail!r} — transaction "
             f"identifiers are ambiguous: in payment/financial domains a "
             f"transaction can be a first-class entity, but elsewhere it names "
             f"the call, not what was created. Prefer payment_id or ticket_id "
@@ -328,7 +328,7 @@ def _suspicious_warn_for(name: str, path_str: str) -> str | None:
             f"Full context: {_ID_BRIDGE_URL}"
         )
     return (
-        f"clew: entity_id path for {name!r} ends in {tail!r} — correlation IDs "
+        f"boxdawn: entity_id path for {name!r} ends in {tail!r} — correlation IDs "
         f"identify calls, not entities, so pinning entity_id to them will not "
         f"detect duplicate creation. "
         f"Full context: {_ID_BRIDGE_URL}"
@@ -344,7 +344,7 @@ def resolve_user_tools(
     Rebuildable purely from inputs — used by loader and tests.
 
     Also validates against the built-in ID bridge mapping: user cannot override
-    an entity_id that Clew already knows (frozen §3.1 gate). Suspicious tail
+    an entity_id that Boxdawn already knows (frozen §3.1 gate). Suspicious tail
     warns are collected into `entity_id_warnings` (frozen tuple).
     """
     from clew.report._enrich import _ID_BRIDGE_MAPPING  # noqa: PLC0415
@@ -472,7 +472,7 @@ def format_override_warning(tools: ResolvedTools) -> str | None:
 def format_ignored_files(ignored: list[Path], winner: Path) -> list[str]:
     """§2.1: additional clew.yaml files beyond the first found → stderr info lines."""
     return [
-        f"clew: ignored clew.yaml at {p} (already loaded {winner})"
+        f"boxdawn: ignored clew.yaml at {p} (already loaded {winner})"
         for p in ignored
     ]
 

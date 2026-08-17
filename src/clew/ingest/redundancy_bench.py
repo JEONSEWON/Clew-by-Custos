@@ -4,7 +4,7 @@ Mapping convention: docs/REDUNDANCY_BENCH.md §24 (pre-registered, finalized aft
 
 Input: `data/redundancy_bench/data/domain/<domain>/final_traces.json`
      Top-level dict `{"tasks": [...], "simulations": [...]}`  (JSON, not JSONL)
-Output: each simulation as a single Clew canonical Trace.
+Output: each simulation as a single Boxdawn canonical Trace.
 
 Key decisions (§24.2):
 - Spans come from `role=='assistant'` tool_calls only. `role=='user'` + tool_calls

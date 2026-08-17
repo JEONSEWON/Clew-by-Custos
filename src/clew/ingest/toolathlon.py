@@ -3,7 +3,7 @@
 Mapping convention: docs/TOOLATHLON.md §23 (pre-registered, finalized after PR approval).
 
 Input: `data/toolathlon/<model>_<run>.jsonl` (JSONL, one line = one trace).
-Output: Clew canonical Trace (synthetic CHAIN root + tool spans, plus
+Output: Boxdawn canonical Trace (synthetic CHAIN root + tool spans, plus
 reconstructed `llm_calls` per WASTE_RATE_TOOLATHLON_ADAPTER_AMENDMENT_PREREG.md §1).
 
 Main decisions (§23.2):

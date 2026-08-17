@@ -1,4 +1,4 @@
-"""Canonical span tree model - Clew Stage 1 canonical data model.
+"""Canonical span tree model - Boxdawn Stage 1 canonical data model.
 
 Enforces every field and validation convention originally set out in
 SPEC.md §8 1.1, with the `output_text` non-empty rule scoped in v0.4+ to

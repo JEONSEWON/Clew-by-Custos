@@ -110,7 +110,7 @@ def _bridge_gen_ai_span(
     input_cost_table: dict[str, float] | None,
     output_cost_table: dict[str, float] | None,
 ) -> tuple[Span, dict[str, Any]]:
-    """Convert one Exgentic OTel GenAI span dict into a Clew `Span`
+    """Convert one Exgentic OTel GenAI span dict into a Boxdawn `Span`
     plus the matching `llm_calls` entry (OpenInference-attr shape
     the detectors already consume).
 
@@ -193,7 +193,7 @@ def ingest_exgentic_row(
     input_cost_table: dict[str, float] | None = None,
     output_cost_table: dict[str, float] | None = None,
 ) -> Trace:
-    """§1.1: Exgentic parquet row (one session) → Clew canonical Trace.
+    """§1.1: Exgentic parquet row (one session) → Boxdawn canonical Trace.
 
     Args:
       row: dict from `pyarrow.parquet.read_table(...).to_pylist()[i]`.

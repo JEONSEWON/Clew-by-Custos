@@ -1,4 +1,4 @@
-# HANDOFF — Clew/Custos handoff to the next owner
+# HANDOFF — Boxdawn handoff to the next owner
 
 **Rule 7 applies**: this document is derived from SPEC. It is not written alongside it.
 
@@ -17,7 +17,7 @@
 
 ### T1 achieved
 - **T1 = "Pass a Claude Code session JSONL through the pipeline"** — achieved. Source: `docs/CC_TRANSCRIPT.md` §22.6.
-- On target session `f96aee88-…`, `python -m clew analyze <path>.jsonl` completed without error (total_spans 181, 0 join failures, 0 Pydantic validation failures). Source: `docs/CC_TRANSCRIPT.md` §22.6.
+- On target session `f96aee88-…`, `boxdawn analyze <path>.jsonl` completed without error (total_spans 181, 0 join failures, 0 Pydantic validation failures). Source: `docs/CC_TRANSCRIPT.md` §22.6.
 - First-run result: 3 waste — Edit cos=1.0000, Write 0.9959, Bash 0.6577. Source: `docs/CC_TRANSCRIPT.md` §22.6 table.
 - **All 3 are false positives.** Source: `docs/CC_TRANSCRIPT.md` §22.7 summary table.
 
@@ -175,7 +175,7 @@
 - **Observation 3' — v1'/v4' candidate-population character change**. Newly promoted median gap 189 vs. retained 9. Cannot judge whether long-gap re-reads are the same character of waste as short-gap. Source: SPEC §19.1 unresolved observation.
 - **Observation 4 — `os.path.normpath` OS dependency**. On Windows/Linux reruns, CSV literal representation differs. If relative/absolute matching depends on separators, results may diverge — unverified. Source: SPEC §19.1 unresolved observation.
 - **Observation 5 — Causation of prev=success × gap correlation**. Correlation is observed; the causation (first failure → immediate retry, first success → long gap) is unverified. Source: SPEC §19.2 observation 5.
-- **§19.3-1 — mtime blind spot**. The read-once prevention coverage cannot be observed (no mtime data). No current method for quantitative comparison against read-once from the Clew waste-candidate CSV. Source: SPEC §19.3.
+- **§19.3-1 — mtime blind spot**. The read-once prevention coverage cannot be observed (no mtime data). No current method for quantitative comparison against read-once from the Boxdawn waste-candidate CSV. Source: SPEC §19.3.
 
 ### Separate SPEC targets
 - **Bash investigation** (239,553 cases / Grep 56,593 cases). Vendor-side prevention unverified area. Separate SPEC after §19 primary is fixed. Source: SPEC "next investigation direction".
