@@ -152,7 +152,7 @@ COMMANDS = {
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Clew task runner")
+    parser = argparse.ArgumentParser(description="Boxdawn task runner")
     parser.add_argument("command", choices=list(COMMANDS))
     args = parser.parse_args()
     return COMMANDS[args.command](args)

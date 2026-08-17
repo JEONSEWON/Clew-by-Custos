@@ -86,7 +86,7 @@ class Embedder:
         except ImportError as e:
             raise ImportError(
                 "The semantic gate (cos >= phi) requires the [semantic] extra:\n"
-                "  pip install 'clew-custos[semantic]'\n"
+                "  pip install 'boxdawn[semantic]'\n"
                 "On Linux, avoid pulling the CUDA torch stack by installing CPU-only torch first:\n"
                 "  pip install torch --index-url https://download.pytorch.org/whl/cpu\n"
                 f"cause: {e}"

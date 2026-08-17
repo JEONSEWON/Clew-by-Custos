@@ -5,7 +5,7 @@
 Prereg §3: temperature=0, no streaming, pinned model string.
 Prereg §8: 30s per-call timeout, exponential backoff on 429.
 
-The `anthropic` package is an OPTIONAL dependency (`clew-custos[judge]`).
+The `anthropic` package is an OPTIONAL dependency (`boxdawn[judge]`).
 Import happens lazily inside the client so the base package works
 without it. Missing package → graceful degradation (returns no matches
 with a warning, does not raise).
@@ -75,15 +75,15 @@ class AnthropicJudge:
             import anthropic  # noqa: PLC0415
         except ImportError as e:
             raise JudgeUnavailableError(
-                "clew: LLM judge requires `anthropic` package. "
-                "Install via `pip install clew-custos[judge]` or "
+                "boxdawn: LLM judge requires `anthropic` package. "
+                "Install via `pip install boxdawn[judge]` or "
                 "`pip install anthropic`."
             ) from e
 
         resolved_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         if not resolved_key:
             raise JudgeUnavailableError(
-                "clew: LLM judge requires ANTHROPIC_API_KEY env var "
+                "boxdawn: LLM judge requires ANTHROPIC_API_KEY env var "
                 "(or explicit api_key argument)."
             )
 

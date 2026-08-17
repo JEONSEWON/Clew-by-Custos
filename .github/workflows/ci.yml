@@ -15,18 +15,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install clew with detect extras (cold, no cache)
+      - name: Install boxdawn with detect extras (cold, no cache)
         run: pip install ".[detect]"
-      - name: Run clew analyze without HF token
+      - name: Run boxdawn analyze without HF token
         env:
           HF_TOKEN: ""
           HUGGINGFACE_HUB_TOKEN: ""
         run: |
-          clew analyze examples/sample_otel_trace.json | tee /tmp/report.txt
+          boxdawn analyze examples/sample_otel_trace.json | tee /tmp/report.txt
           echo "exit code: ${PIPESTATUS[0]}"
       - name: Assert report produced
         run: |
-          grep -q "Clew Waste Report" /tmp/report.txt || (echo "report generation failed" && exit 1)
+          grep -q "Boxdawn Waste Report" /tmp/report.txt || (echo "report generation failed" && exit 1)
           echo "cold start OK: install + run + report with no token"
 
   tests:

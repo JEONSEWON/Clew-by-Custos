@@ -1,8 +1,8 @@
 [project]
-name = "clew-custos"
+name = "boxdawn"
 version = "0.4.1"
-description = "Detect wasteful cycles in multi-agent traces (Custos / Clew, S0 MVP)."
-authors = [{ name = "Custos" }]
+description = "Boxdawn — AI agent observability. Detect waste in multi-agent traces."
+authors = [{ name = "Boxdawn" }]
 readme = "README.md"
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -61,16 +61,16 @@ dev = [
     "pytest>=8.0",
 ]
 all = [
-    "clew-custos[detect,semantic,adapter,judge]",
+    "boxdawn[detect,semantic,adapter,judge]",
 ]
 
 [project.urls]
-Homepage = "https://github.com/JEONSEWON/Clew-by-Custos"
-Repository = "https://github.com/JEONSEWON/Clew-by-Custos"
-Issues = "https://github.com/JEONSEWON/Clew-by-Custos/issues"
+Homepage = "https://github.com/boxdawn/boxdawn"
+Repository = "https://github.com/boxdawn/boxdawn"
+Issues = "https://github.com/boxdawn/boxdawn/issues"
 
 [project.scripts]
-clew = "clew.__main__:main"
+boxdawn = "clew.__main__:main"
 
 [build-system]
 requires = ["setuptools>=61,<75", "wheel"]
