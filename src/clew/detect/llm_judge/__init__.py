@@ -1,5 +1,5 @@
 # Spec: docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md (Rule 8 prereg).
-"""LLM-as-judge layer for Clew.
+"""LLM-as-judge layer for Boxdawn.
 
 Bounded, opt-in LLM-judge extensions to the deterministic detectors.
 v1 covers only Semantic Duplicate (paraphrase-tolerant duplicate detection);

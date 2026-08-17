@@ -20,7 +20,7 @@ def _load_trace_auto(path: Path) -> "Trace":
     """Auto-detect file format and return a Trace.
 
     Supported:
-      - Clew Trace JSON (top-level dict with "trace_id" key)   -> load_trace()
+      - Boxdawn Trace JSON (top-level dict with "trace_id" key) -> load_trace()
       - OTel SDK JSON array (top-level list, "context" key)    -> ingest_from_otel_json()
       - Claude Code JSONL (.jsonl, first line has "sessionId") -> ingest_claude_code_jsonl()
       - Toolathlon JSONL (.jsonl, first line has "modelname_run") -> ingest_toolathlon_jsonl()
@@ -112,7 +112,7 @@ def _load_trace_auto(path: Path) -> "Trace":
                     input_cost_table=_INPUT_COST_TABLE,
                     output_cost_table=_OUTPUT_COST_TABLE,
                 )
-            # Clew serialized Trace JSON
+            # Boxdawn serialized Trace JSON
             from clew.io import load_trace
             return load_trace(path)
         raise ValueError(

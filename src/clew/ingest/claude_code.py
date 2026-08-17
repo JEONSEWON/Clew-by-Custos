@@ -3,7 +3,7 @@
 Mapping convention: docs/CC_TRANSCRIPT.md §22 (pre-registered, finalized after PR approval).
 
 Input: `~/.claude/projects/<slug>/<uuid>.jsonl` (JSONL, one line = one JSON).
-Output: Clew canonical Trace (synthetic CHAIN root + tool spans only).
+Output: Boxdawn canonical Trace (synthetic CHAIN root + tool spans only).
 
 v1 scope (§22.3):
   - Only `tool_use` <-> `tool_result` pairs are converted into spans.

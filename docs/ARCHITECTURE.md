@@ -1,4 +1,4 @@
-# Clew Architecture Document
+# Boxdawn Architecture Document
 
 > Written: 2026-06-30. Based on direct reading of the codebase under `src/clew/`.
 > Inferences marked [inference]; unverified items marked [unverified]. Everything else is a
@@ -10,7 +10,7 @@
 
 ### 1.1 One-Line Definition
 
-**Clew** is a tool that takes execution traces from multi-agent AI systems and reports the
+**Boxdawn** is a tool that takes execution traces from multi-agent AI systems and reports the
 tokens and cost wasted when agents repeat the same work.
 
 #### Background
@@ -21,8 +21,8 @@ re-asking each other, or re-querying information that was already retrieved. Tha
 **token cost**, and existing observability tools are built around one agent at a time, so
 they cannot see this "between" layer.
 
-Clew (from Ariadne's ball of thread — the etymological root of the English word "clue")
-makes that waste visible. The company name Custos is Latin for "guardian, watchman."
+Boxdawn makes that waste visible. The name pairs the *box* (the black box of the agent's
+opaque runtime) with *dawn* (the moment its wasted work first becomes visible).
 
 ---
 
@@ -33,7 +33,7 @@ makes that waste visible. The company name Custos is Latin for "guardian, watchm
 Imagine you install cameras in a package warehouse. The footage catches one worker pulling
 the same box off a shelf, putting it back, pulling it off again, and putting it back again.
 Or a scene where team A asks team B "is this address right?", team B asks team A back,
-and the loop repeats. Clew does exactly that.
+and the loop repeats. Boxdawn does exactly that.
 
 **Input:** the full record of AI agents talking to each other and using tools (a single
 trace file, in JSON).
@@ -70,7 +70,7 @@ graph TD
 
     subgraph Ingest layer
         B["Format auto-detect<br/>_load_trace_auto()"]
-        B -->|"Clew Trace JSON<br/>(top-level dict + trace_id key)"| C1["load_trace()<br/>io.py"]
+        B -->|"Boxdawn Trace JSON<br/>(top-level dict + trace_id key)"| C1["load_trace()<br/>io.py"]
         B -->|"OTel SDK JSON array<br/>(top-level list + context key)"| C2["ingest_from_otel_json()<br/>otel_json.py"]
         C2 --> C3["otel_spans_to_trace()<br/>langgraph.py<br/>ReadableSpan shim → Span"]
         C3 --> C4["preprocess_trace()<br/>preprocess.py<br/>4-stage normalization"]
@@ -101,7 +101,7 @@ graph TD
 | Box | File | Responsibility |
 |-----|------|----------------|
 | `_load_trace_auto()` | `__main__.py:17` | Auto-detect format, dispatch to appropriate loader |
-| `load_trace()` | `io.py:18` | Clew Trace JSON → `Trace` (pydantic deserialization) |
+| `load_trace()` | `io.py:18` | Boxdawn Trace JSON → `Trace` (pydantic deserialization) |
 | `ingest_from_otel_json()` | `otel_json.py:110` | OTel SDK JSON file → `_SdkJsonSpan` shim → delegate to ingest path |
 | `otel_spans_to_trace()` | `langgraph.py:78` | OTel ReadableSpan interface → canonical `Trace` (conversion only, no preprocessing) |
 | `preprocess_trace()` | `preprocess.py:170` | 4-stage normalization pipeline (JSON extract · worker mark · LLM collapse · router filter) |
@@ -176,10 +176,10 @@ Principles specified in `CLAUDE.md §4` and `CRITERIA_FROZEN.md`:
 ### 2.1 Directory Structure
 
 ```
-Custos - clwe project/
-├── src/clew/                          # package root (name="clew", version derived from pyproject.toml)
+boxdawn/                               # repo root (previously "Custos - clwe project" on disk)
+├── src/clew/                          # package root (Python import path is still "clew" for backward compat; PyPI package is "boxdawn")
 │   ├── __init__.py                    # __version__ (derived from pyproject.toml via importlib.metadata)
-│   ├── __main__.py                    # CLI entry point (python -m clew)
+│   ├── __main__.py                    # CLI entry point (boxdawn analyze … · python -m clew still works)
 │   ├── model.py                       # canonical data model (Span, SpanNode, Trace)
 │   ├── io.py                          # Trace ↔ JSON file serialization
 │   ├── capture.py                     # LangGraph app-run + OTel capture helper
@@ -254,7 +254,7 @@ Custos - clwe project/
 
 #### 2.2.1 `src/clew/model.py` — Canonical Data Model
 
-**Responsibility:** represent OTel/OpenInference spans in Clew's canonical internal form.
+**Responsibility:** represent OTel/OpenInference spans in Boxdawn's canonical internal form.
 Pydantic v2 based. The input type for every downstream module.
 
 **Main type alias:**
@@ -704,7 +704,7 @@ sequenceDiagram
 
     CLI->>Load: path
     Load->>Load: json.loads() → format determination
-    alt Clew Trace JSON (dict + trace_id)
+    alt Boxdawn Trace JSON (dict + trace_id)
         Load->>IO: load_trace(path)
         IO-->>CLI: Trace
     else OTel SDK JSON (list + context)
@@ -885,7 +885,7 @@ prohibited because the eval set has been observed. See Part 3 for the redesign p
 
 **Entry point:**
 ```bash
-python -m clew analyze <trace.json> [--out report.md] [--json out.json] [--no-snippets]
+boxdawn analyze <trace.json> [--out report.md] [--json out.json] [--no-snippets]
 ```
 
 **Argument parser** (`__main__.py:146–161`):
@@ -901,7 +901,7 @@ python -m clew analyze <trace.json> [--out report.md] [--json out.json] [--no-sn
 
 ```
 JSON parse
-├── dict with "trace_id" key → load_trace()  [Clew Trace JSON]
+├── dict with "trace_id" key → load_trace()  [Boxdawn Trace JSON]
 ├── dict with "resource_spans"/"resourceSpans" → ValueError + conversion hint
 ├── dict otherwise → ValueError (unknown format)
 ├── list whose first element has a "context" key → ingest_from_otel_json()  [OTel SDK JSON]
@@ -1041,7 +1041,7 @@ Add a new file under `ingest/`. Its output must be a `Trace` that has passed thr
 |---------|--------|----------|
 | OTel SDK JSON file ingest (Format A) | ✅ implemented | `otel_json.py`, tag `input-generalization-v1` |
 | Direct LangGraph app capture | ✅ implemented | `capture.py`, `[adapter]` extra |
-| Clew Trace JSON load/save | ✅ implemented | `io.py` |
+| Boxdawn Trace JSON load/save | ✅ implemented | `io.py` |
 | 4-stage preprocessing pipeline | ✅ implemented | `preprocess.py` |
 | Structural detection: repeat_node | ✅ implemented | `structural.py:find_repeat_candidates()` |
 | Structural detection: pingpong_aba | ✅ implemented | `structural.py:find_pingpong_candidates()` |
@@ -1049,7 +1049,7 @@ Add a new file under `ingest/`. Its output must be a `Trace` that has passed thr
 | Semantic duplicate check (cosine ≥ φ) | ✅ implemented | `semantic.py`, `cascade.py` |
 | Waste tokens/cost sum | ✅ implemented | `cascade.py:41–48` |
 | Markdown + JSON report | ✅ implemented | `report/markdown.py`, `report/json_report.py` |
-| CLI (`python -m clew analyze`) | ✅ implemented | `__main__.py` |
+| CLI (`boxdawn analyze`) | ✅ implemented | `__main__.py` |
 | regen_handoff detection | ❌ excluded from v1 | No structural signal, `CRITERIA_FROZEN.md:74–78` |
 | OTLP proto-JSON (resource_spans) ingest | ❌ not implemented | `otel_json.py:86–95` (rejection message only) |
 | LangSmith / Langfuse export ingest | ❌ not planned | `CLAUDE.md §5`, separate stage driven by customer demand |

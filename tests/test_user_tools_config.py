@@ -505,7 +505,7 @@ def test_no_local_docs_path_left_in_readme():
     assert not offenders, (
         "README.md contains relative `](docs/...)` links — pip users see this "
         "as PyPI long_description and have no docs/ tree. Use the GitHub URL "
-        "(https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/...) "
+        "(https://github.com/boxdawn/boxdawn/blob/main/docs/...) "
         "instead. Offenders:\n" + "\n".join(offenders)
     )
 
@@ -516,7 +516,7 @@ def test_entity_id_messages_use_github_url_and_one_line_summary():
     stripped the summary back to a bare URL (which was the anti-pattern
     called out in the design doc)."""
     from clew.config.user_tools import _ID_BRIDGE_URL, _suspicious_warn_for
-    assert _ID_BRIDGE_URL.startswith("https://github.com/JEONSEWON/Clew-by-Custos")
+    assert _ID_BRIDGE_URL.startswith("https://github.com/boxdawn/boxdawn")
     # CREATE-only error uses the same URL and carries "NEWLY CREATES" summary.
     p = Path("clew.yaml.dummy")
     from clew.config.user_tools import _validate_entity_id

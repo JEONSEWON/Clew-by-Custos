@@ -740,7 +740,7 @@ def compute_user_extraction_ratios(
 # as _GITHUB_BASE; consolidation to a shared module (e.g. `clew/_urls.py`) is
 # a candidate for a separate refactor commit — this file duplicates locally
 # for now to keep the scope of the friction-#7-regression fix minimal.
-_GITHUB_BASE = "https://github.com/JEONSEWON/Clew-by-Custos/blob/main"
+_GITHUB_BASE = "https://github.com/boxdawn/boxdawn/blob/main"
 _FRAMEWORK_EXPANSION_URL = (
     f"{_GITHUB_BASE}/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md"
 )
@@ -774,7 +774,7 @@ def format_extraction_ratios(ratios: dict[str, tuple[int, int]]) -> str | None:
     if not lines:
         return None
     lines.append(_ENVELOPE_PREFIX_HINT)
-    return "clew: entity_id extraction ratios\n" + "\n".join(lines)
+    return "boxdawn: entity_id extraction ratios\n" + "\n".join(lines)
 
 
 def enrich(

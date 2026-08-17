@@ -640,7 +640,7 @@ def render_markdown(
         lines.append("")
         # Coverage line A — ALWAYS rendered, including waste-0.
         # PREREG §1.1 Q2 rationale: a low-coverage user seeing "no waste"
-        # alone reads it as "we're clean" while Clew is blind to most of
+        # alone reads it as "we're clean" while Boxdawn is blind to most of
         # their tool inventory. False reassurance is worse than false alarm.
         if cov["unique_tools_in_trace"] > 0:
             lines.append("- " + _COVERAGE_LINE_A.format(

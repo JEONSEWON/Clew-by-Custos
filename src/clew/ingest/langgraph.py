@@ -69,7 +69,7 @@ def _kind_of(attrs: dict[str, Any]) -> SpanKind:
 def _agent_or_node_id_of(
     span_kind: SpanKind, span_name: str, attrs: dict[str, Any]
 ) -> str:
-    """OpenInference span → Clew agent_or_node_id (§4.2 of prereg).
+    """OpenInference span → Boxdawn agent_or_node_id (§4.2 of prereg).
 
     Priority per span_kind:
       tool   → attrs["tool.name"] → span_name → "anonymous"

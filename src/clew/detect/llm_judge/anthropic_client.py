@@ -120,13 +120,13 @@ class AnthropicJudge:
                 status = getattr(e, "status_code", None)
                 if status == 429 and backoff <= BACKOFF_MAX_SECONDS:
                     logger.warning(
-                        "clew judge: 429 rate-limited, backing off %ss", backoff,
+                        "boxdawn judge: 429 rate-limited, backing off %ss", backoff,
                     )
                     time.sleep(backoff)
                     backoff *= 2
                     continue
                 warnings.warn(
-                    f"clew judge: API call failed ({type(e).__name__}: {e}); "
+                    f"boxdawn judge: API call failed ({type(e).__name__}: {e}); "
                     "counting as non-match",
                     stacklevel=2,
                 )
@@ -173,7 +173,7 @@ class AnthropicJudge:
             body = json.loads(text_clean)
         except (json.JSONDecodeError, TypeError):
             warnings.warn(
-                f"clew judge: response was not valid JSON (first 200 chars: "
+                f"boxdawn judge: response was not valid JSON (first 200 chars: "
                 f"{text[:200]!r}); counting as non-match",
                 stacklevel=2,
             )
