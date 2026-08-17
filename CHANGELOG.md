@@ -1,6 +1,24 @@
 # Changelog
 
-All notable, user-visible changes to `clew-custos`. This file tracks releases going forward — earlier versions are not back-filled because the criteria for what qualifies as user-visible were not established at the time.
+All notable, user-visible changes to `boxdawn` (previously published on PyPI as `clew-custos`). This file tracks releases going forward — earlier versions are not back-filled because the criteria for what qualifies as user-visible were not established at the time.
+
+## Unreleased — Rebrand to Boxdawn
+
+### ★ Breaking (packaging + CLI)
+
+- **PyPI package renamed:** `clew-custos` → `boxdawn`. Install with `pip install boxdawn` (previously `pip install clew-custos`). Users on `clew-custos` remain functional at the last published version (0.4.1) but will not receive further updates under that name.
+- **CLI entry point renamed:** `clew analyze …` → `boxdawn analyze …`. The old `clew` script is no longer installed. `python -m clew analyze` still works as a fallback because the Python module name is unchanged.
+- **Report header:** `# Clew Waste Report` → `# Boxdawn Waste Report`. CI scripts that grep the header must be updated.
+
+### 무변경
+
+- **Python import path:** `import clew` (and every submodule underneath) is unchanged. Existing user code that does `from clew.metrics import compute_waste_rate` continues to work without modification.
+- **User config file name:** `clew.yaml` is kept for backward compatibility with existing configs. Not renamed to `boxdawn.yaml`.
+- **Detection logic · frozen parameters:** φ=0.514345, N=2, embedding model rev — all unchanged. sha256 gates, cascade, WR_char / WR_cost / SDR@10 all bit-identical.
+
+### 릴리스 이유
+
+Rebrand from Clew (product) + Custos (company) two-name structure to a single Boxdawn brand. The product domain `hubble.ai` (originally paired with the Clew name after 6 branding attempts) was already held by a live YC-backed healthcare SaaS at rebrand time, breaking the domain anchor. Unifying to Boxdawn (company = product = `boxdawn.com` / `boxdawn.ai`) eliminates the two-name overhead for early-stage brand build.
 
 ## 0.4.1 — 2026-08-03
 
