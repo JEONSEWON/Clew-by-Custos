@@ -1,25 +1,25 @@
-# Clew
+# Boxdawn
 
 <div align="center">
 
 **Open source LLM observability for the waste axis no one else measures.**
 
-[![PyPI](https://img.shields.io/pypi/v/clew-custos)](https://pypi.org/project/clew-custos/)
+[![PyPI](https://img.shields.io/pypi/v/boxdawn)](https://pypi.org/project/boxdawn/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.12-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-691%20passing-brightgreen)](https://github.com/JEONSEWON/Clew-by-Custos/tree/main/tests)
+[![Tests](https://img.shields.io/badge/tests-691%20passing-brightgreen)](https://github.com/boxdawn/boxdawn/tree/main/tests)
 [![Corpora](https://img.shields.io/badge/corpora-3%20%C2%B7%2016%2C864%20sessions-blueviolet)](#-where-it-stands--measured-not-marketed)
 
 </div>
 
-Clew observes what your agent **repeats, resends, re-reads, and re-creates** — the waste axis that Langfuse, Arize, LangSmith, Braintrust, and Helicone do not measure. Four deterministic detectors + an opt-in LLM-as-judge semantic check, applied to trace files your agent already writes. Zero instrumentation. Pre-registered, frozen parameters, honesty preface on every claim.
+Boxdawn observes what your agent **repeats, resends, re-reads, and re-creates** — the waste axis that Langfuse, Arize, LangSmith, Braintrust, and Helicone do not measure. Four deterministic detectors + an opt-in LLM-as-judge semantic check, applied to trace files your agent already writes. Zero instrumentation. Pre-registered, frozen parameters, honesty preface on every claim.
 
 ```bash
-pip install "clew-custos[detect]"
-python -m clew analyze <trace>.jsonl --out report.md
+pip install "boxdawn[detect]"
+boxdawn analyze <trace>.jsonl --out report.md
 ```
 
-> PyPI name is `clew-custos` (the bare name `clew` is an unrelated placeholder). The module still imports as `clew`.
+> PyPI package is `boxdawn`. Python still imports as `import clew` (internal namespace, kept for backward compatibility with existing configs).
 
 ---
 
@@ -34,7 +34,7 @@ python -m clew analyze <trace>.jsonl --out report.md
 
 **Coming next (Beta · Q4 2026):** hosted web dashboard, live monitoring endpoints, alerts (Slack / webhook), history & time-series, CI PR auto-comment. See §Roadmap.
 
-**No instrumentation. No SDK. No code changes.** Clew reads trace files your agent already writes.
+**No instrumentation. No SDK. No code changes.** Boxdawn reads trace files your agent already writes.
 
 Ran on 6,780 public benchmark trajectories. One Toolathlon Canvas session (`grok-4_2`, task `canvas-art-manager`) shows the shape of what falls out:
 
@@ -72,9 +72,9 @@ All 13 differing-ID pairs in this trace are the same tool, `canvas-canvas_upload
 Reproduce:
 
 ```bash
-pip install "clew-custos[detect]"
+pip install "boxdawn[detect]"
 # Toolathlon corpus (CC-BY-4.0): huggingface.co/datasets/tsinghua-mars-lab/toolathlon
-python -m clew analyze grok-4_2.jsonl --out report.md
+boxdawn analyze grok-4_2.jsonl --out report.md
 ```
 
 *(Yes, agents legitimately re-read files. That is why the cascade below has two gates: the structural group only becomes a flag when the state check confirms nothing changed between the two calls, and the tool output is byte-identical.)*
@@ -83,7 +83,7 @@ python -m clew analyze grok-4_2.jsonl --out report.md
 
 ## Why the waste axis
 
-Observability platforms (Langfuse, Arize, LangSmith, Braintrust, Helicone) capture, store, and visualize traces. None of them measure the waste axis: how much of the input bill is context you already sent, files you already read, entities you already created, or tool calls that got the exact same answer as before. That is where Clew starts, and it is complementary to the trace layer — a Langfuse trace fed into Clew produces a waste report Langfuse itself does not compute.
+Observability platforms (Langfuse, Arize, LangSmith, Braintrust, Helicone) capture, store, and visualize traces. None of them measure the waste axis: how much of the input bill is context you already sent, files you already read, entities you already created, or tool calls that got the exact same answer as before. That is where Boxdawn starts, and it is complementary to the trace layer — a Langfuse trace fed into Boxdawn produces a waste report Langfuse itself does not compute.
 
 Scope is deterministic-first: four deterministic detectors used in the waste-rate metric (`repeat` / `requery`, `context_resend`, `redundant_read`, `duplicate_creation`), the `pingpong` code path (implemented but not yet observed on real traces), and one opt-in LLM-as-judge check for semantic duplicates. Each detector is pre-registered with a frozen spec before results are measured.
 
@@ -104,7 +104,7 @@ A two-stage cascade, fully deterministic. Every parameter is pinned to a git tag
 
 **Why sha256 for tools.** We cannot see inside a tool. We do not know whether `Bash: ls` had side effects, or whether `send_email` actually reached anyone. So we judge by result. Same input, same byte output, no state change in the interval: the second call was redundant. If outputs differ (a retry succeeded where one failed, an in-memory counter advanced), the pair is **not** flagged.
 
-**Reverse case: duplicate creation.** If two `notion-API-post-page` calls really did create two pages, the responses carry different entity IDs, so byte-identity fails and the waste detector correctly excludes them. The `Duplicate creation check` section scans that excluded pool separately, using per-tool entity-ID extraction (26 tools currently mapped, see [`docs/ID_BRIDGE_PRODUCTION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/ID_BRIDGE_PRODUCTION_PREREG.md) §1.1). This is what surfaced the 13 Canvas uploads above.
+**Reverse case: duplicate creation.** If two `notion-API-post-page` calls really did create two pages, the responses carry different entity IDs, so byte-identity fails and the waste detector correctly excludes them. The `Duplicate creation check` section scans that excluded pool separately, using per-tool entity-ID extraction (26 tools currently mapped, see [`docs/ID_BRIDGE_PRODUCTION_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/ID_BRIDGE_PRODUCTION_PREREG.md) §1.1). This is what surfaced the 13 Canvas uploads above.
 
 **Frozen parameters** (never hand-tuned): `φ = 0.514345`, `N = 2`. `N = 2` began as an arbitrary default; a later grid on `N ∈ {2, 3, 5, ∞}` on RedundancyBench found F1 decreases monotonically as `N` grows. F1-optimal, not tuned.
 
@@ -114,7 +114,7 @@ A two-stage cascade, fully deterministic. Every parameter is pinned to a git tag
 
 - **`error_repeat`**: same call after a failure, same arguments as before.
 - **`side_effect`**: state-changing tool invoked twice with the same arguments.
-- **`idempotent`**: read-only or declarative tool called repeatedly. Sub-classified into a 5-value evidence tier; see [`docs/GREYZONE_EXPANSION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/GREYZONE_EXPANSION_PREREG.md).
+- **`idempotent`**: read-only or declarative tool called repeatedly. Sub-classified into a 5-value evidence tier; see [`docs/GREYZONE_EXPANSION_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/GREYZONE_EXPANSION_PREREG.md).
 - **`unclassified`**: payload-dependent tools (`Bash`, `PowerShell`, `bigquery_run_query`). Tool name alone cannot classify.
 
 Mapping is by exact tool name, never by substring.
@@ -130,7 +130,7 @@ Auto-detected input formats:
 | Claude Code session logs (`.jsonl`) | `sessionId` |
 | OpenTelemetry SDK JSON | `context` |
 | OpenInference (Phoenix / TRAIL) | `span_id` + nested `child_spans` |
-| Clew native trace JSON | `trace_id` + `spans` |
+| Boxdawn native trace JSON | `trace_id` + `spans` |
 | Toolathlon trajectories | `modelname_run` + `task_status` |
 | RedundancyBench | `tasks` + `simulations` |
 
@@ -151,7 +151,7 @@ Measured PASS on Tier 1 and Tier 2:
 | AutoGen | schema-shared | `entity_id` not extractable (Python `str(dict)` is not valid JSON). |
 | Smolagents | schema-shared | `Tool.__call__` wrap; end-to-end cascade verified. |
 
-Full results and per-instrumentor path table: [`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md), [`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_TIER2_RESULTS.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_TIER2_RESULTS.md).
+Full results and per-instrumentor path table: [`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_RESULTS.md), [`docs/OPENINFERENCE_FRAMEWORK_EXPANSION_TIER2_RESULTS.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/OPENINFERENCE_FRAMEWORK_EXPANSION_TIER2_RESULTS.md).
 
 ### Framework real-workload validation (Task #9 Phase B)
 
@@ -166,7 +166,7 @@ Beyond fixture coverage above, the full pipeline (ingest → 4 deterministic det
 
 Pre-registered §3 threshold ≥ 3/4 PASS → **GO**. AutoGen's instrumentor emits agent/tool spans but not the underlying LLM span (framework limitation, not a detector defect — see §12.4 of the prereg). The `repeat` detector, Redundant Read, and LLM-judge returned 0 across all four frameworks — the FizzBuzz scenario (3-6 turns, no realized retries, no Read tool) does not stimulate those detectors by construction (§12.7). Total API cost: ~$0.099 of a $10 budget cap.
 
-Pre-registration + results: [`docs/TASK9_FRAMEWORK_REAL_WORKLOAD_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/TASK9_FRAMEWORK_REAL_WORKLOAD_PREREG.md).
+Pre-registration + results: [`docs/TASK9_FRAMEWORK_REAL_WORKLOAD_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/TASK9_FRAMEWORK_REAL_WORKLOAD_PREREG.md).
 
 ### Registering your own tools
 
@@ -181,7 +181,7 @@ tools:
   finalize:      { category: declarative }
 ```
 
-Four categories, fail-fast validation, guardrails against advertising unmeasured paths. Details in [`docs/OPENINFERENCE_ADAPTER_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/OPENINFERENCE_ADAPTER_PREREG.md).
+Four categories, fail-fast validation, guardrails against advertising unmeasured paths. Details in [`docs/OPENINFERENCE_ADAPTER_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/OPENINFERENCE_ADAPTER_PREREG.md).
 
 ---
 
@@ -191,15 +191,15 @@ Four categories, fail-fast validation, guardrails against advertising unmeasured
 
 Human-labeled benchmark ([arXiv:2605.29893](https://arxiv.org/abs/2605.29893)). Same `evaluate.py` imported directly from the paper's repo, all four redundancy categories:
 
-| | Clew (deterministic) | Best method in the paper (LLM-as-judge) |
+| | Boxdawn (deterministic) | Best method in the paper (LLM-as-judge) |
 |---|---|---|
 | Step-level F1 | **0.2642** | 0.2488 |
 | Precision | 0.826 | n/a |
 | Recall | 0.157 | n/a |
 
-F1 0.2642 vs the paper's best LLM-as-judge 0.2488, with zero model calls. Recall 0.157 is by design: one pattern (`repeat` / `requery`), precisely. The rest is deliberately out of scope; see *What Clew doesn't do*.
+F1 0.2642 vs the paper's best LLM-as-judge 0.2488, with zero model calls. Recall 0.157 is by design: one pattern (`repeat` / `requery`), precisely. The rest is deliberately out of scope; see *What Boxdawn doesn't do*.
 
-Precision 0.826 may be a lower bound on Clew's file-level precision: of the 22 false-positive spans against the human labels, 21 were exact input-and-output repeats that no annotator labeled under any category, and 6 had zero state change in between. We do not claim all 22 are true waste; the label is genuinely ambiguous there.
+Precision 0.826 may be a lower bound on Boxdawn's file-level precision: of the 22 false-positive spans against the human labels, 21 were exact input-and-output repeats that no annotator labeled under any category, and 6 had zero state change in between. We do not claim all 22 are true waste; the label is genuinely ambiguous there.
 
 ### trace-commons (28 real Claude Code sessions)
 
@@ -209,7 +209,7 @@ Public dataset ([HF: trace-commons/agent-traces](https://huggingface.co/datasets
 
 ### Toolathlon (6,780 trajectories, cross-model scale)
 
-Clew ran unmodified over Toolathlon (22 frontier models × 3 runs, [arXiv:2510.25726](https://arxiv.org/abs/2510.25726), CC-BY-4.0). 176,270 tool spans, 8,042 duplicate pairs. Excluding the `idempotent` grey area leaves **4,249 pairs (2.41% of tool spans)**, roughly **3× the rate seen on Claude Code sessions (0.80%)**. The Canvas hero above is one of these.
+Boxdawn ran unmodified over Toolathlon (22 frontier models × 3 runs, [arXiv:2510.25726](https://arxiv.org/abs/2510.25726), CC-BY-4.0). 176,270 tool spans, 8,042 duplicate pairs. Excluding the `idempotent` grey area leaves **4,249 pairs (2.41% of tool spans)**, roughly **3× the rate seen on Claude Code sessions (0.80%)**. The Canvas hero above is one of these.
 
 Duplicate creation check across the same corpus: **3,432 same-input side-effect pairs** scanned, **159 (4.63%) with differing entity IDs**, **76 (2.21%) with the same ID**, **3,197 (93.16%) without an extractable entity ID** (audit blind spot, not a verdict).
 
@@ -227,21 +227,21 @@ Aggregate over the same trace-commons corpus (28 CC sessions, `data/hf_recon/tra
 
 **Caching caveat.** Anthropic `cache_read_input_tokens` bills at ~10% of the input rate. The 98.5% *structural* resend corresponds to roughly **8-15% of effective billed input cost** for users with caching enabled. The detector reports the structural number honestly; the billed-cost proxy is a derived interpretation and requires a v2 cache-tier split to measure directly.
 
-Pre-registration + honesty preface: [`docs/CONTEXT_RESEND_DETECTOR_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/CONTEXT_RESEND_DETECTOR_PREREG.md).
+Pre-registration + honesty preface: [`docs/CONTEXT_RESEND_DETECTOR_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/CONTEXT_RESEND_DETECTOR_PREREG.md).
 
 ### Waste-rate metric — cross-corpus (Tier 1)
 
-Union of the four deterministic detectors (`repeat`, `context_resend`, `redundant_read`, `duplicate_creation`) into three per-corpus metrics: `WR_char` (UTF-8 byte ratio), `WR_cost` (dollar ratio via existing cost attribution), `SDR@10` (share of sessions with `WR_char ≥ 0.10`). Spec: [`docs/WASTE_RATE_METRIC_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/WASTE_RATE_METRIC_PREREG.md). Toolathlon adapter amendment (2026-08-11): [`docs/WASTE_RATE_TOOLATHLON_ADAPTER_AMENDMENT_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/WASTE_RATE_TOOLATHLON_ADAPTER_AMENDMENT_PREREG.md).
+Union of the four deterministic detectors (`repeat`, `context_resend`, `redundant_read`, `duplicate_creation`) into three per-corpus metrics: `WR_char` (UTF-8 byte ratio), `WR_cost` (dollar ratio via existing cost attribution), `SDR@10` (share of sessions with `WR_char ≥ 0.10`). Spec: [`docs/WASTE_RATE_METRIC_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/WASTE_RATE_METRIC_PREREG.md). Toolathlon adapter amendment (2026-08-11): [`docs/WASTE_RATE_TOOLATHLON_ADAPTER_AMENDMENT_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/WASTE_RATE_TOOLATHLON_ADAPTER_AMENDMENT_PREREG.md).
 
 | Corpus | Included | `union_wr_char` | `union_wr_cost` | `union_sdr_at_10` | 95% bootstrap CI on `wr_char` |
 |---|---:|---:|---:|---:|---|
 | A · trace-commons (28 CC sessions) | 28 / 28 | **0.9930** | **0.2903** | **0.9643** | [0.9892, 0.9944] |
 | B · Toolathlon (6,780 non-coding trajectories, 22 frontier models) | 6,659 / 6,780 | **0.9342** | **0.9202** | **0.9908** | [0.9314, 0.9368] |
-| C · Exgentic Agent LLM Traces v2 (10,056 sessions, 5 frontier models × 6 benchmarks, up to 3.7M tokens / session) | 10,056 / 10,056 | **0.9233** | **0.9397** | **0.9332** | per-session mean [0.7827, 0.7920] — union CI not computed, see [amendment §10.2](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/WASTE_RATE_EXGENTIC_ADAPTER_AMENDMENT_PREREG.md#102-aggregate-post-adapter) |
+| C · Exgentic Agent LLM Traces v2 (10,056 sessions, 5 frontier models × 6 benchmarks, up to 3.7M tokens / session) | 10,056 / 10,056 | **0.9233** | **0.9397** | **0.9332** | per-session mean [0.7827, 0.7920] — union CI not computed, see [amendment §10.2](https://github.com/boxdawn/boxdawn/blob/main/docs/WASTE_RATE_EXGENTIC_ADAPTER_AMENDMENT_PREREG.md#102-aggregate-post-adapter) |
 
-Corpus B `WR_cost = 0.9202` — the [Cost Table Toolathlon Expansion](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/COST_TABLE_TOOLATHLON_EXPANSION_PREREG.md) (2026-08-11) closed the 98.2% pricing gap first (bringing the raw scan to 0.9189), and the [union arithmetic amendment §14](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/WASTE_RATE_METRIC_PREREG.md#14-amendment--union_wr_cost-per-span-attribution-2026-08-15) (2026-08-15) restored `redundant_read`'s +0.0013 previously dropped by a span-metadata recomputation shortcut. 6,780 / 6,780 (100%) built trajectories priced, median `cost_ratio = 1.000` against Toolathlon's own provider-billed totals. Corpus B fidelity: 5,445 / 6,659 (81.8%) exact count-match against `agent_llm_requests`; the remaining 18.2% differ by exactly `+1` due to trajectories ending on a `role=tool` message (root-caused in amendment §10.2). Token sum invariant preserved on 100% of built traces.
+Corpus B `WR_cost = 0.9202` — the [Cost Table Toolathlon Expansion](https://github.com/boxdawn/boxdawn/blob/main/docs/COST_TABLE_TOOLATHLON_EXPANSION_PREREG.md) (2026-08-11) closed the 98.2% pricing gap first (bringing the raw scan to 0.9189), and the [union arithmetic amendment §14](https://github.com/boxdawn/boxdawn/blob/main/docs/WASTE_RATE_METRIC_PREREG.md#14-amendment--union_wr_cost-per-span-attribution-2026-08-15) (2026-08-15) restored `redundant_read`'s +0.0013 previously dropped by a span-metadata recomputation shortcut. 6,780 / 6,780 (100%) built trajectories priced, median `cost_ratio = 1.000` against Toolathlon's own provider-billed totals. Corpus B fidelity: 5,445 / 6,659 (81.8%) exact count-match against `agent_llm_requests`; the remaining 18.2% differ by exactly `+1` due to trajectories ending on a `role=tool` message (root-caused in amendment §10.2). Token sum invariant preserved on 100% of built traces.
 
-**Amendment prediction verdict.** P1 `union_wr_char ∈ [0.85, 0.999]`: pass (0.9342). P2 `union_sdr_at_10 ∈ [0.85, 1.00]`: pass (0.9908). P3 `union_wr_cost ∈ [0.10, 0.50]`: **miss** (0.9189 — the band was calibrated on Corpus A's cache-tier-aware billing; Toolathlon's adapter §1.4 encodes uncached-only billing by pre-commitment, so `WR_cost` collapses toward `WR_char`. Category error in the prediction, not a metric defect. Documented in [Cost Table Expansion §8.7](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/COST_TABLE_TOOLATHLON_EXPANSION_PREREG.md); band and adapter unchanged). P4 `context_resend ≥ 95%` of union numerator: pass (99.76%). No prediction band was adjusted post-hoc.
+**Amendment prediction verdict.** P1 `union_wr_char ∈ [0.85, 0.999]`: pass (0.9342). P2 `union_sdr_at_10 ∈ [0.85, 1.00]`: pass (0.9908). P3 `union_wr_cost ∈ [0.10, 0.50]`: **miss** (0.9189 — the band was calibrated on Corpus A's cache-tier-aware billing; Toolathlon's adapter §1.4 encodes uncached-only billing by pre-commitment, so `WR_cost` collapses toward `WR_char`. Category error in the prediction, not a metric defect. Documented in [Cost Table Expansion §8.7](https://github.com/boxdawn/boxdawn/blob/main/docs/COST_TABLE_TOOLATHLON_EXPANSION_PREREG.md); band and adapter unchanged). P4 `context_resend ≥ 95%` of union numerator: pass (99.76%). No prediction band was adjusted post-hoc.
 
 **Reading the numbers honestly.** LLM APIs are stateless — every call must include the full conversation. Some resend is mechanically required. The `WR_char` column measures the total resend footprint; the `WR_cost` column measures the share of the bill *in each corpus's own cost regime*. **Corpus A 29%** — dollars leaked *after Anthropic prompt caching is applied* (CC JSONL populates `cache_read_input_tokens` accurately). **Corpus B 92%** — dollars leaked *if the caller does not use prompt caching* (Toolathlon adapter §1.4 pre-commits to uncached-only billing because the benchmark does not encode cache tier). The 63-percentage-point gap is the caching lever's leverage on the same Context Resend detector.
 
@@ -249,9 +249,9 @@ Corpus B `WR_cost = 0.9202` — the [Cost Table Toolathlon Expansion](https://gi
 
 ### Redundant Read Detector — standalone
 
-New in Tier 1, distinct from the retired v0.3.0 reread cascade integration (see *What Clew doesn't do* below). Emits its own `RedundantReadResult` with per-event tokens/dollars, contributes a distinct entry in the unified cost summary, and works cross-adapter (Claude Code, OpenInference, Toolathlon). Gate: both spans are read-nature tools on the same normalized target, the interval contains no write to that target and no payload-opaque shell tool, and (when the parent structure is known) both spans share the same nearest-AGENT ancestor. Output-identity is a strengthening flag, not a requirement — the pair is `confirmed=True` when outputs are byte-identical.
+New in Tier 1, distinct from the retired v0.3.0 reread cascade integration (see *What Boxdawn doesn't do* below). Emits its own `RedundantReadResult` with per-event tokens/dollars, contributes a distinct entry in the unified cost summary, and works cross-adapter (Claude Code, OpenInference, Toolathlon). Gate: both spans are read-nature tools on the same normalized target, the interval contains no write to that target and no payload-opaque shell tool, and (when the parent structure is known) both spans share the same nearest-AGENT ancestor. Output-identity is a strengthening flag, not a requirement — the pair is `confirmed=True` when outputs are byte-identical.
 
-Pre-registration: [`docs/REDUNDANT_READ_DETECTOR_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/REDUNDANT_READ_DETECTOR_PREREG.md).
+Pre-registration: [`docs/REDUNDANT_READ_DETECTOR_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/REDUNDANT_READ_DETECTOR_PREREG.md).
 
 ### LLM-as-Judge Semantic Duplicate (opt-in)
 
@@ -280,13 +280,13 @@ Bootstrap 95% CI on unified precision: **[0.2311, 0.4103]** (`n_boot=1000, seed=
 
 **These are detector precision figures** — of judge-evaluated candidate pairs, how many were confirmed equivalent. They are **not** trace-level waste rates. A separate metric would be needed to answer "what fraction of input tokens are wasted by semantic duplicates".
 
-Pre-registration: [`docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md); amendment v1: [`docs/LLM_JUDGE_AMENDMENT_v1.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/LLM_JUDGE_AMENDMENT_v1.md); scale expansion (v2): [`docs/LLM_JUDGE_SCALE_EXPANSION_AMENDMENT_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/LLM_JUDGE_SCALE_EXPANSION_AMENDMENT_PREREG.md).
+Pre-registration: [`docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/LLM_JUDGE_SEMANTIC_DUPLICATE_PREREG.md); amendment v1: [`docs/LLM_JUDGE_AMENDMENT_v1.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/LLM_JUDGE_AMENDMENT_v1.md); scale expansion (v2): [`docs/LLM_JUDGE_SCALE_EXPANSION_AMENDMENT_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/LLM_JUDGE_SCALE_EXPANSION_AMENDMENT_PREREG.md).
 
 ### Cost attribution (Tier 1 · unified summary)
 
 Prior versions priced only Claude Sonnet 4.5. As of the Cost Attribution Completion prereg, pricing tables now cover Sonnet 4.5 / 4.6, Opus 4.7, Haiku 4.5, GPT-4o and GPT-4o mini, Gemini 1.5 Pro and 1.5 Flash — with 4-tier cache-aware rates where the provider exposes them. The report emits a unified `Total analyzed / Total waste / Waste ratio` block at the top, plus per-detector breakdown in dollars. Each pricing entry carries a source URL and ISO-8601 verification date.
 
-Pre-registration: [`docs/COST_ATTRIBUTION_COMPLETION_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/COST_ATTRIBUTION_COMPLETION_PREREG.md).
+Pre-registration: [`docs/COST_ATTRIBUTION_COMPLETION_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/COST_ATTRIBUTION_COMPLETION_PREREG.md).
 
 ---
 
@@ -294,23 +294,23 @@ Pre-registration: [`docs/COST_ATTRIBUTION_COMPLETION_PREREG.md`](https://github.
 
 The analyzer CLI in this repo is the deterministic core. The hosted layer will bring the same detectors and waste-rate metric to the browser:
 
-- **Mode A · Try Clew (anonymous)** — upload a trace file or connect a LangSmith / Langfuse API key. 30-second waste report in-browser. No account.
+- **Mode A · Try Boxdawn (anonymous)** — upload a trace file or connect a LangSmith / Langfuse API key. 30-second waste report in-browser. No account.
 - **Mode B · Live monitoring (account)** — personal ingest endpoint. Real-time waste alerts. Per-session dashboard with history and time-series. Slack / webhook notifications. CI PR auto-comment on your GitHub repos.
 - **Team collaboration (post-Beta)** — accounts, permissions, shared datasets.
 
-**Stack:** Vercel Next.js (frontend) · Modal serverless Python (detector runtime, same code as this repo) · Supabase (Postgres + Auth + Storage) · Resend (email). Domain: `custos.ai`.
+**Stack:** Vercel Next.js (frontend) · Modal serverless Python (detector runtime, same code as this repo) · Supabase (Postgres + Auth + Storage) · Resend (email). Domain: `boxdawn.ai`.
 
 The hosted layer imports Langfuse / LangSmith traces natively — the analyzer stays framework-neutral.
 
 ---
 
-## What Clew doesn't do
+## What Boxdawn doesn't do
 
 - **No fixes**, only diagnosis. The output is a report you read. Prompt changes, context caching, and tool routing are yours to make.
-- **No real-time interception.** The `args-only` real-time gate was retired at precision 0.633 on labeled data (below the 0.70 threshold required for either auto-block or a confirm-prompt). Clew reads finished trace files, after the run.
-- **The v0.3.0 in-cascade `reread` gate was retired** at 3.3% precision on a 30-pair RedundancyBench sample: 29 of 30 same-path Read pairs were legitimate chunked reads at different `offset` / `limit` values. See [`docs/REREAD_DETECTOR_PREREG.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/REREAD_DETECTOR_PREREG.md) §11. The current standalone **Redundant Read Detector** (see *Where it stands* above) is a different approach: it requires interval-clean gating (no intervening write to the same target, no payload-opaque shell tool in the interval) before flagging, and emits per-event tokens/dollars rather than bundling into the cascade waste-cost line.
+- **No real-time interception.** The `args-only` real-time gate was retired at precision 0.633 on labeled data (below the 0.70 threshold required for either auto-block or a confirm-prompt). Boxdawn reads finished trace files, after the run.
+- **The v0.3.0 in-cascade `reread` gate was retired** at 3.3% precision on a 30-pair RedundancyBench sample: 29 of 30 same-path Read pairs were legitimate chunked reads at different `offset` / `limit` values. See [`docs/REREAD_DETECTOR_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/REREAD_DETECTOR_PREREG.md) §11. The current standalone **Redundant Read Detector** (see *Where it stands* above) is a different approach: it requires interval-clean gating (no intervening write to the same target, no payload-opaque shell tool in the interval) before flagging, and emits per-event tokens/dollars rather than bundling into the cascade waste-cost line.
 - **No reasoning-level `pingpong`.** Code path exists but has fired only on synthetic traces. Blocked pending an external corpus that surfaces it, not killed.
-- **Tool coverage is 26.4% on Toolathlon** (138 of 523 unique tool names). Unmapped tools drop into `unclassified` and reduce interval-scan tier precision. The banner shows coverage on your specific trace; `clew.yaml` closes the gap.
+- **Tool coverage is 26.4% on Toolathlon** (138 of 523 unique tool names). Unmapped tools drop into `unclassified` and reduce interval-scan tier precision. The banner shows coverage on your specific trace; `clew.yaml` closes the gap (config file name kept for backward compatibility).
 - **Cost is estimated saving potential, not measured.** Amplification formula assumes wasted output is re-consumed each subsequent turn (structural upper bound). Cache-hit lower to cache-miss upper; the exact split is not observable from vendor usage. Sonnet pricing assumed.
 - **Toolathlon numbers are benchmark trajectories, not production sessions.** Scale evidence, not user data.
 - **459 same-argument `emails-send_email` pairs on Toolathlon are not proven duplicates.** The tool does not return an entity ID, so `Duplicate creation check` cannot resolve them. They sit in the 3,197 `no_id` blind spot, surfaced but not claimed as a finding.
@@ -322,8 +322,8 @@ The hosted layer imports Langfuse / LangSmith traces natively — the analyzer s
 
 - **Pre-registration.** Every detection change is committed *before* results are run; predictions and stop-conditions are written first and not edited after.
 - **Frozen parameters.** `φ`, `N`, and the embedding model are pinned to a git tag; changing them requires a documented recalibration, never a post-hoc nudge.
-- **Published corrections.** Small-sample numbers that did not survive larger samples were retracted in the open (Toolathlon `1,343 → 1,195`, `4,251 → 4,249`; `"90% CI"` label corrected to `"95% two-sided"`; Corpus B `union_wr_cost 0.9189 → 0.9202` per [WASTE_RATE_METRIC_PREREG §14](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/WASTE_RATE_METRIC_PREREG.md#14-amendment--union_wr_cost-per-span-attribution-2026-08-15)). See [CHANGELOG.md](CHANGELOG.md).
-- **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues no synthetic test caught: session mid-run abort (3 / 28 crashes, recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false positives across 269 error responses, gated at the report layer). See [`docs/CC_TRANSCRIPT.md`](https://github.com/JEONSEWON/Clew-by-Custos/blob/main/docs/CC_TRANSCRIPT.md) §29.
+- **Published corrections.** Small-sample numbers that did not survive larger samples were retracted in the open (Toolathlon `1,343 → 1,195`, `4,251 → 4,249`; `"90% CI"` label corrected to `"95% two-sided"`; Corpus B `union_wr_cost 0.9189 → 0.9202` per [WASTE_RATE_METRIC_PREREG §14](https://github.com/boxdawn/boxdawn/blob/main/docs/WASTE_RATE_METRIC_PREREG.md#14-amendment--union_wr_cost-per-span-attribution-2026-08-15)). See [CHANGELOG.md](CHANGELOG.md).
+- **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues no synthetic test caught: session mid-run abort (3 / 28 crashes, recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false positives across 269 error responses, gated at the report layer). See [`docs/CC_TRANSCRIPT.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/CC_TRANSCRIPT.md) §29.
 
 691 tests, CI on every PR, frozen parameters enforced as failing tests.
 
@@ -336,20 +336,20 @@ The hosted layer imports Langfuse / LangSmith traces natively — the analyzer s
 `[semantic]` (optional, ~2 GB with CUDA torch): adds the cosine gate for non-tool spans. Required for LangGraph chain-node paraphrase duplication.
 
 ```bash
-pip install "clew-custos[semantic]"
+pip install "boxdawn[semantic]"
 ```
 
 CPU-only torch on Linux:
 
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cpu
-pip install "clew-custos[semantic]"
+pip install "boxdawn[semantic]"
 ```
 
 From source:
 
 ```bash
-pip install "clew-custos[detect] @ git+https://github.com/JEONSEWON/Clew-by-Custos.git"
+pip install "boxdawn[detect] @ git+https://github.com/boxdawn/boxdawn.git"
 ```
 
 Requires Python `≥ 3.12`.
@@ -357,7 +357,7 @@ Requires Python `≥ 3.12`.
 ## Use
 
 ```bash
-python -m clew analyze path/to/trace.jsonl --out report.md
+boxdawn analyze path/to/trace.jsonl --out report.md
 ```
 
 - Input: any auto-detected format from the table above.
@@ -370,6 +370,6 @@ Your Claude Code transcripts are at `~/.claude/projects/<slug>/<uuid>.jsonl`.
 
 ## License
 
-MIT. Built under **Custos**.
+MIT. Built by **Boxdawn**.
 
 External datasets referenced here (Toolathlon CC-BY-4.0, RedundancyBench MIT, trace-commons per its HF card) are analyzed locally and never redistributed.

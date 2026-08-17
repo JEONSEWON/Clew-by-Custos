@@ -1,8 +1,8 @@
-# Clew — trace file creation and analysis
+# Boxdawn — trace file creation and analysis
 
-## How to turn your trace into a Clew input file
+## How to turn your trace into a Boxdawn input file
 
-Clew accepts the OTel SDK `span.to_json()` array form (Format A) as input.
+Boxdawn accepts the OTel SDK `span.to_json()` array form (Format A) as input.
 
 ### Using InMemorySpanExporter (the most common path)
 
@@ -25,7 +25,7 @@ LangChainInstrumentor().instrument(tracer_provider=provider)
 # 3. run the app
 # app.invoke(inputs)  ← spans are captured here
 
-# 4. write out as a Clew input file
+# 4. write out as a Boxdawn input file
 spans = exporter.get_finished_spans()
 Path("trace.json").write_text(
     json.dumps([json.loads(s.to_json()) for s in spans])
@@ -63,11 +63,11 @@ trace = capture_langgraph(app, {"topic": "..."}, Path("trace.json"))
 If you're sending spans to Phoenix (`http://127.0.0.1:6006/v1/traces`) or an OTel
 collector, a file-export path is not officially supported today.
 **Recommended for now — the InMemoryExporter path**: attach `InMemorySpanExporter`
-alongside `OTLPSpanExporter`, save via the method above, then feed the file to Clew.
+alongside `OTLPSpanExporter`, save via the method above, then feed the file to Boxdawn.
 
 ```python
 # attach both exporters in parallel
-provider.add_span_processor(SimpleSpanProcessor(InMemorySpanExporter()))  # for Clew
+provider.add_span_processor(SimpleSpanProcessor(InMemorySpanExporter()))  # for Boxdawn
 provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter(endpoint)))  # for Phoenix
 ```
 
@@ -77,16 +77,16 @@ provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter(endpoint)))  # 
 
 ```bash
 # analyze an OTel SDK JSON file
-python -m clew analyze trace.json
+boxdawn analyze trace.json
 
-# existing Clew Trace JSON also works (backward compatible)
-python -m clew analyze clew_trace.json
+# existing Boxdawn Trace JSON also works (backward compatible)
+boxdawn analyze clew_trace.json
 
 # write a markdown report to file
-python -m clew analyze trace.json --out report.md
+boxdawn analyze trace.json --out report.md
 
 # also emit a JSON report
-python -m clew analyze trace.json --out report.md --json report.json
+boxdawn analyze trace.json --out report.md --json report.json
 ```
 
 ---
@@ -96,5 +96,5 @@ python -m clew analyze trace.json --out report.md --json report.json
 `examples/sample_otel_trace.json` — a 5-span clean trace (no waste; expected to print "no waste detected").
 
 ```bash
-python -m clew analyze examples/sample_otel_trace.json
+boxdawn analyze examples/sample_otel_trace.json
 ```
