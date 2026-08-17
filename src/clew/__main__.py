@@ -1,7 +1,7 @@
-"""python -m clew - CLI entry point.
+"""boxdawn CLI entry point.
 
 Usage:
-    python -m clew analyze <trace.json> [--out report.md] [--json out.json] [--no-snippets]
+    boxdawn analyze <trace.json> [--out report.md] [--json out.json] [--no-snippets]
 
 Exit code: 0 for both waste-detected and no-waste. 1 for missing file, schema error, or other exceptions.
 """
@@ -316,7 +316,7 @@ def _analyze(args: argparse.Namespace) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="clew", description="Clew waste analyzer")
+    parser = argparse.ArgumentParser(prog="boxdawn", description="Boxdawn waste analyzer")
     sub = parser.add_subparsers(dest="cmd")
 
     p = sub.add_parser("analyze", help="analyze a trace file")

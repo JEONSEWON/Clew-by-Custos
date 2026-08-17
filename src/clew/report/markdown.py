@@ -607,7 +607,7 @@ def render_markdown(
     lines: list[str] = []
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    lines.append("# Clew Waste Report")
+    lines.append("# Boxdawn Waste Report")
     lines.append("")
     lines.append(f"- **trace_id**: `{trace.trace_id}`")
     lines.append(f"- **analyzed**: {now}")
