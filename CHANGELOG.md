@@ -2,7 +2,7 @@
 
 All notable, user-visible changes to `boxdawn` (previously published on PyPI as `clew-custos`). This file tracks releases going forward — earlier versions are not back-filled because the criteria for what qualifies as user-visible were not established at the time.
 
-## Unreleased — Rebrand to Boxdawn
+## 0.5.0 — 2026-08-17 · Rebrand to Boxdawn
 
 ### ★ Breaking (packaging + CLI)
 
