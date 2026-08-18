@@ -73,7 +73,7 @@ Reproduce:
 
 ```bash
 pip install "boxdawn[detect]"
-# Toolathlon corpus (CC-BY-4.0): huggingface.co/datasets/tsinghua-mars-lab/toolathlon
+# Toolathlon corpus (CC-BY-4.0): huggingface.co/datasets/hkust-nlp/Toolathlon-Trajectories
 boxdawn analyze grok-4_2.jsonl --out report.md
 ```
 
