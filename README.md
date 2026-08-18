@@ -298,7 +298,7 @@ The analyzer CLI in this repo is the deterministic core. The hosted layer will b
 - **Mode B · Live monitoring (account)** — personal ingest endpoint. Real-time waste alerts. Per-session dashboard with history and time-series. Slack / webhook notifications. CI PR auto-comment on your GitHub repos.
 - **Team collaboration (post-Beta)** — accounts, permissions, shared datasets.
 
-**Stack:** Vercel Next.js (frontend) · Modal serverless Python (detector runtime, same code as this repo) · Supabase (Postgres + Auth + Storage) · Resend (email). Domain: `boxdawn.ai`.
+**Stack:** Vercel Next.js (frontend) · Modal serverless Python (detector runtime, same code as this repo) · Supabase (Postgres + Auth + Storage) · Resend (email). Domain: `boxdawn.com`.
 
 The hosted layer imports Langfuse / LangSmith traces natively — the analyzer stays framework-neutral.
 
