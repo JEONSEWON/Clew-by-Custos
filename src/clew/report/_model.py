@@ -145,7 +145,12 @@ def build_cost_summary(
 
     total_input_cost = 0.0
     total_output_cost = 0.0
-    all_accurate = bool(llm_calls)  # if no LLM calls, treat as accurate (nothing to be inaccurate about)
+    # prereg 5.1: "accurate" iff every LLM call had tier-split tokens. With
+    # zero LLM calls that universal is vacuously true, so start True.
+    # bool(llm_calls) made a tool-only trace report "estimated" while having
+    # nothing to be inaccurate about, contradicting this function's own
+    # docstring. Downgrades below still apply.
+    all_accurate = True
 
     for call in llm_calls:
         in_cost, accurate = _llm_call_input_cost(call)
