@@ -1,6 +1,6 @@
 [project]
 name = "boxdawn"
-version = "0.5.0"
+version = "0.5.1"
 description = "Boxdawn — AI agent observability. Detect waste in multi-agent traces."
 authors = [{ name = "Boxdawn" }]
 readme = "README.md"
@@ -29,6 +29,17 @@ requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.6",
     "pyyaml>=6.0",
+    # Token counting for context_resend + redundant_read, both of which run
+    # unconditionally in `boxdawn analyze` (__main__.py:246, :251). Undeclared
+    # until 0.5.1: every clean install fell back to len(text)//4 while our own
+    # environment happened to have tiktoken, so published token and cost
+    # figures did not reproduce for users. Base, not an extra, because the
+    # analyze path always needs it.
+    #
+    # Not exact-pinned: reproducibility rests on the encoding name, which is
+    # frozen in code (context_resend.py :: _chunk_token_len, "frozen for v1"),
+    # not on the package version. The range only guarantees availability.
+    "tiktoken>=0.7,<1.0",
 ]
 
 [project.optional-dependencies]
