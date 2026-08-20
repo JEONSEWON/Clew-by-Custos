@@ -119,6 +119,37 @@ def test_end_time_is_tool_result_timestamp(tmp_path: Path) -> None:
     assert span.end_time.isoformat().startswith("2026-07-17T10:00:07")
 
 
+def test_absence_sentinel_flagged_on_tool_span(tmp_path: Path) -> None:
+    """CASCADE_ABSENCE_SENTINEL_AMENDMENT_PREREG §4.3 S2: recognise this vendor's
+    placeholders for absent output, and keep carrying the text.
+
+    Claude Code writes these strings itself; grep the raw transcript, not our code.
+    They are non-empty, so the Span tool-output invariant passes them through.
+    """
+    cases = [
+        ("(Bash completed with no output)", True),
+        ("  (Bash completed with no output)  ", True),   # stripped before matching
+        ("No matches found\n\nFound 0 total occurrences across 0 files.", True),
+        ("No matches found", True),                       # prefix rule
+        ("(Bash completed with no output) plus more", False),  # exact rule, not prefix
+        ("total 0\ndrwxr-xr-x", False),                   # real, if boring, output
+    ]
+    for i, (payload, expected) in enumerate(cases):
+        entries = [
+            _asst(f"a{i}", None, "2026-07-17T10:00:00Z", [
+                {"type": "tool_use", "id": f"tu{i}", "name": "Bash",
+                 "input": {"command": "true"}},
+            ]),
+            _user(f"u{i}", f"a{i}", "2026-07-17T10:00:01Z", [
+                {"type": "tool_result", "tool_use_id": f"tu{i}", "content": payload},
+            ]),
+        ]
+        trace = ingest_claude_code_jsonl(_write_jsonl(tmp_path, entries))
+        span = next(s for s in trace.spans if s.span_kind == "tool")
+        assert span.output_is_absent is expected, f"case {i}: {payload!r}"
+        assert span.output_text == payload, "placeholder text must still be carried"
+
+
 def test_orphan_tool_use_warns_and_skips(tmp_path: Path) -> None:
     """§29.1 recovery: orphan tool_use is skipped with warning (not raise).
 

@@ -57,6 +57,15 @@ def cascade(trace: Trace, embedder: Embedder, n: int, phi: float) -> CascadeResu
         if candidate.span_id in seen_candidates:
             continue
         if candidate.span_kind == "tool":
+            # CASCADE_ABSENCE_SENTINEL_AMENDMENT_PREREG §4: absence is not
+            # expression — the same principle the non-tool branch below already
+            # applies. model.py forbids an empty tool output_text precisely so
+            # this sha256 gate cannot match empty-vs-empty; a vendor placeholder
+            # for "no output" is non-empty and walked straight through that
+            # guard. Measured: 22 of 31 flags across 40 Claude Code sessions
+            # were such placeholders; 0 of 347 on Corpus B.
+            if candidate.output_is_absent or origin.output_is_absent:
+                continue
             if _has_compact_between(compact_boundaries, origin.start_time, candidate.start_time):
                 continue
             if _sha256_bytes(origin.output_text) == _sha256_bytes(candidate.output_text):

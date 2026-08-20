@@ -173,6 +173,65 @@ def test_tool_sha256_equal_is_wasteful_without_compact(embedder: Embedder):
     assert res.waste_tokens == 25
 
 
+# ─── absence sentinel (CASCADE_ABSENCE_SENTINEL_AMENDMENT_PREREG §4) ───────
+
+def _absent_tool_span(sid: str, t: int, out: str) -> Span:
+    s = _tool_span(sid, "root", "Bash", t, '{"command":"true"}', out)
+    return s.model_copy(update={"output_is_absent": True})
+
+
+def test_absent_output_not_wasteful(embedder: Embedder):
+    """Two calls the adapter marked as producing no output are not each other's waste.
+
+    Without the §4 skip these are sha256-identical and land in waste_span_ids: the
+    vendor placeholder is non-empty, so model.py's tool-output invariant lets it
+    through and the sha256 gate then matches absence against absence.
+    """
+    spans = [
+        _span("root", None, "run", 0, "root"),
+        _absent_tool_span("s2", 1, "(Bash completed with no output)"),
+        _absent_tool_span("s3", 5, "(Bash completed with no output)"),
+    ]
+    res = cascade(Trace(trace_id="t", spans=spans), embedder, n=2, phi=0.99)
+    assert res.wasteful is False
+    assert res.waste_span_ids == []
+
+
+def test_absent_origin_also_skips(embedder: Embedder):
+    """The skip is symmetric: an absent origin cannot make a later span waste.
+
+    Guards the direction a one-sided `candidate.output_is_absent` check would miss.
+    """
+    absent = _absent_tool_span("s2", 1, "(Bash completed with no output)")
+    later = _tool_span("s3", "root", "Bash", 5, '{"command":"true"}',
+                       "(Bash completed with no output)", tokens=25)
+    spans = [_span("root", None, "run", 0, "root"), absent, later]
+    res = cascade(Trace(trace_id="t", spans=spans), embedder, n=2, phi=0.99)
+    assert res.wasteful is False
+    assert res.waste_span_ids == []
+
+
+def test_absent_flag_does_not_suppress_real_duplicates(embedder: Embedder):
+    """Unmarked spans keep the pre-amendment behaviour — the skip is opt-in per span.
+
+    This is the Corpus B guarantee in miniature: 347 flags there survived because no
+    Toolathlon output is a marked sentinel.
+    """
+    spans = [
+        _span("root", None, "run", 0, "root"),
+        _tool_span("s2", "root", "send_email", 1, '{"to":"a@b.c"}', "Email sent"),
+        _tool_span("s3", "root", "send_email", 5, '{"to":"a@b.c"}', "Email sent", tokens=25),
+    ]
+    res = cascade(Trace(trace_id="t", spans=spans), embedder, n=2, phi=0.99)
+    assert res.wasteful is True
+    assert res.waste_span_ids == ["s3"]
+
+
+def test_output_is_absent_defaults_false():
+    """Every other adapter and every stored trace keeps the old behaviour by default."""
+    assert _tool_span("s", "root", "Read", 1, "{}", "out").output_is_absent is False
+
+
 def test_tool_sha256_equal_excluded_when_compact_between(embedder: Embedder):
     """§22.11.2: if a compact boundary is within the origin<->cand window, exclude from waste."""
     root = _span("root", None, "run", 0, "root")

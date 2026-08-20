@@ -39,6 +39,21 @@ from clew.model import Span, Trace
 _TS_BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
+# Absence-sentinel hook (CASCADE_ABSENCE_SENTINEL_AMENDMENT_PREREG §4.3 Q4).
+# Deliberately empty: sweeping 240 Toolathlon traces (6,250 tool spans, 347
+# cascade flags) surfaced no vendor placeholder for absent output — the flags
+# there are real repeats such as `emails-send_email` x139. The hook is present
+# so a later finding is a string added to these constants, not new wiring.
+_ABSENCE_EXACT: frozenset[str] = frozenset()
+_ABSENCE_PREFIXES: tuple[str, ...] = ()
+
+
+def _is_absence(text: str) -> bool:
+    """True when `text` is this vendor's placeholder for absent output."""
+    stripped = text.strip()
+    return stripped in _ABSENCE_EXACT or stripped.startswith(_ABSENCE_PREFIXES)
+
+
 def _synth_ts(msg_idx: int, sub_idx: int) -> datetime:
     """§23.2: base + timedelta(seconds = msg_idx*1000 + sub_idx)."""
     return _TS_BASE + timedelta(seconds=msg_idx * 1000 + sub_idx)
@@ -317,6 +332,7 @@ def _build_trace_from_entry(
                 end_time=ts,
                 input_text=args_normalized,
                 output_text=output_text,
+                output_is_absent=_is_absence(output_text),
                 token_count=None,
                 model=modelname_run,
                 cost_rate=None,
