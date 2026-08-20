@@ -2,6 +2,58 @@
 
 All notable, user-visible changes to `boxdawn` (previously published on PyPI as `clew-custos`). This file tracks releases going forward — earlier versions are not back-filled because the criteria for what qualifies as user-visible were not established at the time.
 
+## 0.5.1 — 2026-08-20 · 리포트가 자기 계산을 정확히 설명하게 만들기
+
+이 릴리스는 탐지 결과가 아니라 **그 결과를 설명하는 말**을 고친다. 네 건 다 계산은 맞고, 문면이 내가 무엇을 재는지 말하지 않거나 낡은 동작을 설명하고 있었다.
+
+### 변경
+
+- **`Waste detection` 라벨이 범위를 밝힌다** → `Waste detection (tool cascade)`. 그 플래그(`wasteful`)는 repeat/pingpong detector 만 반영하고 `context_resend` 를 반영하지 않는다. 그래서 낭비가 전부 context resend 인 트레이스에서 리포트가 `Total waste (detected): $1.665249 (66.0%)` 바로 아래에 `no waste detected` 를 찍었다. 두 진술 다 맞지만 라벨이 범위를 안 담아 서로를 부정하는 것처럼 읽혔다.
+- **각주가 실제 가격 산정을 설명한다.** `Attribution assumes Sonnet pricing.` → `Attribution uses per-model rates; unknown models fall back to Sonnet 4.5.` Toolathlon / Exgentic cost table 확장 이후 `pricing.py` 는 alias 로 모델별 요율을 해결하고 모르는 모델만 fallback 한다. 각주가 자기 계산을 오설명하고 있었다.
+- **`cost_summary.accuracy_flag` 가 LLM 호출 0건 트레이스에서 `accurate`** 가 된다 (전: `estimated`). 사전등록 기준은 *"모든 LLM 호출이 tier-split 을 가질 때만 accurate"* 이고, 공집합에서 그 전칭명제는 공허하게 참이다. 해당 줄의 주석은 이미 그렇게 적혀 있었고 코드가 반대로 동작했다.
+- **어댑터가 표시한 부재(absence) 센티넬을 cascade 가 건너뛴다.** 새 필드 `Span.output_is_absent` (기본 `False`). Claude Code 는 명령이 아무것도 출력하지 않으면 그 자리를 `(Bash completed with no output)` 로 채우는데, 비어 있지 않으므로 tool 출력 불변식을 통과한 뒤 sha256 게이트가 *"출력 없음"* 두 건을 서로의 중복으로 판정한다. 같은 원칙은 non-tool 분기에 이미 있었다. 벤더 문자열은 어댑터에만 산다.
+
+### ★ `tiktoken` 을 의존성으로 선언 — 사용자 수치가 우리 수치와 일치하게 된다
+
+`tiktoken` 은 0.5.0 까지 **어느 의존성·extra 에도 선언되지 않았다.** `context_resend` 와 `redundant_read` 는 토큰 수를 셀 때 `tiktoken` 을 시도하고 없으면 `len(text) // 4` 로 대체하는데(코드에 명시된 의도된 동작), 선언이 없었으므로 **모든 깨끗한 설치가 대체 경로를 탔다.** 우리 개발 환경에는 tiktoken 이 우연히 있었다. 그래서 우리가 발표한 토큰·비용 수치는 정밀 경로 값이고, 사용자가 같은 트레이스를 돌려 얻는 값은 대체 경로 값이었다.
+
+공개 트레이스 `davanstrien/agent-race-traces` / `claude-code.jsonl` 로 측정한 차이:
+
+| 수치 | 0.5.0 (대체 경로) | 0.5.1 (선언 후) |
+|---|---|---|
+| `total_waste_cost` | 1.68473586 | **1.66524903** |
+| `waste_ratio` | 0.667254 | **0.659536** |
+| `context_resend` resent input tokens | 2,069,799 | **2,056,739** |
+| `waste_rate.union_wr_cost` | 0.150515 | **0.148774** |
+| `total_analyzed_cost` | 2.5248795 | 2.5248795 (무변) |
+| resent chunk 수 · 분모 | 1720 / 2,238,628 | 동일 (무변) |
+| `waste_rate.union_wr_char` | 0.96584 | 동일 (무변 — 바이트 기반) |
+
+**0.5.0 에서 올라오는 사용자는 토큰·비용 수치가 위 방향으로 바뀐다.** 탐지 판정(무엇이 낭비인지)은 바뀌지 않는다 — 바뀌는 것은 그 낭비를 토큰으로 환산하는 자의 정밀도뿐이다. 바이트 기반 수치(`union_wr_char`)와 개수 기반 수치는 전부 무변이다.
+
+`tiktoken>=0.7,<1.0` (base 의존성). 정확 핀을 쓰지 않은 이유: 재현성은 인코딩 이름이 담보하며 그것은 코드에 동결되어 있다 (`context_resend.py :: _chunk_token_len`, `cl100k_base` · "frozen for v1"). 버전 범위는 라이브러리 존재만 보장한다.
+
+### 사용자가 알아차릴 수 있는 동작 변화
+
+- **Claude Code 트레이스에서 `waste_span_count` · `waste_details` · `category_counts` 가 줄어든다.** 실측: 로컬 40 세션 합계 31 → 9. 사라진 22건은 전부 부재 표현이다 (`(Bash completed with no output)` 20건 · `No matches found…` 2건).
+- **`waste_rate.union_wr_char` 가 플래그 해제된 바이트만큼 내려간다.** 실측 한 트레이스에서 0.989674 → 0.989671 (−3.0e-06 · 6 span × 31 바이트). 소수 1자리 인용은 불변.
+- **`io.save_trace` 가 쓰는 트레이스 파일에 `output_is_absent` 키가 실린다.** 구 파일은 기본값으로 계속 로드된다. **리포트 JSON 스키마는 변경 없다.**
+
+### 무변경 (실측 대조)
+
+- **비용 계산 전부.** 한 트레이스 전/후 JSON 필드 대조에서 9개 필드 전부 동일: `total_analyzed_cost` 24.0530675 · `total_waste_cost` 20.69691232 · `waste_ratio` 0.860469 · `detector_breakdown` 3개 전부.
+- **동결 파라미터** φ=0.514345 · N=2 · embedding model rev `e8f8c211…`.
+- **리포트 JSON 스키마** — 전/후 최상위 키 집합 동일. `coverage_stats` 동일.
+- **Toolathlon 트레이스의 cascade 탐지** — 240 트레이스 표본에서 347 → 347. 거기서는 부재 센티넬이 없고 플래그가 실제 중복이다 (`emails-send_email` 139건 등).
+- **CLI 인터페이스 · 의존성** 무변경.
+
+### 릴리스 이유
+
+네 건 다 계산은 맞으면서 문면이 틀린 사례였다. 같은 계측을 0.4.1 에서 한 번 다뤘다 (`wasteful=False` 일 때 상단이 duplicate creation 을 가렸던 것). 0.5.1 은 그 남은 절반이다 — 라벨 자체가 범위를 담은 것.
+
+사전등록: `docs/CASCADE_ABSENCE_SENTINEL_AMENDMENT_{PREREG,RESULTS}.md`.
+해당 PR: #119 · #120 · #122.
+
 ## 0.5.0 — 2026-08-17 · Rebrand to Boxdawn
 
 ### ★ Breaking (packaging + CLI)
