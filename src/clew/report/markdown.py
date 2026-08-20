@@ -40,7 +40,7 @@ _FOOTER = (
     "_Cost is estimated saving potential, not measured — assumes the "
     "wasted output is re-consumed each subsequent turn (structural "
     "assumption). Range spans cache-hit (lower) to cache-miss (upper). "
-    "Attribution assumes Sonnet pricing._"
+    "Attribution uses per-model rates; unknown models fall back to Sonnet 4.5._"
 )
 
 _POSSIBLE_CAUSES = (
@@ -631,7 +631,7 @@ def render_markdown(
     if not cr.wasteful:
         lines.append("## Result")
         lines.append("")
-        lines.append("- **Waste detection**: no waste detected (wasteful=False).")
+        lines.append("- **Waste detection (tool cascade)**: no waste detected (wasteful=False).")
         lines.extend(_summary_duplicate_creation_line(id_bridge))
         lines.extend(_summary_context_resend_line(context_resend))
         wr_line = _waste_rate_line(waste_rate)
@@ -674,7 +674,7 @@ def render_markdown(
 
     lines.append("## Result")
     lines.append("")
-    lines.append(f"- **Waste detection**: {len(cr.waste_span_ids)} wasteful span(s).")
+    lines.append(f"- **Waste detection (tool cascade)**: {len(cr.waste_span_ids)} wasteful span(s).")
     lines.extend(_summary_duplicate_creation_line(id_bridge))
     lines.extend(_summary_context_resend_line(context_resend))
     wr_line = _waste_rate_line(waste_rate)
