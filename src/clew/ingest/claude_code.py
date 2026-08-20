@@ -38,6 +38,23 @@ def _load_jsonl(path: Path) -> list[dict]:
     return out
 
 
+# Absence sentinels — this vendor's way of writing "the tool produced no
+# output" (CASCADE_ABSENCE_SENTINEL_AMENDMENT_PREREG §4.3, set S2). Claude Code
+# emits these strings itself; they are not synthesised here. They are non-empty,
+# so they pass the Span tool-output invariant and then make cascade's sha256
+# gate read two no-output calls as duplicates — the exact match that invariant
+# exists to prevent. Flagging them lets the detector skip them without holding
+# any vendor string of its own.
+_ABSENCE_EXACT: frozenset[str] = frozenset({"(Bash completed with no output)"})
+_ABSENCE_PREFIXES: tuple[str, ...] = ("No matches found",)
+
+
+def _is_absence(text: str) -> bool:
+    """True when `text` is this vendor's placeholder for absent output."""
+    stripped = text.strip()
+    return stripped in _ABSENCE_EXACT or stripped.startswith(_ABSENCE_PREFIXES)
+
+
 def _parse_ts(ts: str) -> datetime:
     """ISO-8601 (Z suffix allowed) -> tz-aware datetime."""
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
@@ -462,6 +479,7 @@ def ingest_claude_code_jsonl(
                 end_time=end,
                 input_text=input_text,
                 output_text=output_text,
+                output_is_absent=_is_absence(output_text),
                 token_count=None,
                 model=None,
                 cost_rate=None,

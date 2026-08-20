@@ -48,6 +48,14 @@ class Span(BaseModel):
     # (e.g. id_bridge entity_id extraction) read `raw_output_text or output_text`.
     # See openinference_output_text_fix_PREREG.md §2.1.
     raw_output_text: str | None = None
+    # True when the adapter recognised this span's output as its vendor's
+    # representation of "the tool produced no output" rather than content.
+    # Set only by adapters (vendor strings belong there, not in a detector);
+    # cascade's tool branch skips such spans, mirroring the non-tool branch's
+    # empty-output skip. See CASCADE_ABSENCE_SENTINEL_AMENDMENT_PREREG.md
+    # §4.2 option A. The `output_text` invariant below is unchanged: the
+    # placeholder text is still carried, it is just not treated as content.
+    output_is_absent: bool = False
 
 
     @field_validator("start_time", "end_time")
