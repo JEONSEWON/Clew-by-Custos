@@ -101,6 +101,9 @@ def test_waste_ratio_zero_when_no_llm():
 
     assert summary.total_analyzed_cost == 0.0
     assert summary.waste_ratio == 0.0
+    # prereg 5.1 reads "accurate" iff every LLM call had tier-split tokens;
+    # with no LLM calls that is vacuously true.
+    assert summary.accuracy_flag == "accurate"
 
 
 def test_accuracy_flag_accurate():
