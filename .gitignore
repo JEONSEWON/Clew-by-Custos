@@ -35,6 +35,7 @@ data/
 .claude/
 CLAUDE.md
 SPEC.md
+LAUNCH_PREREG.md
 field_test/E3_DIAGNOSIS.md
 field_test/REAL_PROBE_LOG.md
 field_test/REQUERY_DIAGNOSIS.md
