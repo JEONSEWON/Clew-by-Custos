@@ -1,6 +1,6 @@
 [project]
 name = "boxdawn"
-version = "0.5.1"
+version = "0.5.2"
 description = "Boxdawn — AI agent observability. Detect waste in multi-agent traces."
 authors = [{ name = "Boxdawn" }]
 readme = "README.md"
