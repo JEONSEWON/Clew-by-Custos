@@ -2,6 +2,29 @@
 
 All notable, user-visible changes to `boxdawn` (previously published on PyPI as `clew-custos`). This file tracks releases going forward — earlier versions are not back-filled because the criteria for what qualifies as user-visible were not established at the time.
 
+## 0.5.2 — 2026-08-22 · 트레이스가 **언제 실행됐는지**를 리포트가 실어 보낸다
+
+리포트에 실리는 시각은 `analyzed`(우리가 분석을 돌린 시각) 하나뿐이었다. 리포트를 시계열로 쌓는 소비자가 그것을 축으로 쓰면, 오래된 트레이스를 오늘 몰아서 분석했을 때 전부 오늘 자리에 찍힌다.
+
+### 추가
+
+- **`trace_started`** — 리포트 JSON 최상위 필드. `min(span.start_time)` 을 UTC 로 정규화한 값이다. `Span.start_time` 은 tz-aware 임이 검증되고 `Trace` 는 span 을 최소 1개 요구하므로 이 값은 항상 존재한다.
+
+공개 트레이스 `davanstrien/agent-race-traces` / `claude-code.jsonl` 에서 두 시각의 거리:
+
+| 필드 | 값 |
+|---|---|
+| `trace_started` | `2026-05-01T13:22:29Z` |
+| `analyzed` | `2026-08-22T07:13:21Z` |
+
+**113일 차이다.** 축을 `analyzed` 로 잡은 시계열은 이 트레이스를 8월에 일어난 일로 그린다.
+
+### 호환성
+
+- 추가 필드다. **임계값·탐지기·판정 기준 변경 없음.** 마크다운 리포트는 무변.
+- 같은 트레이스의 이전 리포트와 키 단위로 대조했다: **신규 키 1개 외 차이 없음.** `waste_ratio` 0.659536 · `total_analyzed_cost` 2.5248795 · `total_waste_cost` 1.66524903 · `accuracy_flag` accurate 전부 무변.
+- 모르는 키를 무시하는 소비자는 영향받지 않는다.
+
 ## 0.5.1 — 2026-08-20 · 리포트가 자기 계산을 정확히 설명하게 만들기
 
 이 릴리스는 탐지 결과가 아니라 **그 결과를 설명하는 말**을 고친다. 네 건 다 계산은 맞고, 문면이 내가 무엇을 재는지 말하지 않거나 낡은 동작을 설명하고 있었다.
