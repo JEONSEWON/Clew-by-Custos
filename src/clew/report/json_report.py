@@ -194,6 +194,15 @@ def render_json(
     preserved).
     """
     now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # When the trace itself ran, as opposed to when we analyzed it. Storage
+    # consumers bucket time series on this when present; without it a batch of
+    # old traces analyzed today all land on today. Span.start_time is validated
+    # tz-aware (model.py), and Trace requires >= 1 span, so min() is safe.
+    trace_started = (
+        min(s.start_time for s in trace.spans)
+        .astimezone(timezone.utc)
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
 
     enrichment = enrich(trace, details, user_tools)
     cov = coverage_stats(trace, enrichment.enriched, user_tools)
@@ -268,6 +277,7 @@ def render_json(
     report: dict = {
         "trace_id": trace.trace_id,
         "analyzed": now,
+        "trace_started": trace_started,
         "cost_summary": {
             "total_llm_input_cost": round(cost_summary.total_llm_input_cost, 8),
             "total_llm_output_cost": round(cost_summary.total_llm_output_cost, 8),
