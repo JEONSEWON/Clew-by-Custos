@@ -155,6 +155,19 @@ def _waste_rate_block(wr: WasteRateMetric | None) -> dict | None:
     return {
         "excluded_reason": wr.excluded_reason,
         "total_input_bytes": wr.total_input_bytes,
+        # Numerator and denominator of both union ratios, emitted alongside the
+        # ratios themselves. A consumer aggregating many traces cannot use the
+        # ratios: the mean of per-trace ratios is not the ratio of the sums, and
+        # `union_wr_cost` could not be un-divided here because its denominator
+        # (`total_input_cost`) was not in the block.
+        # `cost_summary.total_waste_cost` is not a substitute for
+        # `union_waste_cost`: that one sums the detector breakdown, this one is a
+        # span-level union with a DETECTOR_ORDER tie-break plus context_resend's
+        # chunk cost (metrics/waste_rate.py). Different provenance, so a
+        # consumer must not read one for the other even when they coincide.
+        "total_input_cost": round(wr.total_input_cost, 8),
+        "union_waste_bytes": wr.union_waste_bytes,
+        "union_waste_cost": round(wr.union_waste_cost, 8),
         "union_wr_char": _wr_round(wr.union_wr_char),
         "union_wr_cost": _wr_round(wr.union_wr_cost),
         "per_detector": {
