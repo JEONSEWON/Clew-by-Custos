@@ -1,6 +1,8 @@
 # Session close rule — preregistration
 
-Status: **proposed**, awaiting approval. No code ships against this until it is approved.
+Status: **approved** 2026-08-26 (PR #129). Implemented in `clew.submit`.
+The thresholds below are frozen: changing one changes what the baseline is made
+of, so it changes here first and in code second. §7 is what would reject them.
 
 ## 1. What this decides
 
