@@ -315,6 +315,31 @@ def _analyze(args: argparse.Namespace) -> int:
     return 0
 
 
+def _submit_rule_url() -> str:
+    """Where the close rule lives, as a URL rather than a repository path.
+
+    A pip-install user has no docs/ tree, so pointing at one is pointing at
+    nothing (tests/test_user_tools_config.py guards this).
+    """
+    from clew.submit import RULE_URL
+
+    return RULE_URL
+
+
+def _submit(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from clew import submit
+
+    return submit.run(
+        root=Path(args.root) if args.root else submit.DEFAULT_ROOT,
+        endpoint=args.endpoint or submit.DEFAULT_ENDPOINT,
+        dry_run=args.dry_run,
+        pace_seconds=args.pace,
+        limit=args.limit,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="boxdawn", description="Boxdawn waste analyzer")
     sub = parser.add_subparsers(dest="cmd")
@@ -345,9 +370,37 @@ def main() -> None:
         ),
     )
 
+    s = sub.add_parser(
+        "submit",
+        help="send finished agent sessions to the analyzer",
+        description=(
+            "Uploads sessions that have been quiet long enough to call "
+            "finished, once each. The rule that decides 'long enough' is "
+            "preregistered: " + _submit_rule_url()
+        ),
+    )
+    s.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "list what would be sent and send nothing. A first run is a "
+            "backfill of every session on the machine, so look before you run it."
+        ),
+    )
+    s.add_argument("--root", default=None, metavar="DIR",
+                   help="trace directory (default: ~/.claude/projects)")
+    s.add_argument("--endpoint", default=None, metavar="URL",
+                   help="analyzer endpoint")
+    s.add_argument("--limit", type=int, default=None, metavar="N",
+                   help="send at most N this run")
+    s.add_argument("--pace", type=float, default=2.0, metavar="SEC",
+                   help="seconds between submissions (default: 2)")
+
     args = parser.parse_args()
     if args.cmd == "analyze":
         sys.exit(_analyze(args))
+    elif args.cmd == "submit":
+        sys.exit(_submit(args))
     else:
         parser.print_help()
         sys.exit(1)
