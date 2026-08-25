@@ -7,7 +7,7 @@
 [![PyPI](https://img.shields.io/pypi/v/boxdawn)](https://pypi.org/project/boxdawn/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.12-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-691%20passing-brightgreen)](https://github.com/boxdawn/boxdawn/tree/main/tests)
+[![Tests](https://img.shields.io/badge/tests-736%20passing-brightgreen)](https://github.com/boxdawn/boxdawn/tree/main/tests)
 [![Corpora](https://img.shields.io/badge/corpora-3%20%C2%B7%2016%2C864%20sessions-blueviolet)](#-where-it-stands--measured-not-marketed)
 
 </div>
@@ -32,7 +32,7 @@ boxdawn analyze <trace>.jsonl --out report.md
 - **Cost attribution with source-URL-pinned pricing** — per-model rates for Sonnet 4.5 / 4.6, Opus 4.7, Haiku 4.5, GPT-4o family, GPT-5 / 5.2 / mini / o-series, Gemini 1.5 / 2.5 / 3-pro-preview, Grok 4 / fast / code-fast, DeepSeek v3.2, GLM 4.6, Kimi K2-0905 / K2.5, MiniMax M2, Qwen 3 Coder. Every entry carries `Source: URL (verified YYYY-MM-DD)`.
 - **Anti-hype rigor** — pre-registration on every detector change, frozen parameters enforced as failing tests, published corrections on retracted numbers, honesty preface on p-hacking risk. See §How we keep ourselves honest.
 
-**Coming next (Beta · Q4 2026):** hosted web dashboard, live monitoring endpoints, alerts (Slack / webhook), history & time-series, CI PR auto-comment. See §Roadmap.
+**Hosted layer:** [boxdawn.com](https://boxdawn.com) runs these same detectors in a browser — upload without an account, or sign in and keep measurements over time. Alerts and CI comments are not built. See §Hosted layer for the line between the two.
 
 **No instrumentation. No SDK. No code changes.** Boxdawn reads trace files your agent already writes.
 
@@ -87,7 +87,7 @@ Observability platforms (Langfuse, Arize, LangSmith, Braintrust, Helicone) captu
 
 Scope is deterministic-first: four deterministic detectors used in the waste-rate metric (`repeat` / `requery`, `context_resend`, `redundant_read`, `duplicate_creation`), the `pingpong` code path (implemented but not yet observed on real traces), and one opt-in LLM-as-judge check for semantic duplicates. Each detector is pre-registered with a frozen spec before results are measured.
 
-The current release is the analyzer CLI you install with pip. The **hosted dashboard, live monitoring, and alert layer** (Beta · Q4 2026) live in a separate repo and share the same detectors + waste-rate metric; see §Roadmap for the split.
+This repo is the analyzer you install with pip. A **hosted layer** at [boxdawn.com](https://boxdawn.com) — browser upload, accounts, stored measurements, dashboard — lives in a separate repo and runs this repo's detectors and waste-rate metric. §Hosted layer says what is live there and what is not.
 
 ---
 
@@ -133,6 +133,8 @@ Auto-detected input formats:
 | Boxdawn native trace JSON | `trace_id` + `spans` |
 | Toolathlon trajectories | `modelname_run` + `task_status` |
 | RedundancyBench | `tasks` + `simulations` |
+
+*Exgentic Agent LLM Traces v2 is read through the library (`clew.ingest.exgentic`), not by `boxdawn analyze` — it is Parquet, so there is no first-line marker to detect.*
 
 *Cursor and Codex sessions are not supported yet.*
 
@@ -290,17 +292,27 @@ Pre-registration: [`docs/COST_ATTRIBUTION_COMPLETION_PREREG.md`](https://github.
 
 ---
 
-## 🚀 Roadmap · hosted dashboard (Beta · Q4 2026)
+## 🚀 Hosted layer · what is live and what is not
 
-The analyzer CLI in this repo is the deterministic core. The hosted layer will bring the same detectors and waste-rate metric to the browser:
+The analyzer in this repo is the deterministic core. [boxdawn.com](https://boxdawn.com) runs the same code — same detectors, same frozen parameters — from a separate repo.
 
-- **Mode A · Try Boxdawn (anonymous)** — upload a trace file or connect a LangSmith / Langfuse API key. 30-second waste report in-browser. No account.
-- **Mode B · Live monitoring (account)** — personal ingest endpoint. Real-time waste alerts. Per-session dashboard with history and time-series. Slack / webhook notifications. CI PR auto-comment on your GitHub repos.
-- **Team collaboration (post-Beta)** — accounts, permissions, shared datasets.
+**Live:**
 
-**Stack:** Vercel Next.js (frontend) · Modal serverless Python (detector runtime, same code as this repo) · Supabase (Postgres + Auth + Storage) · Resend (email). Domain: `boxdawn.com`.
+- **Upload without an account.** Drop a trace file in the browser and get the report the CLI prints. The file is processed in a temporary directory that is destroyed when the response finishes; it is not stored.
+- **Accounts.** Password or email link.
+- **Measurements kept over time.** A signed-in upload records derived numbers — counts, sizes, costs, and salted hashes of targets. The trace file itself is still not kept.
+- **Dashboard.** Waste rate shown against the absolute bytes and dollars behind it, which detector produced them, and how many runs the number is made of. A time series appears once there are enough hourly buckets to be one; below that the page shows the measurement rather than drawing a line through a single point.
 
-The hosted layer imports Langfuse / LangSmith traces natively — the analyzer stays framework-neutral.
+**Built here, not usable yet:**
+
+- **`boxdawn submit`** sends finished sessions on a preregistered close rule (see [`docs/SESSION_CLOSE_RULE_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/SESSION_CLOSE_RULE_PREREG.md)). It needs a project key, and the screen that issues keys is still being built.
+
+**Not built:**
+
+- **Alerts (Slack / webhook).** The regression signal is preregistered, and the evidence for it is thin by our own measurement: the best threshold fired on 0 of 46 same-project transitions, a 95% upper bound of 7.7%, where the target rate needs n ≥ 72. Shipping an alert on that would be shipping a guess.
+- CI PR auto-comment, LangSmith / Langfuse key import, team accounts and permissions.
+
+**Stack:** Vercel Next.js · Modal serverless Python (the detector runtime is this repo's code) · Supabase (Postgres + Auth) · Resend (email).
 
 ---
 
@@ -325,7 +337,7 @@ The hosted layer imports Langfuse / LangSmith traces natively — the analyzer s
 - **Published corrections.** Small-sample numbers that did not survive larger samples were retracted in the open (Toolathlon `1,343 → 1,195`, `4,251 → 4,249`; `"90% CI"` label corrected to `"95% two-sided"`; Corpus B `union_wr_cost 0.9189 → 0.9202` per [WASTE_RATE_METRIC_PREREG §14](https://github.com/boxdawn/boxdawn/blob/main/docs/WASTE_RATE_METRIC_PREREG.md#14-amendment--union_wr_cost-per-span-attribution-2026-08-15)). See [CHANGELOG.md](CHANGELOG.md).
 - **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues no synthetic test caught: session mid-run abort (3 / 28 crashes, recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false positives across 269 error responses, gated at the report layer). See [`docs/CC_TRANSCRIPT.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/CC_TRANSCRIPT.md) §29.
 
-691 tests, CI on every PR, frozen parameters enforced as failing tests.
+736 tests, CI on every PR, frozen parameters enforced as failing tests.
 
 ---
 
@@ -364,7 +376,20 @@ boxdawn analyze path/to/trace.jsonl --out report.md
 - `--out` writes Markdown; `--json` writes structured output; `--no-snippets` omits output excerpts.
 - Exit `0` whether or not waste is found; `1` on missing file, schema error, or missing detect dependencies.
 
-Your Claude Code transcripts are at `~/.claude/projects/<slug>/<uuid>.jsonl`.
+Your Claude Code transcripts are at `~/.claude/projects/<slug>/<uuid>.jsonl`. Sub-agent traces sit one level deeper, in `<uuid>/subagents/agent-*.jsonl` — on the machine this was measured on that is 13 of 84 files, and sub-agents are a place waste collects, so a one-level scan is not a complete one.
+
+### Sending sessions automatically
+
+```bash
+boxdawn submit --dry-run    # list what would be sent, send nothing
+boxdawn submit              # send it
+```
+
+Finds sessions that have gone quiet long enough to call finished, uploads each once, and never sends the same session twice. What counts as "finished" is preregistered rather than chosen here: [`docs/SESSION_CLOSE_RULE_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/SESSION_CLOSE_RULE_PREREG.md).
+
+Needs a project key in `BOXDAWN_API_KEY` or `~/.clew/credentials.yaml`. **Key issuance is not shipped yet**, so this command has nothing to authenticate with today — `--dry-run` works without a key and is the useful half until then.
+
+Start with `--dry-run`. A first run is a backfill of every session on the machine, not a trickle: 81 of 84 on the machine the rule was measured on.
 
 ---
 
