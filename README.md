@@ -7,7 +7,7 @@
 [![PyPI](https://img.shields.io/pypi/v/boxdawn)](https://pypi.org/project/boxdawn/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.12-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-736%20passing-brightgreen)](https://github.com/boxdawn/boxdawn/tree/main/tests)
+[![CI](https://github.com/boxdawn/boxdawn/actions/workflows/ci.yml/badge.svg)](https://github.com/boxdawn/boxdawn/actions/workflows/ci.yml)
 [![Corpora](https://img.shields.io/badge/corpora-3%20%C2%B7%2016%2C864%20sessions-blueviolet)](#-where-it-stands--measured-not-marketed)
 
 </div>
@@ -357,7 +357,7 @@ version on PyPI does not have the command yet.
 - **Published corrections.** Small-sample numbers that did not survive larger samples were retracted in the open (Toolathlon `1,343 → 1,195`, `4,251 → 4,249`; `"90% CI"` label corrected to `"95% two-sided"`; Corpus B `union_wr_cost 0.9189 → 0.9202` per [WASTE_RATE_METRIC_PREREG §14](https://github.com/boxdawn/boxdawn/blob/main/docs/WASTE_RATE_METRIC_PREREG.md#14-amendment--union_wr_cost-per-span-attribution-2026-08-15)). See [CHANGELOG.md](CHANGELOG.md).
 - **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues no synthetic test caught: session mid-run abort (3 / 28 crashes, recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false positives across 269 error responses, gated at the report layer). See [`docs/CC_TRANSCRIPT.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/CC_TRANSCRIPT.md) §29.
 
-736 tests, CI on every PR, frozen parameters enforced as failing tests.
+700+ tests run on every pull request, with the frozen parameters enforced as failing ones. The count is given as a floor rather than a figure: this file is the PyPI page, it is published at release and not edited between releases, and an exact number is wrong the day after someone adds a test. The badge above reports the current run.
 
 ---
 
