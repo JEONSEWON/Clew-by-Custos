@@ -71,9 +71,24 @@ measurement, not by preference:
   as a waste change. Measured precedent: `waste_span_count` 31→9 from the
   absence-sentinel amendment and `waste_ratio` 0.667254→0.659536 from
   declaring tiktoken. **Two analyzer changes moved the numbers in one day.**
-- Time axis is `analyzed_at` (`rollup_hourly.time_basis = 'analyzed_at'`),
-  matching Q4. When `occurred_at` becomes the axis it is a new
-  `time_basis` row, not an overwrite, so baselines do not silently shift.
+- Time axis is `occurred_at` (`rollup_hourly.time_basis = 'occurred_at'`) —
+  when the sessions ran, not when we analyzed them. Section 3 forms its
+  buckets by `trace_started`, which is the same instant, and a rule that
+  fires on a different axis than the one its false-positive rate was
+  measured on has not been measured. `occurred_at` is a separate
+  `time_basis` row rather than an overwrite, so adding it does not shift
+  any baseline already computed on `analyzed_at`.
+- **This axis does not exist yet.** No row with
+  `time_basis = 'occurred_at'` has ever been written: the live
+  `refresh_rollup_hourly` hardcodes `date_trunc('hour', r.analyzed_at)` and
+  the literal `'analyzed_at'`. The alert cannot be enabled — not even in
+  shadow mode — until that basis is written. That is a storage change, not
+  an alert change, and it is out of scope here.
+- **Late arrival is now possible.** On an `analyzed_at` axis a bucket is
+  closed once the hour passes. On an `occurred_at` axis a trace uploaded
+  today lands in the bucket of the day it ran, so an old bucket can change
+  long after the fact — a backfill of 64 sessions rewrites months of them at
+  once. Section 4 states what may fire as a result.
 - Ratios are always recomputed as `sum(numerator)/sum(denominator)` over
   the window. Averaging per-bucket ratios is prohibited: the mean of
   ratios is not the ratio of sums. (This is why 0.5.3 added
@@ -189,6 +204,17 @@ n=48. A point estimate on a small sample is not a GO.
   per 24 h. **Not measured** — a default chosen so a sustained shift reports
   once. It cannot raise the false-positive rate above section 3.5's
   measurement; it can only lower it.
+- `evaluate = newest transition only` — per `(project_id, params_key)`, only
+  the transition between the two most recent qualifying buckets is
+  evaluated. A bucket that changed retroactively because an old trace
+  arrived late is not re-evaluated, and no transition older than the newest
+  one can fire. Without this, one backfill replays months of history as
+  same-day alerts. **Not measured**; like `cooldown_hours` it can only
+  remove firings, never add them.
+- A transition counts toward the 72 in section 5.1 **only if it was the
+  newest transition when it was evaluated.** Otherwise a backfill inflates
+  the activation counter with transitions nobody would have been alerted
+  on, and the count stops meaning what section 5.1 says it means.
 
 ## 5. Go/No-go (frozen)
 
@@ -230,7 +256,8 @@ signal            = S1 only  (wr_char, rise only; a fall is not alerted)
 metric            = sum(union_waste_bytes) / sum(total_input_bytes) over the window
                     (never the mean of per-bucket ratios)
 window            = one day bucket of rollup_hourly, per (project_id, params_key)
-                    time_basis = 'analyzed_at'
+                    time_basis = 'occurred_at'   (requires that basis to be written)
+evaluate          = newest qualifying transition only (see section 4)
 threshold         = +8.0 pp vs the previous qualifying window
 min_window_bytes  = 1_048_576   (both windows must qualify)
 min_runs          = none        (see section 3.5 Finding 2)
