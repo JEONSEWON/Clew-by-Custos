@@ -2,6 +2,48 @@
 
 All notable, user-visible changes to `boxdawn` (previously published on PyPI as `clew-custos`). This file tracks releases going forward — earlier versions are not back-filled because the criteria for what qualifies as user-visible were not established at the time.
 
+## 0.5.3 — 2026-08-24 · 비율만 있던 자리에 **분자와 분모**를 함께 싣는다
+
+`waste_rate` 블록이 `union_wr_char` 와 `union_wr_cost` 는 발행하면서 그 비율을
+만든 수는 내보내지 않았다. 한 트레이스만 보는 사람에게는 충분하지만, **여러
+트레이스를 모으는 사람에게는 쓸 수 없는 값**이다 — 비율의 평균은 합의 비율이
+아니다. 되돌리기도 반만 가능했다: `union_waste_bytes` 는 6자리로 반올림된
+비율에서 복원할 수 있었지만(손실 있음), `union_waste_cost` 는 **분모
+(`total_input_cost`)가 블록에 없어서 아예 복원 불가**였다.
+
+### 추가
+
+- **`waste_rate.total_input_cost`** — union 비용 비율의 분모.
+- **`waste_rate.union_waste_bytes`** — 문자 비율의 분자.
+- **`waste_rate.union_waste_cost`** — 비용 비율의 분자.
+
+### `cost_summary.total_waste_cost` 는 대체물이 아니다
+
+두 값이 같아 보이는 트레이스가 있어도 **출처가 다르다.**
+
+| 값 | 어떻게 만들어지나 |
+|---|---|
+| `cost_summary.total_waste_cost` | 디텍터별 breakdown 의 합 |
+| `waste_rate.union_waste_cost` | 스팬 단위 union + `DETECTOR_ORDER` tie-break + `context_resend` 의 청크 비용 |
+
+실 Claude Code 세션 8건에서 두 값이 일치했다 — 8건 모두 cascade 가 기여하지
+않았고, 기여 디텍터가 둘인 유일한 트레이스에는 스팬 겹침이 없었다. 즉 이건
+**계산 방식에 대한 진술이고 관측된 불일치가 아니다.** 그래도 한쪽을 다른 쪽으로
+읽으면 안 된다.
+
+### 호환성
+
+- **중첩 키 추가다.** 최상위 키 수는 22 로 무변. **임계값·탐지기·판정 기준 변경
+  없음** ⇒ 사전등록 개정이 발동하지 않는다 (`trace_started` 와 같은 부류).
+- 모르는 키를 무시하는 소비자는 영향받지 않는다.
+
+### 이 항목이 늦게 쓰인 이유
+
+릴리스 커밋 `dbc3245` 가 **`pyproject.toml` 한 줄만** 바꿨다. 버전은 올라갔고
+이 파일은 갱신되지 않아서, `0.5.3` 이 PyPI 에 있는 동안 CHANGELOG 의 최신
+항목은 `0.5.2` 였다. 2026-08-27 에 발견하고 소급 기록한다 — 릴리스 절차에
+CHANGELOG 단계가 없었던 것이 원인이고, 항목을 빼먹은 판단이 아니다.
+
 ## 0.5.2 — 2026-08-22 · 트레이스가 **언제 실행됐는지**를 리포트가 실어 보낸다
 
 리포트에 실리는 시각은 `analyzed`(우리가 분석을 돌린 시각) 하나뿐이었다. 리포트를 시계열로 쌓는 소비자가 그것을 축으로 쓰면, 오래된 트레이스를 오늘 몰아서 분석했을 때 전부 오늘 자리에 찍힌다.
