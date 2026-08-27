@@ -340,6 +340,65 @@ def _submit(args: argparse.Namespace) -> int:
     )
 
 
+def _estimate(args: argparse.Namespace) -> int:
+    """Report what makes a trace expensive to analyze. No verdict.
+
+    Analysis time does not follow file size. Measured on four Claude Code
+    traces, it follows *cumulative context* -- the total input text across
+    llm_calls -- at 368-440 s/GB locally and ~399 s/GB on the hosted runtime,
+    while a 5.24 MB trace finished in 40 s and a 3.39 MB one took 85 s. So a
+    caller deciding whether to send a trace somewhere needs the context figure,
+    and a byte cap would refuse traces that work.
+
+    Deliberately values only. Whether a number is "too big" depends on the
+    ceiling of whichever surface is asking -- a browser upload where somebody is
+    waiting, an unattended queue where nobody is -- and a verdict computed here
+    would hide which ceiling it was measured against. The caller owns the
+    threshold; this owns the measurement.
+
+    Parsing is the whole cost of this command: 2.4-3.0% of a full analysis on
+    the traces measured, 10.3 s on the heaviest.
+    """
+    import json as _json_out
+    import time
+
+    path = Path(args.trace_file)
+    started = time.perf_counter()
+    try:
+        trace = _load_trace_auto(path)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    parse_seconds = time.perf_counter() - started
+
+    from clew.metrics.waste_rate import _compute_total_input
+    context_bytes, _ = _compute_total_input(trace)
+    llm_calls = len(trace.metadata.get("llm_calls") or [])
+
+    payload = {
+        "trace_id": trace.trace_id,
+        "file_bytes": path.stat().st_size,
+        # The predictor. Named for what it is rather than "size", because the
+        # two diverge and the wrong one is the intuitive one.
+        "cumulative_context_bytes": context_bytes,
+        "llm_calls": llm_calls,
+        "spans": len(trace.spans),
+        "parse_seconds": round(parse_seconds, 3),
+    }
+
+    if getattr(args, "json_out_stdout", False):
+        print(_json_out.dumps(payload, indent=2))
+        return 0
+
+    gb = context_bytes / 1024 ** 3
+    print(f"trace            {trace.trace_id}")
+    print(f"file             {payload['file_bytes'] / 1024 / 1024:.2f} MB")
+    print(f"llm calls        {llm_calls}")
+    print(f"cumulative ctx   {gb:.3f} GB   <- what analysis time follows")
+    print(f"parsed in        {parse_seconds:.1f} s")
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="boxdawn", description="Boxdawn waste analyzer")
     sub = parser.add_subparsers(dest="cmd")
@@ -396,11 +455,28 @@ def main() -> None:
     s.add_argument("--pace", type=float, default=2.0, metavar="SEC",
                    help="seconds between submissions (default: 2)")
 
+    e = sub.add_parser(
+        "estimate",
+        help="report what makes a trace expensive to analyze",
+        description=(
+            "Prints the numbers that predict analysis cost and stops there. "
+            "Analysis time follows cumulative context, not file size: a "
+            "5.24 MB trace finished in 40 s while a 3.39 MB one took 85 s. "
+            "No verdict is given, because how big is too big depends on the "
+            "ceiling of whoever is asking."
+        ),
+    )
+    e.add_argument("trace_file", help="path to a trace file")
+    e.add_argument("--json", dest="json_out_stdout", action="store_true",
+                   help="print JSON to stdout instead of a summary")
+
     args = parser.parse_args()
     if args.cmd == "analyze":
         sys.exit(_analyze(args))
     elif args.cmd == "submit":
         sys.exit(_submit(args))
+    elif args.cmd == "estimate":
+        sys.exit(_estimate(args))
     else:
         parser.print_help()
         sys.exit(1)
