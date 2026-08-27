@@ -302,10 +302,11 @@ The analyzer in this repo is the deterministic core. [boxdawn.com](https://boxda
 - **Accounts.** Password or email link.
 - **Measurements kept over time.** A signed-in upload records derived numbers — counts, sizes, costs, and salted hashes of targets. The trace file itself is still not kept.
 - **Dashboard.** Waste rate shown against the absolute bytes and dollars behind it, which detector produced them, and how many runs the number is made of. A time series appears once there are enough hourly buckets to be one; below that the page shows the measurement rather than drawing a line through a single point.
+- **Project keys.** Issue and revoke keys for a project, so a trace can be sent without a browser.
 
 **Built here, not usable yet:**
 
-- **`boxdawn submit`** sends finished sessions on a preregistered close rule (see [`docs/SESSION_CLOSE_RULE_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/SESSION_CLOSE_RULE_PREREG.md)). It needs a project key, and the screen that issues keys is still being built.
+- **`boxdawn submit`** sends finished sessions on a preregistered close rule (see [`docs/SESSION_CLOSE_RULE_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/SESSION_CLOSE_RULE_PREREG.md)). Key issuance is live now and the command has been run against it end to end, but it landed after `0.5.3` — the version on PyPI does not have it.
 
 **Not built:**
 
@@ -387,7 +388,7 @@ boxdawn submit              # send it
 
 Finds sessions that have gone quiet long enough to call finished, uploads each once, and never sends the same session twice. What counts as "finished" is preregistered rather than chosen here: [`docs/SESSION_CLOSE_RULE_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/SESSION_CLOSE_RULE_PREREG.md).
 
-Needs a project key in `BOXDAWN_API_KEY` or `~/.clew/credentials.yaml`. **Key issuance is not shipped yet**, so this command has nothing to authenticate with today — `--dry-run` works without a key and is the useful half until then.
+Needs a project key in `BOXDAWN_API_KEY` or `~/.clew/credentials.yaml`; sign in at [boxdawn.com](https://boxdawn.com) to issue one. **This command is not in a released version yet** — it landed after `0.5.3`, so `pip install boxdawn` does not have it. `--dry-run` needs no key.
 
 Start with `--dry-run`. A first run is a backfill of every session on the machine, not a trickle: 81 of 84 on the machine the rule was measured on.
 
