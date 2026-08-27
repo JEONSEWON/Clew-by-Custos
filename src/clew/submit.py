@@ -164,6 +164,70 @@ def read_key() -> str | None:
     return str(key).strip() if key else None
 
 
+def key_problem() -> str:
+    """Why there is no key, in the words of the thing that is actually wrong.
+
+    `read_key` returns None for five different reasons and the old message named
+    one of them, so a user whose file existed and whose key was in it was told
+    to write the file they had already written. The case that produced this:
+    `api_key:bdk_...` with no space after the colon. YAML requires the space, so
+    the line parses as one plain string rather than a mapping, `read_key`'s
+    isinstance guard turns that into None, and nothing anywhere says the word
+    "space". Nobody suspects whitespace.
+    """
+    if CREDENTIALS_PATH.exists():
+        try:
+            raw = CREDENTIALS_PATH.read_text(encoding="utf-8")
+        except OSError as exc:
+            return f"cannot read {CREDENTIALS_PATH} ({type(exc).__name__})"
+        try:
+            import yaml
+        except ImportError:
+            return f"{CREDENTIALS_PATH} exists but pyyaml is not installed"
+        try:
+            loaded = yaml.safe_load(raw)
+        except Exception:  # noqa: BLE001 - any parse failure, same advice
+            return f"{CREDENTIALS_PATH} is not valid YAML"
+        if not isinstance(loaded, dict):
+            # Two different mistakes land here and they deserve different
+            # sentences: a diagnosis that names the wrong cause still costs the
+            # reader a guess, even when the remedy shown happens to be right.
+            import re
+            if re.search(r"^\s*api_key:\S", raw, re.M):
+                # The whitespace case, named as whitespace. Nobody suspects it.
+                return (f"{CREDENTIALS_PATH} did not parse as `key: value` — YAML "
+                        f"needs a space after the colon, as in "
+                        f"`api_key: {KEY_PREFIX}…`")
+            return (f"{CREDENTIALS_PATH} has no `api_key:` line — the file needs "
+                    f"`api_key: {KEY_PREFIX}…`, not the key on its own")
+        if "api_key" not in loaded:
+            return f"{CREDENTIALS_PATH} has no `api_key` entry"
+        if not str(loaded.get("api_key") or "").strip():
+            return f"`api_key` in {CREDENTIALS_PATH} is empty"
+        return f"`api_key` in {CREDENTIALS_PATH} could not be read"
+
+    return f"set {KEY_ENV} or write `api_key: {KEY_PREFIX}…` to {CREDENTIALS_PATH}"
+
+
+def key_source() -> str | None:
+    """Which source a key would come from, when both could supply one.
+
+    Only speaks up for the ambiguous case, because that is the one that costs an
+    afternoon: the environment wins over the file (`read_key`), so a stale
+    variable silently outranks a freshly written credential — and deleting the
+    variable does not reach a process that is already running, which includes
+    the shell the command is typed into. Both symptoms are a submission
+    rejected with a key the user believes they replaced.
+    """
+    if not (os.environ.get(KEY_ENV) or "").strip():
+        return None
+    if not CREDENTIALS_PATH.exists():
+        return None
+    return (f"using {KEY_ENV} from the environment; {CREDENTIALS_PATH} also has "
+            f"a key and is not being read. A variable removed after this shell "
+            f"started is still set inside it")
+
+
 # ── submission ─────────────────────────────────────────────────────────────
 
 def _multipart(path: Path) -> tuple[str, bytes]:
@@ -401,8 +465,11 @@ def run(root: Path = DEFAULT_ROOT,
 
     key = read_key()
     if not key:
-        out(f"no key: set {KEY_ENV} or write api_key to {CREDENTIALS_PATH}")
+        out(f"no key: {key_problem()}")
         return 2
+    ambiguity = key_source()
+    if ambiguity:
+        out(f"note: {ambiguity}")
     if not key.startswith(KEY_PREFIX):
         # Refuse early rather than sending someone's session token to a server
         # that will reject it anyway.
