@@ -502,23 +502,45 @@ def get_pricing(model_key: str | None = None) -> ModelPricing:
 
     Never raises. Callers get a best-effort pricing rather than a crash.
     """
+    pricing, matched = resolve_pricing(model_key)
+    if not matched and model_key is not None:
+        warnings.warn(
+            f"pricing: unknown model {model_key!r}; using default "
+            f"{DEFAULT_MODEL_KEY!r} (Sonnet 4.5 rates)",
+            stacklevel=2,
+        )
+    return pricing
+
+
+def resolve_pricing(model_key: str | None) -> tuple[ModelPricing, bool]:
+    """Same resolution as `get_pricing`, and whether it found anything.
+
+    Two callers need different things from one lookup. A human at a terminal
+    wants the warning; a report needs to record that a rate was substituted, in
+    a field a downstream consumer can read -- the warning goes to stderr, where
+    the storage layer and the dashboard never see it. Measured 2026-08-27: 25 of
+    74 stored runs were priced at the default and labeled `accurate`, and
+    nothing in the report said so.
+
+    `matched` is False when the default was substituted, including when
+    `model_key` is None -- an absent model is not a priced one.
+
+    The default is Sonnet 4.5, which is *cheaper* than the Opus tier it most
+    often stands in for, so a substituted rate understates cost rather than
+    inflating it. Those 25 runs were priced at 60% of the correct rate.
+    """
     if model_key is None:
-        return PRICING[DEFAULT_MODEL_KEY]
+        return PRICING[DEFAULT_MODEL_KEY], False
 
     normalized = model_key.strip().lower()
 
     if normalized in PRICING:
-        return PRICING[normalized]
+        return PRICING[normalized], True
 
     # Longest-prefix alias resolution: ordered tuple ensures gpt-4o-mini
     # matches before gpt-4o.
     for prefix, target_key in _ALIASES:
         if normalized.startswith(prefix):
-            return PRICING[target_key]
+            return PRICING[target_key], True
 
-    warnings.warn(
-        f"pricing: unknown model {model_key!r}; using default "
-        f"{DEFAULT_MODEL_KEY!r} (Sonnet 4.5 rates)",
-        stacklevel=2,
-    )
-    return PRICING[DEFAULT_MODEL_KEY]
+    return PRICING[DEFAULT_MODEL_KEY], False

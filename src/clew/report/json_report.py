@@ -299,6 +299,11 @@ def render_json(
             "total_waste_cost": round(cost_summary.total_waste_cost, 8),
             "waste_ratio": round(cost_summary.waste_ratio, 6),
             "accuracy_flag": cost_summary.accuracy_flag,
+            # Separate from accuracy_flag on purpose: that field answers
+            # "were the token tiers complete", this one answers "was the
+            # rate real". A consumer needs both and they can disagree.
+            "rate_from_table": cost_summary.rate_from_table,
+            "unpriced_models": list(cost_summary.unpriced_models),
             "detector_breakdown": {
                 k: round(v, 8) for k, v in cost_summary.detector_breakdown.items()
             },

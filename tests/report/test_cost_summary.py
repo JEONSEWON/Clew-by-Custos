@@ -171,3 +171,92 @@ def test_json_cost_summary_block_present():
               "waste_ratio", "accuracy_flag", "detector_breakdown"):
         assert k in block, f"missing key {k} in cost_summary block"
     assert block["accuracy_flag"] in ("accurate", "estimated")
+
+
+# ── rate_from_table: was the rate real, as opposed to complete ─────────────
+#
+# `accuracy_flag` answers a different question -- per prereg 5.1, "every call
+# had tier-split tokens" -- and a call can have perfect tiers and a model
+# nobody has priced. These tests pin that the two disagree when they should.
+
+def _tiered_call(model: str, uncached: int) -> dict[str, Any]:
+    return {
+        "span_id": "s1",
+        "model": model,
+        "input_text": "x",
+        "input_tokens": uncached,
+        "input_tokens_uncached": uncached,
+        "input_tokens_cache_read": 0,
+        "input_tokens_cache_write": 0,
+    }
+
+
+def test_an_unpriced_model_is_named_even_though_the_tiers_are_complete():
+    trace = _root_trace("t-unpriced", [_tiered_call("kinetic-0715", 1_000_000)])
+
+    summary = build_cost_summary(trace, _empty_cascade("t-unpriced"), None)
+
+    # The pre-registered flag still says what it has always said.
+    assert summary.accuracy_flag == "accurate"
+    # And the new field says the part the flag never covered.
+    assert summary.rate_from_table is False
+    assert summary.unpriced_models == ("kinetic-0715",)
+
+
+def test_a_priced_model_reports_nothing_substituted():
+    trace = _root_trace("t-priced", [_tiered_call("claude-opus-5", 1_000_000)])
+
+    summary = build_cost_summary(trace, _empty_cascade("t-priced"), None)
+
+    assert summary.rate_from_table is True
+    assert summary.unpriced_models == ()
+
+
+def test_a_substitution_multiplied_by_zero_tokens_is_not_reported():
+    """`<synthetic>` is Claude Code's marker for messages that were not API
+    calls, and it always carries zero tokens. Flagging it would footnote a
+    dollar figure that is in fact exact."""
+    trace = _root_trace("t-synth", [_tiered_call("<synthetic>", 0)])
+
+    summary = build_cost_summary(trace, _empty_cascade("t-synth"), None)
+
+    assert summary.rate_from_table is True
+    assert summary.unpriced_models == ()
+
+
+def test_a_rate_supplied_by_the_trace_is_not_a_substitution():
+    """Nothing was invented -- the number came from the trace, not from us."""
+    trace = _root_trace("t-own-rate", [{
+        "span_id": "s1",
+        "model": "some-model-we-never-heard-of",
+        "input_text": "x",
+        "input_tokens": 1000,
+        "input_cost_rate": 0.000003,
+    }])
+
+    summary = build_cost_summary(trace, _empty_cascade("t-own-rate"), None)
+
+    assert summary.rate_from_table is True
+    assert summary.unpriced_models == ()
+
+
+def test_repeated_calls_on_one_unpriced_model_name_it_once():
+    calls = [_tiered_call("kinetic-0715", 1000) for _ in range(5)]
+    trace = _root_trace("t-dedup", calls)
+
+    summary = build_cost_summary(trace, _empty_cascade("t-dedup"), None)
+
+    assert summary.unpriced_models == ("kinetic-0715",)
+
+
+def test_the_json_report_carries_both_signals():
+    """A consumer that reads only `accuracy_flag` cannot tell the difference,
+    which is how a $1,703 figure priced at a guessed rate got labeled
+    `accurate` on 2026-08-27."""
+    trace = _root_trace("t-json", [_tiered_call("kinetic-0715", 1_000_000)])
+    report = json.loads(render_json(trace, _empty_cascade("t-json"), []))
+
+    cost = report["cost_summary"]
+    assert cost["accuracy_flag"] == "accurate"
+    assert cost["rate_from_table"] is False
+    assert cost["unpriced_models"] == ["kinetic-0715"]
