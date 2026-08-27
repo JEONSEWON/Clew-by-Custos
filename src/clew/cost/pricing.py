@@ -80,6 +80,48 @@ PRICING: dict[str, ModelPricing] = {
         cache_write_1h_per_mtok=10.0,
         output_per_mtok=25.0,
     ),
+    "opus-5": ModelPricing(
+        # Source: https://platform.claude.com/docs/en/about-claude/pricing
+        # Verified: 2026-08-27
+        # Rates are identical to Opus 4.7 and 4.8; the entry is explicit anyway
+        # because `claude-opus-5` does not match the `claude-opus-4` alias
+        # prefix, so without it every Opus 5 trace priced as Sonnet 4.5 --
+        # measured at 25 of 74 stored runs on 2026-08-27, each carrying an
+        # `accuracy_flag` of "accurate" while the rate was a fallback.
+        name="claude-opus-5",
+        base_input_per_mtok=5.0,
+        cache_read_per_mtok=0.50,
+        cache_write_5m_per_mtok=6.25,
+        cache_write_1h_per_mtok=10.0,
+        output_per_mtok=25.0,
+    ),
+    "sonnet-5": ModelPricing(
+        # Source: https://platform.claude.com/docs/en/about-claude/pricing
+        # Verified: 2026-08-27
+        # Cheaper than Sonnet 4.6, not equal to it: $2 base against $3. The
+        # source page notes the $2/$10 launch pricing became the standard
+        # price and the scheduled rise to $3/$15 will not happen, so this is
+        # not an introductory rate with an expiry to track.
+        name="claude-sonnet-5",
+        base_input_per_mtok=2.0,
+        cache_read_per_mtok=0.20,
+        cache_write_5m_per_mtok=2.50,
+        cache_write_1h_per_mtok=4.0,
+        output_per_mtok=10.0,
+    ),
+    "fable-5": ModelPricing(
+        # Source: https://platform.claude.com/docs/en/about-claude/pricing
+        # Verified: 2026-08-27
+        # The entry that matters most for a missing-model fallback: at $10
+        # base against the $3 default, an unpriced Fable 5 trace would report
+        # roughly a third of its real input cost.
+        name="claude-fable-5",
+        base_input_per_mtok=10.0,
+        cache_read_per_mtok=1.0,
+        cache_write_5m_per_mtok=12.50,
+        cache_write_1h_per_mtok=20.0,
+        output_per_mtok=50.0,
+    ),
     "haiku-4.5": ModelPricing(
         # Source: https://platform.claude.com/docs/en/docs/about-claude/pricing
         # Verified: 2026-08-05
@@ -351,6 +393,15 @@ _ALIASES: tuple[tuple[str, str], ...] = (
     ("claude-3.5-sonnet", "sonnet-4.5"),
     ("claude-sonnet-4-6", "sonnet-4.6"),
     ("claude-sonnet-4.6", "sonnet-4.6"),
+    ("claude-opus-5", "opus-5"),
+    ("claude-fable-5", "fable-5"),
+    ("claude-sonnet-5", "sonnet-5"),
+    # Opus 4.8 already resolved through the `claude-opus-4` prefix below, and
+    # by luck to the right number -- 4.7 and 4.8 are priced identically. The
+    # explicit alias removes the luck: if the two ever diverge, this line is
+    # what has to change, rather than a fallback quietly staying plausible.
+    ("claude-opus-4-8", "opus-4.7"),
+    ("claude-opus-4.8", "opus-4.7"),
     ("claude-opus-4-7", "opus-4.7"),
     ("claude-opus-4.7", "opus-4.7"),
     # Exgentic canonical `claude-opus-4-5`: Opus 4.5 rate ($5/$25 per
@@ -451,23 +502,45 @@ def get_pricing(model_key: str | None = None) -> ModelPricing:
 
     Never raises. Callers get a best-effort pricing rather than a crash.
     """
+    pricing, matched = resolve_pricing(model_key)
+    if not matched and model_key is not None:
+        warnings.warn(
+            f"pricing: unknown model {model_key!r}; using default "
+            f"{DEFAULT_MODEL_KEY!r} (Sonnet 4.5 rates)",
+            stacklevel=2,
+        )
+    return pricing
+
+
+def resolve_pricing(model_key: str | None) -> tuple[ModelPricing, bool]:
+    """Same resolution as `get_pricing`, and whether it found anything.
+
+    Two callers need different things from one lookup. A human at a terminal
+    wants the warning; a report needs to record that a rate was substituted, in
+    a field a downstream consumer can read -- the warning goes to stderr, where
+    the storage layer and the dashboard never see it. Measured 2026-08-27: 25 of
+    74 stored runs were priced at the default and labeled `accurate`, and
+    nothing in the report said so.
+
+    `matched` is False when the default was substituted, including when
+    `model_key` is None -- an absent model is not a priced one.
+
+    The default is Sonnet 4.5, which is *cheaper* than the Opus tier it most
+    often stands in for, so a substituted rate understates cost rather than
+    inflating it. Those 25 runs were priced at 60% of the correct rate.
+    """
     if model_key is None:
-        return PRICING[DEFAULT_MODEL_KEY]
+        return PRICING[DEFAULT_MODEL_KEY], False
 
     normalized = model_key.strip().lower()
 
     if normalized in PRICING:
-        return PRICING[normalized]
+        return PRICING[normalized], True
 
     # Longest-prefix alias resolution: ordered tuple ensures gpt-4o-mini
     # matches before gpt-4o.
     for prefix, target_key in _ALIASES:
         if normalized.startswith(prefix):
-            return PRICING[target_key]
+            return PRICING[target_key], True
 
-    warnings.warn(
-        f"pricing: unknown model {model_key!r}; using default "
-        f"{DEFAULT_MODEL_KEY!r} (Sonnet 4.5 rates)",
-        stacklevel=2,
-    )
-    return PRICING[DEFAULT_MODEL_KEY]
+    return PRICING[DEFAULT_MODEL_KEY], False

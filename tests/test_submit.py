@@ -337,6 +337,175 @@ def test_a_body_that_cannot_be_read_is_not_a_crash(tmp_path):
     assert submit._failure_detail(Unreadable()) == {}
 
 
+# ── accepted-but-unfinished (background analysis) ──────────────────────────
+#
+# The server stops holding a connection open for heavy traces, because analysis
+# time follows cumulative context and that has no cap: a ceiling that fits the
+# traces on one machine refuses the traces on another. What arrives instead is
+# a ticket, and these tests pin the two things that makes safe rather than just
+# asynchronous -- the ticket is on disk before anyone waits on it, and a
+# ticket already in the ledger is never sent a second time.
+
+def _status_replies(monkeypatch, replies):
+    """Answer poll_status's GETs from a list, one per call."""
+    calls = []
+
+    class _Response:
+        def __init__(self, body):
+            self._body = json.dumps(body).encode("utf-8")
+
+        def read(self):
+            return self._body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(request, timeout=None, context=None):
+        calls.append(request.full_url)
+        return _Response(replies[min(len(calls) - 1, len(replies) - 1)])
+
+    monkeypatch.setattr(submit.urllib.request, "urlopen", fake_urlopen)
+    return calls
+
+
+def test_an_accepted_call_is_not_reported_as_stored(tmp_path, monkeypatch):
+    f = _session(tmp_path / "a.jsonl", NOW - timedelta(hours=9))
+    monkeypatch.setenv(submit.KEY_ENV, "bdk_test")
+    ledger_path = tmp_path / "l.json"
+
+    monkeypatch.setattr(submit, "submit_file",
+                        lambda *a, **k: {"ok": True, "pending": True, "call_id": "fc-1"})
+    monkeypatch.setattr(submit, "poll_status",
+                        lambda *a, **k: {"ok": True, "call_id": "fc-1",
+                                         "trace_id": "t", "stored": True, "reason": "ok"})
+
+    code = submit.run(root=tmp_path, now=NOW, pace_seconds=0,
+                      ledger_path=ledger_path, out=lambda _: None)
+
+    assert code == 0
+    entry = submit.load_ledger(ledger_path)[str(f)]
+    assert entry["stored"] is True
+    # The ticket is spent; leaving `pending` behind would make the next run
+    # poll a call whose answer is already recorded.
+    assert "pending" not in entry
+
+
+def test_the_ticket_is_on_disk_before_the_wait(tmp_path, monkeypatch):
+    f = _session(tmp_path / "a.jsonl", NOW - timedelta(hours=9))
+    monkeypatch.setenv(submit.KEY_ENV, "bdk_test")
+    ledger_path = tmp_path / "l.json"
+    seen = {}
+
+    monkeypatch.setattr(submit, "submit_file",
+                        lambda *a, **k: {"ok": True, "pending": True, "call_id": "fc-1"})
+
+    def fake_poll(call_id, endpoint=None, interval=5.0):
+        # An interruption here must be recoverable. If the ledger were written
+        # only after the answer, the next run would resend a trace the server
+        # already has -- and if the file had grown, the payload hash would
+        # differ and the database's duplicate guard would not catch it.
+        seen["ledger"] = submit.load_ledger(ledger_path)
+        return {"ok": True, "call_id": call_id, "stored": True, "reason": "ok"}
+
+    monkeypatch.setattr(submit, "poll_status", fake_poll)
+    submit.run(root=tmp_path, now=NOW, pace_seconds=0,
+               ledger_path=ledger_path, out=lambda _: None)
+
+    assert seen["ledger"][str(f)]["call_id"] == "fc-1"
+    assert seen["ledger"][str(f)]["pending"] is True
+
+
+def test_a_pending_entry_is_never_resent(tmp_path):
+    f = _session(tmp_path / "a.jsonl", NOW - timedelta(hours=9))
+    ledger = {str(f): {"ok": True, "pending": True, "call_id": "fc-1"}}
+
+    # The server has it and is working on it. Sending it again buys a second
+    # analysis of the same bytes.
+    assert submit.pending(tmp_path, NOW, ledger) == []
+
+
+def test_poll_waits_while_the_answer_is_not_ready(monkeypatch):
+    calls = _status_replies(monkeypatch, [
+        {"done": False},
+        {"done": False},
+        {"done": True, "ok": True, "trace_id": "t",
+         "ingest": {"stored": True, "reason": "ok"}},
+    ])
+    slept = []
+
+    result = submit.poll_status("fc-1", interval=0.0, sleep=slept.append)
+
+    assert result["stored"] is True
+    assert result["trace_id"] == "t"
+    assert len(calls) == 3 and len(slept) == 2
+    assert calls[0].endswith("/status/fc-1")
+
+
+def test_a_timed_out_analysis_keeps_its_name_and_error_id(monkeypatch):
+    _status_replies(monkeypatch, [
+        {"done": True, "ok": False, "status": 504,
+         "detail": {"error": "analysis_timeout", "error_id": "deadbeef",
+                    "limit_seconds": 3600}},
+    ])
+
+    result = submit.poll_status("fc-1", interval=0.0, sleep=lambda _: None)
+
+    # `http_504` would say a request failed. This says the analysis did not
+    # finish, which is the thing a reader can act on.
+    assert result == {"ok": False, "reason": "analysis_timeout",
+                      "call_id": "fc-1", "error_id": "deadbeef"}
+
+
+def test_a_dropped_packet_does_not_become_a_failed_run(monkeypatch):
+    """A stored run reported as a failure is worse than a slow poll."""
+    state = {"n": 0}
+
+    def flaky(request, timeout=None, context=None):
+        state["n"] += 1
+        if state["n"] == 1:
+            raise submit.urllib.error.URLError("reset")
+
+        class _R:
+            def read(self):
+                return json.dumps({"done": True, "ok": True,
+                                   "ingest": {"stored": True, "reason": "ok"}}).encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        return _R()
+
+    monkeypatch.setattr(submit.urllib.request, "urlopen", flaky)
+    result = submit.poll_status("fc-1", interval=0.0, sleep=lambda _: None)
+
+    assert result["stored"] is True
+
+
+def test_an_interrupted_poll_is_finished_by_the_next_run(tmp_path, monkeypatch):
+    f = _session(tmp_path / "a.jsonl", NOW - timedelta(hours=9))
+    ledger_path = tmp_path / "l.json"
+    submit.save_ledger({str(f): {"ok": True, "pending": True, "call_id": "fc-9"}},
+                       ledger_path)
+    monkeypatch.setenv(submit.KEY_ENV, "bdk_test")
+    monkeypatch.setattr(submit, "submit_file",
+                        lambda *a, **k: pytest.fail("nothing new should be sent"))
+    monkeypatch.setattr(submit, "poll_status",
+                        lambda *a, **k: {"ok": True, "call_id": "fc-9",
+                                         "stored": True, "reason": "ok"})
+
+    code = submit.run(root=tmp_path, now=NOW, pace_seconds=0,
+                      ledger_path=ledger_path, out=lambda _: None)
+
+    assert code == 0
+    entry = submit.load_ledger(ledger_path)[str(f)]
+    assert entry["stored"] is True and "pending" not in entry
+
 # ── why there is no key ───────────────────────────────────────────────────
 #
 # `read_key` returns None for five different reasons and the message named one
