@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**Waste-axis observability for AI agents.**
+**AI agent observability, on the axis that shows up on your bill.**
 
 [![PyPI](https://img.shields.io/pypi/v/boxdawn)](https://pypi.org/project/boxdawn/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -12,7 +12,7 @@
 
 </div>
 
-Boxdawn observes what your agent **repeats, resends, re-reads, and re-creates** — the waste axis that Langfuse, Arize, LangSmith, Braintrust, and Helicone do not measure. Four deterministic detectors + an opt-in LLM-as-judge semantic check, applied to trace files your agent already writes. Zero instrumentation. Pre-registered, frozen parameters, honesty preface on every claim.
+Boxdawn watches what your agents do and finds what they **paid for twice** — the context resent every turn, the file read again, the tool call that returned an answer you already had. Four deterministic detectors plus an opt-in semantic check, run against the trace files your agents already write. **Monitor, detect, alert, then fix.** Measured across 16,864 sessions in three public corpora.
 
 ```bash
 pip install "boxdawn[detect]"
@@ -30,7 +30,7 @@ boxdawn analyze <trace>.jsonl --out report.md
 - **Opt-in LLM-as-Judge semantic duplicate** — Claude Haiku 4.5 judges chunk pairs the deterministic gate cannot separate (paraphrased re-sends, non-byte-identical tool responses). Hard cost cap per session.
 - **Zero-instrumentation ingest** — reads Claude Code JSONL, OpenTelemetry SDK JSON, OpenInference (Phoenix / TRAIL), Toolathlon trajectories, RedundancyBench, and Exgentic Agent LLM Traces v2. No SDK, no code change in your agent.
 - **Cost attribution with source-URL-pinned pricing** — per-model rates for Sonnet 4.5 / 4.6, Opus 4.7, Haiku 4.5, GPT-4o family, GPT-5 / 5.2 / mini / o-series, Gemini 1.5 / 2.5 / 3-pro-preview, Grok 4 / fast / code-fast, DeepSeek v3.2, GLM 4.6, Kimi K2-0905 / K2.5, MiniMax M2, Qwen 3 Coder. Every entry carries `Source: URL (verified YYYY-MM-DD)`.
-- **Anti-hype rigor** — pre-registration on every detector change, frozen parameters enforced as failing tests, published corrections on retracted numbers, honesty preface on p-hacking risk. See §How we keep ourselves honest.
+- **Reproducible by anyone** — every number we publish names its corpus and the date it was measured, and the report on our product page comes from a public trace you can run yourself. See §How we keep ourselves honest.
 
 **Boxdawn runs as a service and as a library.** [boxdawn.com](https://boxdawn.com) runs these same detectors in a browser — upload without an account, or sign in and keep measurements per project over time. This repo is the analyzer underneath it, and it runs offline. See §Roadmap for what is running today and what is next.
 
@@ -83,9 +83,11 @@ boxdawn analyze grok-4_2.jsonl --out report.md
 
 ## Why the waste axis
 
-Observability platforms (Langfuse, Arize, LangSmith, Braintrust, Helicone) capture, store, and visualize traces. None of them measure the waste axis: how much of the input bill is context you already sent, files you already read, entities you already created, or tool calls that got the exact same answer as before. That is where Boxdawn starts, and it is complementary to the trace layer — a Langfuse trace fed into Boxdawn produces a waste report Langfuse itself does not compute.
+Agents re-send the whole conversation every turn, re-read files they already have, and call tools that return an answer they already got. On the corpora measured here, most of the input bill is that: **0.92 to 0.99 of input bytes are content the run had already paid for once.** It is the largest line item nobody itemises.
 
-Scope is deterministic-first: four deterministic detectors used in the waste-rate metric (`repeat` / `requery`, `context_resend`, `redundant_read`, `duplicate_creation`), the `pingpong` code path (implemented but not yet observed on real traces), and one opt-in LLM-as-judge check for semantic duplicates. Each detector is pre-registered with a frozen spec before results are measured.
+Boxdawn itemises it. It sits on top of the trace layer rather than replacing it — feed it a trace your existing tools already collect, from Langfuse, Arize, LangSmith, Phoenix or a raw Claude Code session, and get back a bill breakdown they do not compute.
+
+Detection is deterministic first: four detectors carry the waste-rate metric (`repeat` / `requery`, `context_resend`, `redundant_read`, `duplicate_creation`), with an opt-in LLM-as-judge pass for the semantic duplicates a byte comparison cannot catch. Each one is specified and frozen before its results are measured, so the numbers below are predictions that held rather than findings that were tuned.
 
 This repo is the analyzer you install with pip. The service at [boxdawn.com](https://boxdawn.com) — browser upload, accounts, stored measurements, dashboard — runs this repo's detectors and waste-rate metric from a separate repo. §Roadmap says which links of the chain run today.
 
@@ -336,7 +338,20 @@ version on PyPI does not have the command yet.
 
 ---
 
-## What Boxdawn doesn't do
+## How we keep ourselves honest
+
+- **Pre-registration.** Every detection change is committed *before* results are run; predictions and stop-conditions are written first and not edited after.
+- **Frozen parameters.** `φ`, `N`, and the embedding model are pinned to a git tag; changing them requires a documented recalibration, never a post-hoc nudge.
+- **Published corrections.** Small-sample numbers that did not survive larger samples were retracted in the open (Toolathlon `1,343 → 1,195`, `4,251 → 4,249`; `"90% CI"` label corrected to `"95% two-sided"`; Corpus B `union_wr_cost 0.9189 → 0.9202` per [WASTE_RATE_METRIC_PREREG §14](https://github.com/boxdawn/boxdawn/blob/main/docs/WASTE_RATE_METRIC_PREREG.md#14-amendment--union_wr_cost-per-span-attribution-2026-08-15)). See [CHANGELOG.md](CHANGELOG.md).
+- **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues no synthetic test caught: session mid-run abort (3 / 28 crashes, recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false positives across 269 error responses, gated at the report layer). See [`docs/CC_TRANSCRIPT.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/CC_TRANSCRIPT.md) §29.
+
+700+ tests run on every pull request, with the frozen parameters enforced as failing ones. The count is given as a floor rather than a figure: this file is the PyPI page, it is published at release and not edited between releases, and an exact number is wrong the day after someone adds a test. The badge above reports the current run.
+
+---
+
+## Scope, stated plainly
+
+The list below is what a serious evaluation would surface anyway, so it is here rather than in a footnote. Nothing in it is news to us.
 
 - **No fixes**, only diagnosis. The output is a report you read. Prompt changes, context caching, and tool routing are yours to make.
 - **No real-time interception.** The `args-only` real-time gate was retired at precision **0.6333** — 19 of 30 hand-annotated pairs, sampled from a pool of 3,432, measured 2026-07-25 against a threshold of 0.70 frozen beforehand. Below that bar neither auto-block nor a confirm-prompt is defensible, so neither shipped. Boxdawn reads finished trace files, after the run.
@@ -347,17 +362,6 @@ version on PyPI does not have the command yet.
 - **Toolathlon numbers are benchmark trajectories, not production sessions.** Scale evidence, not user data.
 - **459 same-argument `emails-send_email` pairs on Toolathlon are not proven duplicates.** The tool does not return an entity ID, so `Duplicate creation check` cannot resolve them. They sit in the 3,197 `no_id` blind spot, surfaced but not claimed as a finding.
 - **Semantic embedding does not carry the precision.** Same-topic real-world outputs do not cleanly separate in embedding space; the sha256 structural gate carries the precision result. We say so rather than imply the model is doing the work.
-
----
-
-## How we keep ourselves honest
-
-- **Pre-registration.** Every detection change is committed *before* results are run; predictions and stop-conditions are written first and not edited after.
-- **Frozen parameters.** `φ`, `N`, and the embedding model are pinned to a git tag; changing them requires a documented recalibration, never a post-hoc nudge.
-- **Published corrections.** Small-sample numbers that did not survive larger samples were retracted in the open (Toolathlon `1,343 → 1,195`, `4,251 → 4,249`; `"90% CI"` label corrected to `"95% two-sided"`; Corpus B `union_wr_cost 0.9189 → 0.9202` per [WASTE_RATE_METRIC_PREREG §14](https://github.com/boxdawn/boxdawn/blob/main/docs/WASTE_RATE_METRIC_PREREG.md#14-amendment--union_wr_cost-per-span-attribution-2026-08-15)). See [CHANGELOG.md](CHANGELOG.md).
-- **Fixes driven by real data.** The trace-commons scan surfaced two adapter issues no synthetic test caught: session mid-run abort (3 / 28 crashes, recovered with `skip + warn`) and Anthropic `is_error: true` tool_result being sha256-identical (2 false positives across 269 error responses, gated at the report layer). See [`docs/CC_TRANSCRIPT.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/CC_TRANSCRIPT.md) §29.
-
-700+ tests run on every pull request, with the frozen parameters enforced as failing ones. The count is given as a floor rather than a figure: this file is the PyPI page, it is published at release and not edited between releases, and an exact number is wrong the day after someone adds a test. The badge above reports the current run.
 
 ---
 
