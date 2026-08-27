@@ -35,12 +35,25 @@ def _session(path, last: datetime, lines: int = 3):
 
 # ── R1: closed on inactivity ───────────────────────────────────────────────
 
+
+def _http_error(code: int, body: dict):
+    class _Exc:
+        def __init__(self):
+            self.code = code
+            self._body = json.dumps(body).encode("utf-8")
+
+        def read(self):
+            return self._body
+
+    return _Exc()
+
 @pytest.mark.parametrize("idle_min, closed", [
     (239, False),
     (240, True),    # the boundary is inclusive: "at least N older"
     (241, True),
     (60, False),    # the rejected threshold — prereg §4, 29% of sessions
 ])
+
 def test_close_boundary(tmp_path, idle_min, closed):
     f = _session(tmp_path / "s.jsonl", NOW - timedelta(minutes=idle_min))
     assert submit.is_closed(f, NOW) is closed
@@ -95,6 +108,24 @@ def test_pending_skips_what_the_ledger_has(tmp_path):
 
     assert set(submit.pending(tmp_path, NOW, {})) == {old, other}
     assert submit.pending(tmp_path, NOW, {str(old): {"stored": True}}) == [other]
+
+
+def test_a_failed_attempt_is_retried(tmp_path):
+    f = _session(tmp_path / "failed.jsonl", NOW - timedelta(hours=9))
+
+    # http_500 created no run row, so R2 has nothing to protect and the
+    # session is lost forever if the ledger counts this as sent.
+    ledger = {str(f): {"ok": False, "reason": "http_500"}}
+    assert submit.pending(tmp_path, NOW, ledger) == [f]
+
+
+def test_a_server_that_declined_to_store_is_not_retried(tmp_path):
+    f = _session(tmp_path / "declined.jsonl", NOW - timedelta(hours=9))
+
+    # The server received it, analyzed it, and decided. Re-running a paid
+    # analysis does not change that decision.
+    ledger = {str(f): {"ok": True, "stored": False, "reason": "ingest disabled"}}
+    assert submit.pending(tmp_path, NOW, ledger) == []
 
 
 def test_a_grown_file_is_still_not_resent(tmp_path):
@@ -281,3 +312,26 @@ def test_multipart_carries_the_bytes_and_names_the_field(tmp_path):
     assert f.read_bytes() in body
     assert body.startswith(f"--{boundary}".encode())
     assert body.endswith(f"--{boundary}--\r\n".encode())
+
+
+def test_a_failure_records_the_servers_error_id(tmp_path):
+    exc = _http_error(422, {"detail": {"error_id": "abc12345", "stderr": "secret trace text"}})
+    assert submit._failure_detail(exc) == {"error_id": "abc12345"}
+
+
+def test_a_failure_never_copies_the_analyzer_stderr(tmp_path):
+    exc = _http_error(422, {"detail": {"error_id": "abc12345", "stderr": "secret trace text"}})
+    assert "secret trace text" not in json.dumps(submit._failure_detail(exc))
+
+
+def test_a_string_detail_is_kept_as_the_servers_own_sentence(tmp_path):
+    exc = _http_error(500, {"detail": "analyzer did not produce a JSON report"})
+    assert submit._failure_detail(exc) == {"detail": "analyzer did not produce a JSON report"}
+
+
+def test_a_body_that_cannot_be_read_is_not_a_crash(tmp_path):
+    class Unreadable:
+        def read(self):
+            raise OSError("connection reset")
+
+    assert submit._failure_detail(Unreadable()) == {}

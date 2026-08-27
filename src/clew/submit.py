@@ -119,11 +119,29 @@ def save_ledger(ledger: dict, path: Path = LEDGER_PATH) -> None:
     tmp.replace(path)
 
 
+def _unsent(entry: object) -> bool:
+    """True when nothing of this file ever reached the server.
+
+    R2 counts submissions, and what it is for is that one `trace_id` never
+    becomes two `run` rows. An entry recording `ok: False` is a request that
+    failed in transport or came back an HTTP error: no row was created, so
+    sending it again cannot double count. Treating that as sent loses the
+    session for good, because nothing ever revisits a file the ledger names.
+
+    Anything else is left alone -- including `ok: True, stored: False`, where
+    the server did receive and analyze the trace and then declined to store
+    it. That was its decision, not a lost request, and re-running a paid
+    analysis will not change it. Ledger entries written before `ok` existed
+    are also left alone.
+    """
+    return entry is None or (isinstance(entry, dict) and entry.get("ok") is False)
+
+
 def pending(root: Path, now: datetime, ledger: dict,
             close_after: timedelta = CLOSE_AFTER) -> list[Path]:
     """Files that are closed (R1) and not already sent (R2)."""
     return [p for p in discover(root)
-            if str(p) not in ledger and is_closed(p, now, close_after)]
+            if _unsent(ledger.get(str(p))) and is_closed(p, now, close_after)]
 
 
 # ── credentials ────────────────────────────────────────────────────────────
@@ -159,6 +177,28 @@ def _multipart(path: Path) -> tuple[str, bytes]:
     return boundary, head + path.read_bytes() + tail
 
 
+def _failure_detail(exc: urllib.error.HTTPError) -> dict:
+    """What the server said about its own failure, and nothing more.
+
+    The server puts an `error_id` in the body precisely so a user report can be
+    matched to a line in its log; recording only `http_500` throws away the one
+    thing that makes the failure diagnosable. A `detail` that is a plain string
+    is the server's own sentence and is kept, truncated. A `detail` that is an
+    object may carry the analyzer's stderr, so only its `error_id` is taken --
+    a local ledger is not the place to keep a copy of trace contents.
+    """
+    try:
+        body = json.loads(exc.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001 - a body we cannot read is not a crash
+        return {}
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(detail, dict) and detail.get("error_id"):
+        return {"error_id": str(detail["error_id"])[:64]}
+    if isinstance(detail, str):
+        return {"detail": detail[:200]}
+    return {}
+
+
 def submit_file(path: Path, key: str, endpoint: str = DEFAULT_ENDPOINT,
                 timeout: int = 600) -> dict:
     """Upload one trace. Returns what the ledger should record about it.
@@ -181,7 +221,7 @@ def submit_file(path: Path, key: str, endpoint: str = DEFAULT_ENDPOINT,
                                     context=ssl.create_default_context()) as response:
             report = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        return {"ok": False, "reason": f"http_{exc.code}"}
+        return {"ok": False, "reason": f"http_{exc.code}", **_failure_detail(exc)}
     except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
         # The key is in the request headers. Record the kind of failure, never
         # the request.
