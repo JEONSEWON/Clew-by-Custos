@@ -26,6 +26,11 @@ keywords = [
     "deterministic",
 ]
 requires-python = ">=3.12"
+# The MIT classifier was present and the License metadata field was empty, so
+# tools that read the field rather than the classifiers saw no license at all.
+# Table form rather than a PEP 639 SPDX string because the build pin below is
+# setuptools<75 and the string form needs 77 or newer.
+license = { text = "MIT" }
 dependencies = [
     "pydantic>=2.6",
     "pyyaml>=6.0",
@@ -76,7 +81,13 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/boxdawn/boxdawn"
+# Homepage points at the product, not at this repository. PyPI renders these
+# links on the project page and piwheels mirrors the same metadata, so between
+# them they are the highest-authority description of what Boxdawn is -- and
+# with Homepage aimed at GitHub, both were saying "this is a repository" and
+# neither carried a link to the service at all. Repository keeps the code.
+Homepage = "https://boxdawn.com"
+Documentation = "https://boxdawn.com/product"
 Repository = "https://github.com/boxdawn/boxdawn"
 Issues = "https://github.com/boxdawn/boxdawn/issues"
 
