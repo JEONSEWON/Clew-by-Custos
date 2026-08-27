@@ -12,7 +12,11 @@
 
 </div>
 
-Boxdawn watches what your agents do and finds what they **paid for twice** — the context resent every turn, the file read again, the tool call that returned an answer you already had. Four deterministic detectors plus an opt-in semantic check, run against the trace files your agents already write. **Monitor, detect, alert, then fix.** Measured across 16,864 sessions in three public corpora.
+Boxdawn watches what your agents do and finds what they **paid for twice** — the context resent every turn, the file read again, the tool call that returned an answer you already had. Four deterministic detectors plus an opt-in semantic check, run against the trace files your agents already write. **Monitor, detect, alert, then fix** — the detection layer runs today. Measured across 16,864 sessions in three public corpora.
+
+**Try it on one trace** — no install, no account: **[boxdawn.com/analyze](https://boxdawn.com/analyze)**
+
+Or run it on your own machine, offline:
 
 ```bash
 pip install "boxdawn[detect]"
@@ -205,7 +209,7 @@ F1 0.2642 vs the paper's best LLM-as-judge 0.2488, with zero model calls. Recall
 
 Precision 0.826 may be a lower bound on Boxdawn's file-level precision: of the 22 false-positive spans against the human labels, 21 were exact input-and-output repeats that no annotator labeled under any category, and 6 had zero state change in between. We do not claim all 22 are true waste; the label is genuinely ambiguous there.
 
-### trace-commons (28 real Claude Code sessions)
+### trace-commons (28 Claude Code sessions)
 
 Public dataset ([HF: trace-commons/agent-traces](https://huggingface.co/datasets/trace-commons/agent-traces)), full scan on 2026-07-19. **28 / 28** processed, **0 crashes**. **10 / 28** flagged (34 waste spans in the cascade output; 32 after the tool-error gate). Aggregate saving potential across the flagged sessions: **$1.01 to $10.12** (cache-hit lower to cache-miss upper). Per-session range: $0 (no waste) up to $0.64 to $6.40 (one 18-waste-span session).
 
