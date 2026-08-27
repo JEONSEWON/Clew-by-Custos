@@ -196,6 +196,11 @@ def _failure_detail(exc: urllib.error.HTTPError) -> dict:
         return {"error_id": str(detail["error_id"])[:64]}
     if isinstance(detail, str):
         return {"detail": detail[:200]}
+    # The background path refuses with a top-level reason rather than a detail
+    # envelope, and that reason is the useful half: `bad_key` says what to fix
+    # where `http_401` does not.
+    if isinstance(body, dict) and isinstance(body.get("reason"), str):
+        return {"detail": body["reason"][:200]}
     return {}
 
 
@@ -227,6 +232,13 @@ def submit_file(path: Path, key: str, endpoint: str = DEFAULT_ENDPOINT,
         # the request.
         return {"ok": False, "reason": f"transport_{type(exc).__name__}"}
 
+    # 202 means the server took the trace and will analyze it without holding
+    # this connection open. That is the only path for an unattended client:
+    # analysis time follows cumulative context, which has no natural cap, so a
+    # ceiling that fits this machine's traces refuses somebody else's.
+    if isinstance(report, dict) and report.get("call_id"):
+        return {"ok": True, "pending": True, "call_id": report["call_id"]}
+
     ingest = report.get("ingest") or {}
     return {
         "ok": True,
@@ -236,11 +248,107 @@ def submit_file(path: Path, key: str, endpoint: str = DEFAULT_ENDPOINT,
     }
 
 
+def _status_url(endpoint: str, call_id: str) -> str:
+    return f"{endpoint.rsplit('/', 1)[0]}/status/{call_id}"
+
+
+def poll_status(call_id: str, endpoint: str = DEFAULT_ENDPOINT,
+                interval: float = 5.0, sleep=None) -> dict:
+    """Wait for a spawned analysis and return what the ledger should record.
+
+    Each request is short. Nothing here bounds how long the analysis may take,
+    which is the whole reason the work was spawned: the ceiling existed because
+    a caller was holding a socket, not because some traces are unanalysable.
+
+    Transport failures are retried rather than reported: losing a result to one
+    dropped packet would leave a stored run the ledger calls a failure.
+    """
+    import time
+    sleep = sleep or time.sleep
+
+    url = _status_url(endpoint, call_id)
+    consecutive_transport_errors = 0
+    while True:
+        request = urllib.request.Request(url, method="GET")
+        try:
+            with urllib.request.urlopen(request, timeout=60,
+                                        context=ssl.create_default_context()) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            return {"ok": False, "reason": f"http_{exc.code}", "call_id": call_id,
+                    **_failure_detail(exc)}
+        except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
+            consecutive_transport_errors += 1
+            if consecutive_transport_errors >= 5:
+                return {"ok": True, "pending": True, "call_id": call_id,
+                        "reason": f"transport_{type(exc).__name__}"}
+            sleep(interval)
+            continue
+        consecutive_transport_errors = 0
+
+        if not body.get("done"):
+            sleep(interval)
+            continue
+
+        if not body.get("ok"):
+            detail = body.get("detail")
+            reason = (detail.get("error") if isinstance(detail, dict)
+                      else None) or f"job_{body.get('status')}"
+            out = {"ok": False, "reason": reason, "call_id": call_id}
+            if isinstance(detail, dict) and detail.get("error_id"):
+                out["error_id"] = str(detail["error_id"])[:64]
+            return out
+
+        ingest = body.get("ingest") or {}
+        return {
+            "ok": True,
+            "call_id": call_id,
+            "trace_id": body.get("trace_id"),
+            "stored": bool(ingest.get("stored")),
+            "reason": ingest.get("reason"),
+        }
+
+
 # ── the run ────────────────────────────────────────────────────────────────
 
 def _summary(paths: list[Path]) -> str:
     total = sum(p.stat().st_size for p in paths)
     return f"{len(paths)} session(s), {total / 1024 / 1024:.1f} MB"
+
+
+def resolve_pending(ledger: dict, endpoint: str = DEFAULT_ENDPOINT,
+                    ledger_path: Path = LEDGER_PATH,
+                    interval: float = 5.0, out=print) -> tuple[int, int]:
+    """Finish calls a previous run accepted but never heard the answer for.
+
+    An interrupted poll leaves a trace that the server has and the ledger does
+    not describe. Resending it would be wrong twice: the analysis is already
+    paid for, and if the file has grown since, the payload hash differs and the
+    database's duplicate guard would not catch the second copy.
+    """
+    items = [(k, v) for k, v in ledger.items()
+             if isinstance(v, dict) and v.get("pending") and v.get("call_id")]
+    if not items:
+        return 0, 0
+
+    out(f"resolving {len(items)} accepted earlier")
+    stored = failed = 0
+    for key, entry in items:
+        result = poll_status(entry["call_id"], endpoint, interval)
+        ledger[key] = {**entry, **result}
+        if not result.get("pending"):
+            ledger[key].pop("pending", None)
+        save_ledger(ledger, ledger_path)
+        name = Path(key).name
+        if result.get("stored"):
+            stored += 1
+            out(f"  {name}  stored")
+        elif result.get("pending"):
+            out(f"  {name}  still analyzing — {result.get('reason')}")
+        else:
+            failed += 1
+            out(f"  {name}  NOT stored — {result.get('reason')}")
+    return stored, failed
 
 
 def run(root: Path = DEFAULT_ROOT,
@@ -263,6 +371,16 @@ def run(root: Path = DEFAULT_ROOT,
 
     now = now or datetime.now(timezone.utc)
     ledger = load_ledger(ledger_path)
+
+    # Before looking for new work: anything a previous run accepted and never
+    # got an answer for. Doing this first means one command is enough -- the
+    # operator does not have to know that a poll was interrupted.
+    resolved_stored = resolved_failed = 0
+    if not dry_run:
+        resolved_stored, resolved_failed = resolve_pending(
+            ledger, endpoint, ledger_path, out=out,
+        )
+
     queued = pending(root, now, ledger)
 
     if limit is not None:
@@ -270,7 +388,7 @@ def run(root: Path = DEFAULT_ROOT,
 
     if not queued:
         out(f"nothing to submit ({len(ledger)} already sent)")
-        return 0
+        return 0 if resolved_failed == 0 else 1
 
     if dry_run:
         out(f"would submit {_summary(queued)}")
@@ -298,16 +416,31 @@ def run(root: Path = DEFAULT_ROOT,
             time.sleep(pace_seconds)
         result = submit_file(path, key, endpoint)
         # Recorded before the next one goes out: an interrupted run must not
-        # resend what it already sent (R2).
+        # resend what it already sent (R2). For an accepted-but-unfinished call
+        # that means recording the ticket now, ahead of the answer -- a poll
+        # interrupted after this line is recoverable, one interrupted before it
+        # would resend a trace the server already has.
         ledger[str(path)] = {**result, "submitted_at": now.isoformat()}
         save_ledger(ledger, ledger_path)
+
+        if result.get("pending"):
+            out(f"  {path.name}  accepted, analyzing")
+            result = poll_status(result["call_id"], endpoint)
+            ledger[str(path)] = {**ledger[str(path)], **result}
+            if not result.get("pending"):
+                ledger[str(path)].pop("pending", None)
+            save_ledger(ledger, ledger_path)
 
         if result.get("stored"):
             stored += 1
             out(f"  {path.name}  stored")
+        elif result.get("pending"):
+            out(f"  {path.name}  still analyzing — {result.get('reason')}")
         else:
             failed += 1
             out(f"  {path.name}  NOT stored — {result.get('reason')}")
 
+    stored += resolved_stored
+    failed += resolved_failed
     out(f"done: {stored} stored, {failed} not stored")
     return 0 if failed == 0 else 1

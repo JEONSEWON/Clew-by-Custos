@@ -356,3 +356,67 @@ def test_build_default_cost_tables_covers_all_pricing_canonical_and_aliases():
     for prefix, _target_key in _ALIASES:
         assert prefix in input_ct
         assert prefix in output_ct
+
+
+# ── resolve_pricing: the same lookup, reported instead of warned ───────────
+#
+# `get_pricing` warns on a miss, and a warning goes to stderr where nothing
+# downstream can read it. Measured 2026-08-27: 25 of 74 stored runs were priced
+# at the default and labeled `accurate`, and nothing in the report said so.
+
+def test_resolve_reports_a_hit():
+    from clew.cost.pricing import resolve_pricing
+
+    pricing, matched = resolve_pricing("claude-opus-5")
+
+    assert matched is True
+    assert pricing.name == "claude-opus-5"
+
+
+def test_resolve_reports_an_alias_hit_as_a_hit():
+    """An alias is a real answer, not a substitution."""
+    from clew.cost.pricing import resolve_pricing
+
+    pricing, matched = resolve_pricing("claude-opus-4-8")
+
+    assert matched is True
+    assert pricing.base_input_per_mtok == 5.0
+
+
+def test_resolve_reports_a_miss_without_warning():
+    from clew.cost.pricing import DEFAULT_MODEL_KEY, PRICING, resolve_pricing
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        pricing, matched = resolve_pricing("kinetic-0715")
+
+    assert matched is False
+    assert pricing is PRICING[DEFAULT_MODEL_KEY]
+    # The reporting path must stay silent: it is called per LLM call, and a
+    # warning per call would bury the one the human path emits once.
+    assert [x for x in w if issubclass(x.category, UserWarning)] == []
+
+
+def test_resolve_treats_an_absent_model_as_a_miss():
+    """No model is not a priced model."""
+    from clew.cost.pricing import resolve_pricing
+
+    _, matched = resolve_pricing(None)
+
+    assert matched is False
+
+
+def test_the_default_is_cheaper_than_the_tier_it_stands_in_for():
+    """A substituted rate understates cost; it does not inflate it.
+
+    Worth pinning because it decides how to read a figure built on a
+    substitution: the 25 runs measured on 2026-08-27 were priced at 60% of the
+    correct Opus rate, so their costs are a floor, not an approximation.
+    """
+    from clew.cost.pricing import get_pricing
+
+    default = get_pricing(None)
+    opus = get_pricing("claude-opus-5")
+
+    assert default.base_input_per_mtok < opus.base_input_per_mtok
+    assert default.base_input_per_mtok / opus.base_input_per_mtok == 0.6
