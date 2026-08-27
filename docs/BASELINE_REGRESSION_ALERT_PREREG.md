@@ -211,6 +211,11 @@ n=48. A point estimate on a small sample is not a GO.
   one can fire. Without this, one backfill replays months of history as
   same-day alerts. **Not measured**; like `cooldown_hours` it can only
   remove firings, never add them.
+- `max_volume_ratio = 5.0` — a pair is compared only when the two windows'
+  `sum(total_input_bytes)` are within 5x of each other. Above that the
+  difference in waste rate is dominated by the difference in volume rather
+  than by anything that changed. Derived in section 9; like the two rules
+  above it can only remove comparisons, never add firings.
 - A transition counts toward the 72 in section 5.1 **only if it was the
   newest transition when it was evaluated.** Otherwise a backfill inflates
   the activation counter with transitions nobody would have been alerted
@@ -258,6 +263,9 @@ metric            = sum(union_waste_bytes) / sum(total_input_bytes) over the win
 window            = one day bucket of rollup_hourly, per (project_id, params_key)
                     time_basis = 'occurred_at'   (requires that basis to be written)
 evaluate          = newest qualifying transition only (see section 4)
+max_volume_ratio  = 5.0         both windows' total_input_bytes within 5x of
+                                each other, else the pair is not compared
+                                (derived in section 9)
 threshold         = +8.0 pp vs the previous qualifying window
 min_window_bytes  = 1_048_576   (both windows must qualify)
 min_runs          = none        (see section 3.5 Finding 2)
@@ -282,3 +290,118 @@ rollup itself stays.
   saying.
 - No auto-remediation. The chain is monitor → detect → notify; the fix
   step is a separate prereg with its own evidence bar.
+
+## 9. Amendment — comparability, not a bigger floor (2026-08-27)
+
+### What this replaces
+
+The first production series measured under this pre-registration came within
+**0.0062 pp** of firing. On 27 qualifying days of one project, the largest rise
+between consecutive qualifying windows was **+7.9938 pp** against a **+8.0 pp**
+threshold. Nothing had regressed. The day before the rise had **3.7 MB** of
+input against a 150-230 MB norm, and the "rise" was the next day being ordinary.
+
+The obvious response was to raise `min_window_bytes` until such days stop
+qualifying: 5 MB drops the two worst and cuts the largest rise to +3.736 pp at
+a cost of two days out of 27. That response is wrong, and the reason it is
+wrong is the same reason section 4 refuses `min_runs >= 2`.
+
+**An absolute floor is calibrated to one user's volume.** A project whose
+ordinary day is 200 MB loses only outliers at a 5 MB floor. A project whose
+ordinary day is 3 MB loses **every day** and can never be alerted at all. The
+floor would silence exactly the lighter users that `min_runs` was rejected for
+silencing, and it would do it invisibly, because a project with no qualifying
+windows produces no output to look at.
+
+### The measurement that says what to do instead
+
+Section 3.5 Finding 1 reported waste-rate spread by session cost and concluded
+that short sessions are not quotable. That is true, and it was read here as
+"low volume is unreliable". **That reading was wrong.** Splitting the same 27
+days by volume band:
+
+| band | n | `wr_char` range | spread |
+|---|---|---|---|
+| 0 - 5 MB | 2 | 0.9011 - 0.9107 | **0.96 pp** |
+| 5 - 30 MB | 3 | 0.9542 - 0.9749 | 2.08 pp |
+| 30 - 100 MB | 6 | 0.9857 - 0.9934 | **0.77 pp** |
+| 100 - 300 MB | 10 | 0.9852 - 0.9936 | 0.84 pp |
+| 300 MB and up | 6 | 0.9816 - 0.9954 | 1.38 pp |
+
+Within a band the metric is tight — 0.77 to 2.08 pp. The **9.43 pp** spread
+across the series is produced entirely by comparing across bands. A 1.2 MB day
+and a 3.7 MB day agree with each other to within 0.96 pp, which is tighter than
+the largest days agree with each other. Low volume is not noisy; it sits at a
+different level, because re-sent context accumulates with session length and a
+short day has not accumulated any.
+
+So the defect is not that small windows are unmeasurable. It is that the rule
+compares them with large ones.
+
+### Deriving the ratio
+
+Every pair of the 27 days (351 pairs), bucketed by the ratio of the larger
+window's bytes to the smaller's:
+
+| volume ratio | pairs | `abs delta wr` p50 | p90 | max |
+|---|---|---|---|---|
+| 1 - 1.5x | 66 | 0.208 pp | 0.875 pp | 1.196 pp |
+| 1.5 - 2x | 44 | 0.219 pp | 0.914 pp | 2.106 pp |
+| 2 - 3x | 60 | 0.262 pp | 1.183 pp | 4.347 pp |
+| 3 - 5x | 55 | **0.344 pp** | 1.566 pp | 3.921 pp |
+| 5 - 10x | 44 | **1.359 pp** | 3.643 pp | 6.424 pp |
+| 10 - 30x | 37 | 2.306 pp | 7.863 pp | 8.268 pp |
+| 30x and up | 45 | 8.358 pp | 9.237 pp | 9.430 pp |
+
+The median holds between 0.21 and 0.34 pp from 1x through 5x and then
+**quadruples**. That is the volume term becoming visible, and it is where the
+cut belongs: `max_volume_ratio = 5.0`. The value is read off this table rather
+than chosen for roundness; 10x would also keep the largest rise under the
+threshold, but at 10x the volume term is already the larger part of the signal.
+
+Applied to the consecutive qualifying transitions of the same series:
+
+| max_volume_ratio | transitions kept | largest rise |
+|---|---|---|
+| 3x | 10 of 26 | +1.336 pp |
+| **5x** | **16 of 26** | **+1.336 pp** |
+| 10x | 19 of 26 | +1.773 pp |
+| none (as pre-registered) | 26 of 26 | **+7.994 pp** |
+
+### Why this does not disturb the section 5 verdict
+
+The rule only removes pairs from consideration. It cannot create a firing that
+did not exist, so section 3.5's `0/46` and its Clopper-Pearson upper bound of
+**7.7%** remain a valid upper bound on the no-change firing rate under it --
+the same argument section 4 makes for `cooldown_hours`. No re-run of the pilot
+is needed to keep the shadow-mode decision honest.
+
+**What it does cost is time.** Fewer qualifying transitions per day of use
+means the 72 reviewed transitions of section 5.1 accumulate more slowly -- on
+this series, 16 where 26 were available, so roughly 1.6x as long. That is the
+price of not counting comparisons that were never meaningful, and it is paid in
+schedule rather than in correctness.
+
+### Limits, stated
+
+- **One project, 30 days, one author's traces.** The ratio is derived from a
+  single usage pattern. A user whose volume swings by 10x daily as a matter of
+  course would find most of their days uncompared, and nothing here would
+  reveal that. This value is to be re-derived when a second project's series
+  exists, and the same objection that killed the absolute floor applies to this
+  ratio if it turns out to be calibrated to one rhythm.
+- **The low bands are thin.** `0 - 5 MB` has n = 2 and `5 - 30 MB` has n = 3.
+  The claim those bands support -- that low volume is tight rather than noisy --
+  is consistent with the mechanism and with the cost-banded table of section
+  3.5, but two points are two points.
+- **The pilot corpus was not re-measured under the rule.** The argument above
+  says it does not need to be for the bound to hold; it does mean the tables in
+  section 3.5 describe the rule as originally pre-registered, not as amended.
+
+### The dashboard follows
+
+Section 3.5 Finding 1 (c) already binds the chart to volume-weighted
+aggregation. The same applies here: a chart that draws a line between two
+windows the alert would not compare shows the user a movement the alert does
+not believe in. Whatever connects points on the series honours
+`max_volume_ratio` as well.
