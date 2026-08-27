@@ -335,3 +335,97 @@ def test_a_body_that_cannot_be_read_is_not_a_crash(tmp_path):
             raise OSError("connection reset")
 
     assert submit._failure_detail(Unreadable()) == {}
+
+
+# ── why there is no key ───────────────────────────────────────────────────
+#
+# `read_key` returns None for five different reasons and the message named one
+# of them. The case that produced these tests: a file that existed, with the
+# key in it, and a missing space after the colon.
+
+def test_a_missing_space_after_the_colon_is_named_as_whitespace(tmp_path, monkeypatch):
+    """`api_key:bdk_x` parses as one string, not a mapping.
+
+    Nobody suspects whitespace, so the message has to say the word.
+    """
+    creds = tmp_path / "credentials.yaml"
+    creds.write_text("api_key:bdk_abc", encoding="utf-8")
+    monkeypatch.setattr(submit, "CREDENTIALS_PATH", creds)
+    monkeypatch.delenv(submit.KEY_ENV, raising=False)
+
+    assert submit.read_key() is None          # the failure itself is unchanged
+    problem = submit.key_problem()
+    assert "space after the colon" in problem
+    assert str(creds) in problem
+
+
+def test_the_key_pasted_on_its_own_is_not_blamed_on_whitespace(tmp_path, monkeypatch):
+    """Same parse failure, different mistake, different sentence.
+
+    A diagnosis that names the wrong cause costs the reader a guess even when
+    the remedy it shows happens to be correct.
+    """
+    creds = tmp_path / "credentials.yaml"
+    creds.write_text("bdk_abcdefghij", encoding="utf-8")
+    monkeypatch.setattr(submit, "CREDENTIALS_PATH", creds)
+    monkeypatch.delenv(submit.KEY_ENV, raising=False)
+
+    problem = submit.key_problem()
+    assert "no `api_key:` line" in problem
+    assert "space after the colon" not in problem
+
+
+def test_an_empty_value_is_not_reported_as_a_missing_file(tmp_path, monkeypatch):
+    creds = tmp_path / "credentials.yaml"
+    creds.write_text("api_key:", encoding="utf-8")
+    monkeypatch.setattr(submit, "CREDENTIALS_PATH", creds)
+    monkeypatch.delenv(submit.KEY_ENV, raising=False)
+
+    assert "is empty" in submit.key_problem()
+
+
+def test_a_file_without_the_entry_says_so(tmp_path, monkeypatch):
+    creds = tmp_path / "credentials.yaml"
+    creds.write_text("project: something-else", encoding="utf-8")
+    monkeypatch.setattr(submit, "CREDENTIALS_PATH", creds)
+    monkeypatch.delenv(submit.KEY_ENV, raising=False)
+
+    assert "no `api_key` entry" in submit.key_problem()
+
+
+def test_no_file_at_all_says_where_to_write_one(tmp_path, monkeypatch):
+    creds = tmp_path / "nothing.yaml"
+    monkeypatch.setattr(submit, "CREDENTIALS_PATH", creds)
+    monkeypatch.delenv(submit.KEY_ENV, raising=False)
+
+    problem = submit.key_problem()
+    assert submit.KEY_ENV in problem and str(creds) in problem
+
+
+def test_the_environment_shadowing_the_file_is_said_out_loud(tmp_path, monkeypatch):
+    """The variable wins, and removing it does not reach a running shell.
+
+    Both halves of that cost an afternoon: a rotated key was written to the
+    file, the stale variable kept being used, and the submission came back 401
+    naming a key the user had already revoked.
+    """
+    creds = tmp_path / "credentials.yaml"
+    creds.write_text("api_key: bdk_from_file", encoding="utf-8")
+    monkeypatch.setattr(submit, "CREDENTIALS_PATH", creds)
+    monkeypatch.setenv(submit.KEY_ENV, "bdk_from_env")
+
+    note = submit.key_source()
+    assert note is not None
+    assert submit.KEY_ENV in note and str(creds) in note
+    # Never the key itself.
+    assert "bdk_from_env" not in note and "bdk_from_file" not in note
+
+
+def test_nothing_is_said_when_only_one_source_exists(tmp_path, monkeypatch):
+    """A note on every run is noise; this one only fires on the ambiguity."""
+    creds = tmp_path / "credentials.yaml"
+    creds.write_text("api_key: bdk_from_file", encoding="utf-8")
+    monkeypatch.setattr(submit, "CREDENTIALS_PATH", creds)
+    monkeypatch.delenv(submit.KEY_ENV, raising=False)
+
+    assert submit.key_source() is None
