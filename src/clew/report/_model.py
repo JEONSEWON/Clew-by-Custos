@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
-from clew.cost.pricing import get_pricing
+from clew.cost.pricing import get_pricing, resolve_pricing
 from clew.model import Span, Trace
 
 if TYPE_CHECKING:
@@ -33,6 +33,16 @@ class TraceCostSummary:
     total_waste_cost: float = 0.0
     waste_ratio: float = 0.0
     accuracy_flag: CostAccuracy = "estimated"
+    # Whether every rate came from the pricing table. `accuracy_flag` does not
+    # answer this: per prereg 5.1 it means "every call had tier-split tokens",
+    # which is true of a call whose model we could not price at all. A consumer
+    # reading `accurate` next to a dollar figure has no way to tell that the
+    # rate was substituted, so this says it separately rather than redefining a
+    # pre-registered field.
+    rate_from_table: bool = True
+    # Which models were substituted, so a reader can recognise their own. Names
+    # only -- no rates, no counts.
+    unpriced_models: tuple[str, ...] = ()
     # Per-detector waste breakdown for the report's "Breakdown by detector"
     # line. Detector keys are stable identifiers used in the report template
     # (e.g., "provable_duplicate", "context_resend", "redundant_read").
@@ -67,11 +77,17 @@ class WasteDetail:
         return tc * cr
 
 
-def _llm_call_input_cost(call: dict[str, Any]) -> tuple[float, bool]:
-    """Return (input-side cost for this call in USD, was_accurate).
+def _llm_call_input_cost(call: dict[str, Any]) -> tuple[float, bool, str | None]:
+    """Return (input-side cost in USD, was_accurate, substituted_model).
 
     was_accurate is True when tier-split fields or explicit input_cost_rate
     were used; False when we fell back to legacy or default pricing.
+
+    substituted_model names the model whose rate we had to invent, or None. It
+    is a separate answer from was_accurate on purpose: a call can have perfect
+    tier-split tokens and a model nobody has priced, and the two failures need
+    different words. When the trace carries its own `input_cost_rate` the rate
+    came from the trace rather than from us, so nothing was substituted.
     """
     uncached = call.get("input_tokens_uncached")
     cache_read = call.get("input_tokens_cache_read")
@@ -79,7 +95,7 @@ def _llm_call_input_cost(call: dict[str, Any]) -> tuple[float, bool]:
     model = call.get("model")
 
     if uncached is not None or cache_read is not None or cache_write is not None:
-        pricing = get_pricing(model) if model else get_pricing(None)
+        pricing, matched = resolve_pricing(model)
         u = int(uncached or 0)
         r = int(cache_read or 0)
         w = int(cache_write or 0)
@@ -88,35 +104,45 @@ def _llm_call_input_cost(call: dict[str, Any]) -> tuple[float, bool]:
             + r * pricing.cache_read_per_mtok
             + w * pricing.cache_write_5m_per_mtok
         ) / 1_000_000.0
-        return cost, True
+        # Only report a substitution that changed a number. A substituted rate
+        # multiplied by zero tokens invents nothing, and the field exists so a
+        # consumer can decide whether to trust a dollar figure -- flagging a
+        # no-op would footnote costs that are in fact exact. Claude Code writes
+        # `<synthetic>` on messages that were never API calls, always with zero
+        # tokens, and that is the case this guard is for.
+        substituted = model if (not matched and (u or r or w)) else None
+        return cost, True, substituted
 
     input_tokens = int(call.get("input_tokens") or 0)
     input_cost_rate = call.get("input_cost_rate")
     if input_cost_rate is not None:
-        return input_tokens * float(input_cost_rate), True
+        # The trace supplied the rate; we substituted nothing.
+        return input_tokens * float(input_cost_rate), True, None
 
     legacy = call.get("cost_rate_legacy")
     if legacy is not None:
-        return input_tokens * float(legacy), False
+        return input_tokens * float(legacy), False, None
 
     if model:
-        pricing = get_pricing(model)
-        return input_tokens * pricing.base_input_per_mtok / 1_000_000.0, False
+        pricing, matched = resolve_pricing(model)
+        return (input_tokens * pricing.base_input_per_mtok / 1_000_000.0,
+                False, (model if (not matched and input_tokens) else None))
 
-    return 0.0, False
+    return 0.0, False, None
 
 
-def _llm_call_output_cost(call: dict[str, Any]) -> float:
+def _llm_call_output_cost(call: dict[str, Any]) -> tuple[float, str | None]:
     """Return output-side cost for this call in USD (uses pricing.py by model)."""
     output_tokens = int(call.get("output_tokens") or 0)
     output_cost_rate = call.get("output_cost_rate")
     if output_cost_rate is not None:
-        return output_tokens * float(output_cost_rate)
+        return output_tokens * float(output_cost_rate), None
     model = call.get("model")
     if model:
-        pricing = get_pricing(model)
-        return output_tokens * pricing.output_per_mtok / 1_000_000.0
-    return 0.0
+        pricing, matched = resolve_pricing(model)
+        return (output_tokens * pricing.output_per_mtok / 1_000_000.0,
+                (model if (not matched and output_tokens) else None))
+    return 0.0, None
 
 
 def build_cost_summary(
@@ -152,12 +178,20 @@ def build_cost_summary(
     # docstring. Downgrades below still apply.
     all_accurate = True
 
+    # Models whose rate we invented. A set because one trace repeats the same
+    # model on every call, and the report wants the distinct names.
+    unpriced: set[str] = set()
+
     for call in llm_calls:
-        in_cost, accurate = _llm_call_input_cost(call)
+        in_cost, accurate, in_unpriced = _llm_call_input_cost(call)
+        out_cost, out_unpriced = _llm_call_output_cost(call)
         total_input_cost += in_cost
-        total_output_cost += _llm_call_output_cost(call)
+        total_output_cost += out_cost
         if not accurate:
             all_accurate = False
+        for name in (in_unpriced, out_unpriced):
+            if name:
+                unpriced.add(name)
 
     breakdown: dict[str, float] = {}
     total_waste = 0.0
@@ -191,5 +225,7 @@ def build_cost_summary(
         total_waste_cost=total_waste,
         waste_ratio=waste_ratio,
         accuracy_flag="accurate" if all_accurate else "estimated",
+        rate_from_table=not unpriced,
+        unpriced_models=tuple(sorted(unpriced)),
         detector_breakdown=breakdown,
     )
