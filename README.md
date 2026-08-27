@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**Open source LLM observability for the waste axis no one else measures.**
+**Waste-axis observability for AI agents.**
 
 [![PyPI](https://img.shields.io/pypi/v/boxdawn)](https://pypi.org/project/boxdawn/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -32,7 +32,7 @@ boxdawn analyze <trace>.jsonl --out report.md
 - **Cost attribution with source-URL-pinned pricing** — per-model rates for Sonnet 4.5 / 4.6, Opus 4.7, Haiku 4.5, GPT-4o family, GPT-5 / 5.2 / mini / o-series, Gemini 1.5 / 2.5 / 3-pro-preview, Grok 4 / fast / code-fast, DeepSeek v3.2, GLM 4.6, Kimi K2-0905 / K2.5, MiniMax M2, Qwen 3 Coder. Every entry carries `Source: URL (verified YYYY-MM-DD)`.
 - **Anti-hype rigor** — pre-registration on every detector change, frozen parameters enforced as failing tests, published corrections on retracted numbers, honesty preface on p-hacking risk. See §How we keep ourselves honest.
 
-**Hosted layer:** [boxdawn.com](https://boxdawn.com) runs these same detectors in a browser — upload without an account, or sign in and keep measurements over time. Alerts and CI comments are not built. See §Hosted layer for the line between the two.
+**Boxdawn runs as a service and as a library.** [boxdawn.com](https://boxdawn.com) runs these same detectors in a browser — upload without an account, or sign in and keep measurements per project over time. This repo is the analyzer underneath it, and it runs offline. See §Roadmap for what is running today and what is next.
 
 **No instrumentation. No SDK. No code changes.** Boxdawn reads trace files your agent already writes.
 
@@ -87,7 +87,7 @@ Observability platforms (Langfuse, Arize, LangSmith, Braintrust, Helicone) captu
 
 Scope is deterministic-first: four deterministic detectors used in the waste-rate metric (`repeat` / `requery`, `context_resend`, `redundant_read`, `duplicate_creation`), the `pingpong` code path (implemented but not yet observed on real traces), and one opt-in LLM-as-judge check for semantic duplicates. Each detector is pre-registered with a frozen spec before results are measured.
 
-This repo is the analyzer you install with pip. A **hosted layer** at [boxdawn.com](https://boxdawn.com) — browser upload, accounts, stored measurements, dashboard — lives in a separate repo and runs this repo's detectors and waste-rate metric. §Hosted layer says what is live there and what is not.
+This repo is the analyzer you install with pip. The service at [boxdawn.com](https://boxdawn.com) — browser upload, accounts, stored measurements, dashboard — runs this repo's detectors and waste-rate metric from a separate repo. §Roadmap says which links of the chain run today.
 
 ---
 
@@ -292,26 +292,45 @@ Pre-registration: [`docs/COST_ATTRIBUTION_COMPLETION_PREREG.md`](https://github.
 
 ---
 
-## 🚀 Hosted layer · what is live and what is not
+## 🚀 Roadmap · running today, building next
 
-The analyzer in this repo is the deterministic core. [boxdawn.com](https://boxdawn.com) runs the same code — same detectors, same frozen parameters — from a separate repo.
+Boxdawn is a chain: **monitor → detect → alert → auto-fix → auto-optimize + govern.**
+Detection is the link that runs today, as a service and as a library. The rest is
+being built in that order, because each link needs the one before it to be
+trustworthy first.
 
-**Live:**
+**Running today**
 
-- **Upload without an account.** Drop a trace file in the browser and get the report the CLI prints. The file is processed in a temporary directory that is destroyed when the response finishes; it is not stored.
-- **Accounts.** Password or email link.
-- **Measurements kept over time.** A signed-in upload records derived numbers — counts, sizes, costs, and salted hashes of targets. The trace file itself is still not kept.
-- **Dashboard.** Waste rate shown against the absolute bytes and dollars behind it, which detector produced them, and how many runs the number is made of. A time series appears once there are enough hourly buckets to be one; below that the page shows the measurement rather than drawing a line through a single point.
-- **Project keys.** Issue and revoke keys for a project, so a trace can be sent without a browser.
+- **Hosted analyzer, no account.** Drop a trace file at [boxdawn.com/analyze](https://boxdawn.com/analyze) and get the report the CLI prints. The file is processed in a temporary directory that is destroyed when the response finishes; it is not stored.
+- **Four deterministic detectors** — `repeat`, `context_resend`, `redundant_read`, `duplicate_creation`. Same code, same frozen parameters, in the browser and on your machine.
+- **Cost from real usage fields**, with per-model rates pinned to source URLs. Where a vendor's usage block is missing, the report says `estimated` rather than guessing quietly.
+- **Accounts and per-project history.** A signed-in upload records derived numbers — counts, sizes, costs, and salted hashes of targets. The trace file itself is still not kept.
+- **Daily waste rate, by session date.** The series is keyed on when your sessions ran, not on when we analyzed them, so a backfill of old traces lands on the days they happened.
+- **API keys for CI and scripts.** Issue and revoke per project, so a trace can be sent with no browser in the loop.
+- **Open-source CLI that runs offline.** No account, no upload, no network. The hosted layer is a convenience, not the product boundary.
+- **Opt-in semantic pass.** LLM-as-judge on the pairs the deterministic gate cannot separate, off by default, with a hard cost cap per session.
 
-**Built here, not usable yet:**
+**Building next**
 
-- **`boxdawn submit`** sends finished sessions on a preregistered close rule (see [`docs/SESSION_CLOSE_RULE_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/SESSION_CLOSE_RULE_PREREG.md)). Key issuance is live now and the command has been run against it end to end, but it landed after `0.5.3` — the version on PyPI does not have it.
+- **Baseline alerts** — "this project's waste rate moved more than its own normal variation". Pre-registered before implementation, including the thresholds and the bar for turning notification on: [`docs/BASELINE_REGRESSION_ALERT_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/BASELINE_REGRESSION_ALERT_PREREG.md).
+- **Real-time monitoring** — the measurement arriving continuously rather than per upload.
+- **Loop detection** — repetition that is going nowhere, distinguished from repetition that is working. The reasoning-level code path exists and has fired only on synthetic traces so far; see §What Boxdawn doesn't do.
+- **Visual session flow** — the shape of a run, with the waste marked on it.
+- **Latency alongside cost** — the same axis applied to time.
+- **Auto-fix**, then **auto-optimize**, then **policy and governance.** In that order.
 
-**Not built:**
+**Deliberately not on either list: blocking waste in real time, before the call is
+made.** We built it, measured it against a threshold frozen beforehand, and it came in
+under — so neither automatic blocking nor a confirmation prompt shipped, and neither is
+planned until that changes. The measurement and its provenance are in
+§What Boxdawn doesn't do, one entry down; they are not repeated here, because a number
+with two homes is a number that will disagree with itself. Monitoring and alerting are a
+different claim, and they are on the list above.
 
-- **Alerts (Slack / webhook).** The regression signal is preregistered, and the evidence for it is thin by our own measurement: the best threshold fired on 0 of 46 same-project transitions, a 95% upper bound of 7.7%, where the target rate needs n ≥ 72. Shipping an alert on that would be shipping a guess.
-- CI PR auto-comment, LangSmith / Langfuse key import, team accounts and permissions.
+**Not in a release yet:** `boxdawn submit` sends finished sessions to your project on a
+pre-registered close rule ([`docs/SESSION_CLOSE_RULE_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/SESSION_CLOSE_RULE_PREREG.md)),
+and it works end to end against live key issuance — but it landed after `0.5.3`, so the
+version on PyPI does not have the command yet.
 
 **Stack:** Vercel Next.js · Modal serverless Python (the detector runtime is this repo's code) · Supabase (Postgres + Auth) · Resend (email).
 
@@ -320,7 +339,7 @@ The analyzer in this repo is the deterministic core. [boxdawn.com](https://boxda
 ## What Boxdawn doesn't do
 
 - **No fixes**, only diagnosis. The output is a report you read. Prompt changes, context caching, and tool routing are yours to make.
-- **No real-time interception.** The `args-only` real-time gate was retired at precision 0.633 on labeled data (below the 0.70 threshold required for either auto-block or a confirm-prompt). Boxdawn reads finished trace files, after the run.
+- **No real-time interception.** The `args-only` real-time gate was retired at precision **0.6333** — 19 of 30 hand-annotated pairs, sampled from a pool of 3,432, measured 2026-07-25 against a threshold of 0.70 frozen beforehand. Below that bar neither auto-block nor a confirm-prompt is defensible, so neither shipped. Boxdawn reads finished trace files, after the run.
 - **The v0.3.0 in-cascade `reread` gate was retired** at 3.3% precision on a 30-pair RedundancyBench sample: 29 of 30 same-path Read pairs were legitimate chunked reads at different `offset` / `limit` values. See [`docs/REREAD_DETECTOR_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/REREAD_DETECTOR_PREREG.md) §11. The current standalone **Redundant Read Detector** (see *Where it stands* above) is a different approach: it requires interval-clean gating (no intervening write to the same target, no payload-opaque shell tool in the interval) before flagging, and emits per-event tokens/dollars rather than bundling into the cascade waste-cost line.
 - **No reasoning-level `pingpong`.** Code path exists but has fired only on synthetic traces. Blocked pending an external corpus that surfaces it, not killed.
 - **Tool coverage is 26.4% on Toolathlon** (138 of 523 unique tool names). Unmapped tools drop into `unclassified` and reduce interval-scan tier precision. The banner shows coverage on your specific trace; `clew.yaml` closes the gap (config file name kept for backward compatibility).
