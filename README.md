@@ -12,7 +12,7 @@
 
 </div>
 
-Boxdawn watches what your agents do and finds what they **paid for twice** — the context resent every turn, the file read again, the tool call that returned an answer you already had. Four deterministic detectors plus an opt-in semantic check, run against the trace files your agents already write. **Monitor, detect, alert, then fix** — the detection layer runs today. Measured across 16,864 sessions in three public corpora.
+Boxdawn watches what your agents do and finds **the work they already paid for** — the context resent every turn, the file read again, the tool call that returned an answer you already had. Four deterministic detectors plus an opt-in semantic check, run against the trace files your agents already write. **Monitor, detect, alert, then fix** — the detection layer runs today. Measured across 16,864 traces in three public corpora.
 
 **Try it on one trace** — no install, no account: **[boxdawn.com/analyze](https://boxdawn.com/analyze)**
 
@@ -87,7 +87,7 @@ boxdawn analyze grok-4_2.jsonl --out report.md
 
 ## Why the waste axis
 
-Agents re-send the whole conversation every turn, re-read files they already have, and call tools that return an answer they already got. On the corpora measured here, most of the input bill is that: **0.92 to 0.99 of input bytes are content the run had already paid for once.** It is the largest line item nobody itemises.
+Agents re-send the whole conversation every turn, re-read files they already have, and call tools that return an answer they already got. On the corpora measured here, most of the input bill is that: **0.92 to 0.99 of input bytes are content the run had already paid for once.** It is the largest line item your bill does not break out.
 
 Boxdawn itemises it. It sits on top of the trace layer rather than replacing it — feed it a trace your existing tools already collect, from Langfuse, Arize, LangSmith, Phoenix or a raw Claude Code session, and get back a bill breakdown they do not compute.
 
