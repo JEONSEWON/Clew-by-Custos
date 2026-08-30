@@ -21,7 +21,7 @@ SYSTEM_PROMPT = (
     "differences (whitespace, punctuation, quotation style) are "
     "equivalent. Ephemeral identifiers that are randomly generated "
     "per invocation (e.g. tool_use_id, message_id, id fields on tool "
-    "calls / tool results) are NOT semantic content — ignore them "
+    "calls / tool results) are NOT semantic content. ignore them "
     "when judging equivalence. Different content, values, or intent "
     "are NOT equivalent."
 )

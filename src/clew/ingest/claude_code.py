@@ -91,7 +91,7 @@ def _extract_result_text(
         for i, block in enumerate(content):
             if not isinstance(block, dict):
                 warnings.warn(
-                    f"tool_result content[{i}]: dict 아님 ({type(block).__name__}) — "
+                    f"tool_result content[{i}]: dict 아님 ({type(block).__name__}): "
                     f"json.dumps 로 직렬화 (§22.5)",
                     stacklevel=3,
                 )
@@ -104,7 +104,7 @@ def _extract_result_text(
                 parts.append(block.get("text", ""))
             else:
                 warnings.warn(
-                    f"tool_result content[{i}]: 비-text 블록 타입 {btype!r} — "
+                    f"tool_result content[{i}]: 비-text 블록 타입 {btype!r}: "
                     f"json.dumps 로 직렬화 (§22.5, 벤더 포맷 신호)",
                     stacklevel=3,
                 )
@@ -478,7 +478,7 @@ def ingest_claude_code_jsonl(
     if unknown_block_types:
         warnings.warn(
             f"{path.name}: 알 수 없는 assistant/user content 블록 타입 "
-            f"{dict(unknown_block_types)} — 스팬 생성에서 제외",
+            f"{dict(unknown_block_types)}: 스팬 생성에서 제외",
             stacklevel=2,
         )
 
@@ -489,7 +489,7 @@ def ingest_claude_code_jsonl(
     orphan_result = sorted(set(tool_results) - set(tool_uses))
     if orphan_result:
         raise ValueError(
-            f"조인 실패 — orphan tool_use={len(orphan_use)}건 "
+            f"조인 실패: orphan tool_use={len(orphan_use)}건 "
             f"(첫 5개: {orphan_use[:5]}), "
             f"orphan tool_result={len(orphan_result)}건 "
             f"(첫 5개: {orphan_result[:5]})"
@@ -540,7 +540,7 @@ def ingest_claude_code_jsonl(
         root_end = max(s.end_time for s in tool_spans)
     else:
         warnings.warn(
-            f"{path.name}: no tool spans (0 paired tool_use/tool_result) — "
+            f"{path.name}: no tool spans (0 paired tool_use/tool_result): "
             f"returning root-only Trace (§29.1 no-tool-use recovery)",
             stacklevel=2,
         )

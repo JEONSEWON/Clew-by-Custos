@@ -35,9 +35,9 @@ _FOOTER = (
     "_Note: detection thresholds are frozen at synthetic values "
     "(phi=0.514345, N=2); real-trace evaluation is ongoing, but "
     "parameters have not been recalibrated. Borderline matches "
-    "(cosine near phi) deserve human review — this applies to "
+    "(cosine near phi) deserve human review. This applies to "
     "non-tool spans; tool spans use exact sha256 identity._\n\n"
-    "_Cost is estimated saving potential, not measured — assumes the "
+    "_Cost is estimated saving potential, not measured: it assumes the "
     "wasted output is re-consumed each subsequent turn (structural "
     "assumption). Range spans cache-hit (lower) to cache-miss (upper). "
     "Attribution uses per-model rates; unknown models fall back to Sonnet 4.5._"
@@ -51,30 +51,30 @@ _POSSIBLE_CAUSES = (
     "- prompts that re-trigger verification\n"
     "- context truncation dropping earlier reads\n"
     "\n"
-    "This trace cannot isolate which — inspect the agent's file-handling logic.\n"
+    "This trace cannot isolate which. Inspect the agent's file-handling logic.\n"
     "For Bash requeries the state between calls is not directly observable from the "
-    "trace; treat those as *state change uncertain* — the tool does not render a "
+    "trace; treat those as *state change uncertain*. The tool does not render a "
     "final waste verdict.\n"
 )
 
 _CATEGORY_CAUSES = (
     "## What each category typically points to\n"
     "\n"
-    "These are common origins — not diagnoses. Detection is unchanged.\n"
+    "These are common origins, not diagnoses. Detection is unchanged.\n"
     "\n"
-    "- **error_repeat** — the agent received the same error response twice. "
+    "- **error_repeat**: the agent received the same error response twice. "
     "Usually the tool arguments are wrong and the agent re-runs with the "
     "same arguments without addressing the error message.\n"
-    "- **side_effect** — a state-changing tool was invoked twice with the "
+    "- **side_effect**: a state-changing tool was invoked twice with the "
     "same arguments. Beyond wasted tokens, real side effects (duplicate "
     "sends, duplicate creates, etc.) may have occurred. Confirm the "
     "operation is safe to run more than once.\n"
-    "- **idempotent** — a read-only or declarative tool was called "
+    "- **idempotent**: a read-only or declarative tool was called "
     "repeatedly. This category assumes the tool has no side effect, based "
     "on the tool name; whether that holds in your setup, and whether the "
     "underlying state truly did not change between the two calls, needs "
     "verification against your execution context.\n"
-    "- **unclassified** — the tool's effect depends on the arguments passed "
+    "- **unclassified**: the tool's effect depends on the arguments passed "
     "(command text, code, query body), so the tool name alone cannot "
     "classify it. Human review needed.\n"
 )
@@ -99,7 +99,7 @@ _BW_JUDGE_DELEGATION = (
     "the tool records only the observation."
 )
 _BW_HEADER_NO_VERDICT = (
-    "No verdict is rendered — refer to context and judge whether each was intentional."
+    "No verdict is rendered. Refer to context and judge whether each was intentional."
 )
 
 # ─── PREREG: docs/COVERAGE_TRANSPARENCY_PREREG.md §1.1 (frozen) ─────────────
@@ -178,7 +178,7 @@ def _format_coverage_provenance(cov: dict) -> list[str] | None:
 _DUPLICATE_CREATION_HEADER = "## Duplicate creation check"
 _DUPLICATE_CREATION_INTRO = (
     "The waste detector above requires both responses to be byte-identical. "
-    "That is the right test for reads — a re-read that returns the same "
+    "That is the right test for reads: a re-read that returns the same "
     "content is a redundant call. For creation tools it is reversed: if a "
     "document really was created twice, the two responses carry different "
     "entity IDs, so the waste detector excludes them by construction. This "
@@ -199,20 +199,20 @@ _ID_BRIDGE_VERDICT_NO_ID = (
 _CATEGORY_NOTE = (
     "## About categories\n"
     "\n"
-    "The `[category]` tag on each waste pair is a **report-only annotation** — "
+    "The `[category]` tag on each waste pair is a **report-only annotation**: "
     "it does not affect what was flagged as waste. Detection is unchanged.\n"
     "\n"
-    "- `error_repeat` — output matches an error pattern (same call repeated after failure)\n"
-    "- `side_effect` — tool with known state-changing effect "
+    "- `error_repeat`: output matches an error pattern (same call repeated after failure)\n"
+    "- `side_effect`: tool with known state-changing effect "
     "(e.g. `Edit`, `github-create_pull_request`)\n"
-    "- `idempotent` — tool is read-only or declarative "
+    "- `idempotent`: tool is read-only or declarative "
     "(e.g. `Read`, `filesystem-list_directory`); whether *this* re-run is actually "
     "wasted depends on user context (was the state truly unchanged?)\n"
-    "- `unclassified` — tool name not in either mapping. Includes `Bash`, `PowerShell`, "
+    "- `unclassified`: tool name not in either mapping. Includes `Bash`, `PowerShell`, "
     "`local-python-execute`, `terminal-run_command`, and `bigquery_run_query`: their "
     "effect depends on the payload, not the tool name.\n"
     "\n"
-    "The mapping is by tool name only — never inferred from name substrings.\n"
+    "The mapping is by tool name only, never inferred from name substrings.\n"
 )
 
 
@@ -231,7 +231,7 @@ def _summary_duplicate_creation_line(candidates: list[IdBridgeCandidate]) -> lis
     same = sum(1 for c in candidates if c.verdict == "same")
     no_id = sum(1 for c in candidates if c.verdict == "no_id")
     return [
-        f"- **Duplicate creation check**: {len(candidates)} candidate pair(s) — "
+        f"- **Duplicate creation check**: {len(candidates)} candidate pair(s): "
         f"{differ} with differing entity IDs, "
         f"{same} with the same entity ID, "
         f"{no_id} without extractable entity ID. "
@@ -282,7 +282,7 @@ def _render_id_bridge_section(candidates: list[IdBridgeCandidate]) -> list[str]:
         lines.append(
             "  _Precision bounds on the built-in mappings were measured on "
             "Toolathlon (28-30/30 hand-labeled per bucket, Clopper-Pearson "
-            "lower ≈ 77.93%). User-registered mappings are unverified — the "
+            "lower ≈ 77.93%). User-registered mappings are unverified: the "
             "numbers above are the observed extraction result, not a "
             "validated precision claim._"
         )
@@ -333,13 +333,13 @@ def _render_pair(idx: int, ed: EnrichedDetail, ev: AmplificationEvent | None) ->
 
     modif_line: str
     if ed.file_path is None:
-        modif_line = "State between calls not directly observable (no file target) — *state change uncertain*."
+        modif_line = "State between calls not directly observable (no file target): *state change uncertain*."
     elif ed.modified_in_between:
-        modif_line = "**File was modified in between** (Write/Edit detected) — may be a legitimate re-read."
+        modif_line = "**File was modified in between** (Write/Edit detected). May be a legitimate re-read."
     else:
-        modif_line = "No modification of this file in between — re-read output is unchanged."
+        modif_line = "No modification of this file in between. Re-read output is unchanged."
 
-    lines.append(f"### {idx}. [{ed.category}] {label} — {tool} on {target}")
+    lines.append(f"### {idx}. [{ed.category}] {label}: {tool} on {target}")
     lines.append("")
     lines.append(f"- **turns**: {turn_phrase}")
     lines.append(f"- **cosine**: {ed.detail.cosine:.4f}")
@@ -356,7 +356,7 @@ def _render_pair(idx: int, ed: EnrichedDetail, ev: AmplificationEvent | None) ->
             obs = _BW_OBS_TARGETED_WRITES
         else:  # high_volume
             obs = _BW_OBS_HIGH_VOLUME
-        lines.append(f"- **between_window**: `{ed.between_window}` — {obs}")
+        lines.append(f"- **between_window**: `{ed.between_window}`: {obs}")
     if ev is not None:
         lines.append(
             f"- **re-consumed across {ev.turns_after} subsequent turns** "
@@ -377,7 +377,7 @@ _LLM_JUDGE_INTRO = (
     "Message chunk pairs judged semantically equivalent by an LLM judge, "
     "even though their bytes differ (so they were not caught by the "
     "deterministic context_resend detector). Judge verdicts are "
-    "non-reproducible even at temperature=0 — treat as observation, "
+    "non-reproducible even at temperature=0. Treat as observation, "
     "not confirmed billing waste."
 )
 
@@ -408,7 +408,7 @@ def _render_llm_judge_section(rr: LLMJudgeResult | None) -> list[str]:
         lines.append("")
         for m in top:
             lines.append(
-                f"- confidence {m.confidence:.2f} — "
+                f"- confidence {m.confidence:.2f}: "
                 f"origin `{m.origin_llm_span_id}` vs candidate "
                 f"`{m.candidate_llm_span_id}`: {m.reasoning}"
             )
@@ -422,7 +422,7 @@ _REDUNDANT_READ_INTRO = (
     "within this trace, with no intervening write to that target and no "
     "Bash/PowerShell in between. `confirmed=True` means the two outputs "
     "were byte-identical; `confirmed=False` means the outputs differ (state "
-    "may have changed via an unobserved path — user judgment)."
+    "may have changed via an unobserved path, user judgment)."
 )
 
 
@@ -448,7 +448,7 @@ def _render_redundant_read_section(
         for e in top:
             confirmed_marker = "✓" if e.confirmed else "?"
             lines.append(
-                f"- {confirmed_marker} `{e.tool_name}` on `{e.target[:80]}` — "
+                f"- {confirmed_marker} `{e.tool_name}` on `{e.target[:80]}`: "
                 f"{e.waste_tokens} tokens, ${e.waste_cost:.6f}"
             )
         lines.append("")
@@ -486,7 +486,7 @@ _CONTEXT_RESEND_INTRO = (
     "occurrences from the second onward are recorded as resent."
 )
 _CONTEXT_RESEND_LEGACY_HINT = (
-    "_Cost figures below are estimated — the ingest layer received only a "
+    "_Cost figures below are estimated: the ingest layer received only a "
     "single-rate cost table. Pass `input_cost_table` (and optionally "
     "`output_cost_table`) at ingest time for accurate per-side monetization._"
 )
@@ -548,7 +548,7 @@ def _render_context_resend_section(cr: ContextResendResult | None) -> list[str]:
         top = sorted(by_span.items(), key=lambda kv: kv[1]["cost"], reverse=True)[:5]
         for span_id, agg in top:
             lines.append(
-                f"- span `{span_id}` — {agg['count']} resent chunks, "
+                f"- span `{span_id}`: {agg['count']} resent chunks, "
                 f"{agg['toks']} tokens, ${agg['cost']:.6f}"
             )
         lines.append("")
@@ -594,14 +594,14 @@ def _render_ingest_notes(trace: Trace) -> list[str]:
     if n_orphan:
         plural = "" if n_orphan == 1 else "s"
         items.append(
-            f"**{n_orphan} tool call{plural} dropped** — the call was made "
+            f"**{n_orphan} tool call{plural} dropped**: the call was made "
             f"but no result was recorded (a session that ended mid-call). "
             f"Nothing below counts it."
         )
 
     if notes.get("no_tool_use_recovery"):
         items.append(
-            "**no tool call was paired** — this report covers the session "
+            "**no tool call was paired**: this report covers the session "
             "envelope only, so a waste rate of 0 here means 'nothing to "
             "measure', not 'nothing wasted'."
         )
@@ -819,7 +819,7 @@ def render_markdown(
                 f"{_BW_HEADER_NO_VERDICT}"
             )
             lines.append(
-                f"  - idempotent {idem_total} — "
+                f"  - idempotent {idem_total}: "
                 f"{no_change_indicated} with no state change indicated, "
                 f"{high_volume_count} with high tool volume, "
                 f"{writes_other_targets} with writes to other targets"
@@ -887,7 +887,7 @@ def render_markdown(
     if enrichment.n_skipped_error > 0:
         lines.append(
             f"_Skipped **{enrichment.n_skipped_error}** error-response span(s) "
-            f"(is_error=True tool_result — not waste; §29.2)._"
+            f"(is_error=True tool_result, not waste; §29.2)._"
         )
         lines.append("")
     ev_lookup = _event_lookup(amplification)

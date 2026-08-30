@@ -364,7 +364,7 @@ def render_json(
             "real-trace calibration is in progress. Borderline matches "
             "(cosine near 0.51) deserve human review. Amplification cost "
             "is estimated saving potential (cache-hit lower to cache-miss upper), "
-            "not measured — assumes wasted output is re-consumed each subsequent turn. "
+            "not measured: it assumes wasted output is re-consumed each subsequent turn. "
             "Category labels are report-only annotations; detection is unchanged. "
             "Whether an idempotent re-run is truly waste depends on user context. "
             "between_window records how the interval was classified; "

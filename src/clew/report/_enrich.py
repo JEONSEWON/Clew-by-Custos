@@ -748,7 +748,7 @@ _FRAMEWORK_EXPANSION_URL = (
 
 _ENVELOPE_PREFIX_HINT = (
     "  hint: if your OpenInference instrumentor wraps the return in an "
-    "envelope, the path needs the envelope prefix — e.g. LlamaIndex serializes "
+    "envelope, the path needs the envelope prefix, e.g. LlamaIndex serializes "
     "returns as `{\"blocks\":[...], \"raw_output\":<orig>, ...}`, so a "
     "`ticket.id` path needs to be written as `raw_output.ticket.id`. "
     f"Full context: {_FRAMEWORK_EXPANSION_URL}"
@@ -769,7 +769,7 @@ def format_extraction_ratios(ratios: dict[str, tuple[int, int]]) -> str | None:
         if failed == total:
             label = "path likely misconfigured"
         else:
-            label = "partial — response variance"
+            label = "partial, response variance"
         lines.append(f"  {tool}: {failed}/{total} extractions failed  ({label})")
     if not lines:
         return None

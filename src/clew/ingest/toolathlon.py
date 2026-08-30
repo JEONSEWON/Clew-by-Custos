@@ -69,7 +69,7 @@ def _load_str_field(entry: dict, key: str, expect_type: type) -> Any:
     try:
         parsed = json.loads(v)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Toolathlon: {key!r} JSON 파싱 실패 — {exc}") from exc
+        raise ValueError(f"Toolathlon: {key!r} JSON 파싱 실패: {exc}") from exc
     if not isinstance(parsed, expect_type):
         raise ValueError(
             f"Toolathlon: {key!r} 파싱 결과 타입 {type(parsed).__name__}, 기대 {expect_type.__name__}"
@@ -92,7 +92,7 @@ def _normalize_arguments(raw: Any) -> str:
                 obj = json.loads(raw)
             except json.JSONDecodeError as exc:
                 raise ValueError(
-                    f"Toolathlon: tool_calls.function.arguments JSON 파싱 실패 (원문 앞 80자: {raw[:80]!r}) — {exc}"
+                    f"Toolathlon: tool_calls.function.arguments JSON 파싱 실패 (원문 앞 80자: {raw[:80]!r}): {exc}"
                 ) from exc
     elif isinstance(raw, (dict, list)):
         obj = raw
@@ -117,7 +117,7 @@ def _render_content(content: Any) -> str:
         for i, block in enumerate(content):
             if not isinstance(block, dict):
                 warnings.warn(
-                    f"Toolathlon: tool.content[{i}]: dict 아님 ({type(block).__name__}) — json.dumps",
+                    f"Toolathlon: tool.content[{i}]: dict 아님 ({type(block).__name__}): json.dumps",
                     stacklevel=3,
                 )
                 parts.append(json.dumps(block, sort_keys=True, ensure_ascii=False))
@@ -127,7 +127,7 @@ def _render_content(content: Any) -> str:
                 parts.append(block.get("text", ""))
             else:
                 warnings.warn(
-                    f"Toolathlon: tool.content[{i}]: 비-text 블록 {btype!r} — json.dumps",
+                    f"Toolathlon: tool.content[{i}]: 비-text 블록 {btype!r}: json.dumps",
                     stacklevel=3,
                 )
                 parts.append(json.dumps(block, sort_keys=True, ensure_ascii=False))
@@ -307,7 +307,7 @@ def _build_trace_from_entry(
     orphan_result = sorted(set(tool_results) - set(tool_uses))
     if orphan_use or orphan_result:
         raise ValueError(
-            f"line {source_line}: 조인 실패 — orphan tool_call {len(orphan_use)}건 "
+            f"line {source_line}: 조인 실패: orphan tool_call {len(orphan_use)}건 "
             f"(첫 5개: {orphan_use[:5]}), orphan tool_result {len(orphan_result)}건 "
             f"(첫 5개: {orphan_result[:5]})"
         )

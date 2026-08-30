@@ -236,7 +236,7 @@ def find_llm_judge_semantic_duplicates(
     # Pre-run cost estimate (prereg §5).
     est_max_cost = _estimate_max_cost(judge_model, len(candidates))
     print(
-        f"boxdawn: LLM judge enabled — {len(candidates)} candidate pairs, "
+        f"boxdawn: LLM judge enabled: {len(candidates)} candidate pairs, "
         f"est. max cost ${est_max_cost:.4f}",
         file=sys.stderr,
     )

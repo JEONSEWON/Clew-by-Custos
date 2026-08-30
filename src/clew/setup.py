@@ -129,11 +129,11 @@ def key_shape_problem(key: str) -> str | None:
     if not key:
         return "empty"
     if not key.startswith(KEY_PREFIX):
-        return f"does not start with {KEY_PREFIX!r} — is this the key and not the project id?"
+        return f"does not start with {KEY_PREFIX!r} (is this the key and not the project id?"
     if len(key) <= len(KEY_PREFIX) + 8:
         return "too short to be a key"
     if any(c.isspace() for c in key):
-        return "contains whitespace — it may have been copied with a line break"
+        return "contains whitespace. It may have been copied with a line break"
     return None
 
 

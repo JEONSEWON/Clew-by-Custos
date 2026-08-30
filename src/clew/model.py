@@ -95,8 +95,8 @@ class Span(BaseModel):
         # decision (see cascade.py :: non-tool empty skip).
         if self.span_kind == "tool" and not self.output_text.strip():
             raise ValueError(
-                "tool span output_text must be non-empty after strip "
-                "— structural invariant: a tool call with no output is invalid data"
+                "tool span output_text must be non-empty after strip. "
+                "Structural invariant: a tool call with no output is invalid data"
             )
         return self
 

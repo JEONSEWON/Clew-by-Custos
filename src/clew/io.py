@@ -25,4 +25,4 @@ def load_trace(path: Path) -> Trace:
     try:
         return Trace.model_validate_json(path.read_text(encoding="utf-8"))
     except Exception as exc:
-        raise ValueError(f"invalid trace file — {exc}") from exc
+        raise ValueError(f"invalid trace file: {exc}") from exc

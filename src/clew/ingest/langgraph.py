@@ -263,7 +263,7 @@ def otel_spans_to_trace(
     roots = [s for s in converted if s.parent_span_id is None]
     if len(roots) != 1:
         raise ValueError(
-            f"adapter expects exactly one root span, got {len(roots)} — multi-root "
+            f"adapter expects exactly one root span, got {len(roots)}: multi-root "
             "traces indicate instrumentation misconfiguration; fix upstream rather "
             "than synthesizing a root"
         )

@@ -101,7 +101,7 @@ def is_registered() -> bool | None:
 
 def _cron_instructions(every_minutes: int) -> str:
     return (
-        "not registered — add this to `crontab -e` yourself:\n"
+        "not registered. Add this to `crontab -e` yourself:\n"
         f"  */{every_minutes} * * * * {command_line()}\n"
         "(this platform is not registered automatically, because a "
         "registration that fails silently is worse than none)"
@@ -110,7 +110,7 @@ def _cron_instructions(every_minutes: int) -> str:
 
 def _launchd_instructions(every_minutes: int) -> str:
     return (
-        "not registered — save this as "
+        "not registered. Save this as "
         "~/Library/LaunchAgents/com.boxdawn.submit.plist and run\n"
         "  launchctl load ~/Library/LaunchAgents/com.boxdawn.submit.plist\n\n"
         '<?xml version="1.0" encoding="UTF-8"?>\n'
