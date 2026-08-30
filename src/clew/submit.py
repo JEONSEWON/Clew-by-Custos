@@ -29,6 +29,7 @@ import urllib.error
 import urllib.request
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import NamedTuple
 from pathlib import Path
 
 # docs/SESSION_CLOSE_RULE_PREREG.md §5. Changing this changes what the
@@ -46,6 +47,15 @@ LEDGER_PATH = Path.home() / ".clew" / "submitted.json"
 # discovered by walking up from the trace, which means it is a file people keep
 # in a repository, and a repository is the one place a key must never be.
 CREDENTIALS_PATH = Path.home() / ".clew" / "credentials.yaml"
+
+# One entry per codebase: {project, root, api_key}. Present only when the
+# machine works on more than one, which is the case this file exists for.
+PROJECTS_PATH = Path.home() / ".clew" / "projects.yaml"
+
+# When unattended submission was switched on. Sessions that had already
+# gone quiet by then are not swept up: see `Target.since`.
+AUTO_STATE_PATH = Path.home() / ".clew" / "auto_submit.json"
+AUTO_LOG_PATH = Path.home() / ".clew" / "auto_submit.log"
 
 # Where the rule actually lives, in a form a pip-install user can open. A
 # local docs/ path is only real inside a clone of the repository.
@@ -138,13 +148,126 @@ def _unsent(entry: object) -> bool:
 
 
 def pending(root: Path, now: datetime, ledger: dict,
-            close_after: timedelta = CLOSE_AFTER) -> list[Path]:
-    """Files that are closed (R1) and not already sent (R2)."""
-    return [p for p in discover(root)
-            if _unsent(ledger.get(str(p))) and is_closed(p, now, close_after)]
+            close_after: timedelta = CLOSE_AFTER,
+            since: datetime | None = None) -> list[Path]:
+    """Files that are closed (R1) and not already sent (R2).
+
+    `since` drops sessions whose last write predates it. Unattended runs pass
+    the moment submission was switched on, so turning it on does not sweep up
+    the machine's whole history behind the operator. Backfilled sessions all
+    land on the day they were analysed, so a hundred of them make one
+    artificial mound -- and rule A compares a day against the previous one.
+    """
+    out = []
+    for p in discover(root):
+        if not _unsent(ledger.get(str(p))) or not is_closed(p, now, close_after):
+            continue
+        if since is not None:
+            last = last_activity(p)
+            if last is None or last < since:
+                continue
+        out.append(p)
+    return out
 
 
 # ── credentials ────────────────────────────────────────────────────────────
+
+class Target(NamedTuple):
+    """One codebase, its trace folder, and the key that names it downstream.
+
+    `project` is carried for messages only; the server binds a trace to a
+    project through the key, not through this name.
+    """
+
+    project: str
+    root: Path
+    api_key: str | None
+
+
+def load_targets(
+    projects_path: Path = PROJECTS_PATH,
+    default_root: Path = DEFAULT_ROOT,
+) -> list[Target]:
+    """Where to submit from, and under which key.
+
+    Without `projects.yaml` this is what it always was: the whole of
+    `~/.claude/projects` under one key.
+
+    With it, one target per codebase. That split is not a convenience. The
+    alert rule compares a day against the previous day *within one baseline*,
+    and a project is one baseline. Sending two codebases under one key makes
+    the rate answer "which project did I work on today" instead of "how
+    wasteful was the work", which is the noise the split exists to remove.
+    Switching submission on without this would fill the baseline we are trying
+    to open rule A against.
+
+    A malformed file raises rather than quietly falling back to the single-root
+    path: falling back would send every codebase under whichever key came
+    first, which is the exact blending above, arrived at by accident.
+    """
+    try:
+        raw = projects_path.read_text(encoding="utf-8")
+    except OSError:
+        return [Target("default", default_root, read_key())]
+
+    import yaml
+
+    entries = yaml.safe_load(raw) or []
+    if not isinstance(entries, list) or not entries:
+        raise ValueError(f"{projects_path}: expected a non-empty list of entries")
+
+    targets: list[Target] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError(f"{projects_path}: entry is not a mapping: {entry!r}")
+        missing = [k for k in ("project", "root", "api_key") if not entry.get(k)]
+        if missing:
+            raise ValueError(
+                f"{projects_path}: entry {entry.get('project', '?')!r} "
+                f"is missing {missing}"
+            )
+        targets.append(Target(
+            str(entry["project"]),
+            Path(str(entry["root"])).expanduser(),
+            str(entry["api_key"]).strip(),
+        ))
+
+    roots = [t.root for t in targets]
+    if len(set(roots)) != len(roots):
+        raise ValueError(
+            f"{projects_path}: two entries share a root, so the same sessions "
+            f"would be sent under two keys and counted twice"
+        )
+    return targets
+
+
+# ── unattended state ───────────────────────────────────────────────────────
+
+def read_auto_state(path: Path = AUTO_STATE_PATH) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def write_auto_state(state: dict, path: Path = AUTO_STATE_PATH) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+    tmp.replace(path)
+
+
+def installed_at(path: Path = AUTO_STATE_PATH) -> datetime | None:
+    """The watermark unattended runs submit after. None when never installed."""
+    raw = read_auto_state(path).get("installed_at")
+    if not raw:
+        return None
+    try:
+        stamp = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
+
 
 def read_key() -> str | None:
     """Environment first, then the credentials file.
@@ -422,6 +545,8 @@ def run(root: Path = DEFAULT_ROOT,
         limit: int | None = None,
         now: datetime | None = None,
         ledger_path: Path = LEDGER_PATH,
+        key: str | None = None,
+        since: datetime | None = None,
         out=print) -> int:
     """Submit every closed, unsent session. Returns a process exit code.
 
@@ -445,7 +570,7 @@ def run(root: Path = DEFAULT_ROOT,
             ledger, endpoint, ledger_path, out=out,
         )
 
-    queued = pending(root, now, ledger)
+    queued = pending(root, now, ledger, since=since)
 
     if limit is not None:
         queued = queued[:limit]
@@ -463,13 +588,15 @@ def run(root: Path = DEFAULT_ROOT,
                 f"idle {age:.1f}h")
         return 0
 
-    key = read_key()
+    explicit_key = key
+    key = key or read_key()
     if not key:
         out(f"no key: {key_problem()}")
         return 2
-    ambiguity = key_source()
-    if ambiguity:
-        out(f"note: {ambiguity}")
+    if explicit_key is None:
+        ambiguity = key_source()
+        if ambiguity:
+            out(f"note: {ambiguity}")
     if not key.startswith(KEY_PREFIX):
         # Refuse early rather than sending someone's session token to a server
         # that will reject it anyway.
@@ -511,3 +638,34 @@ def run(root: Path = DEFAULT_ROOT,
     failed += resolved_failed
     out(f"done: {stored} stored, {failed} not stored")
     return 0 if failed == 0 else 1
+
+
+def run_all(targets: list[Target],
+            endpoint: str = DEFAULT_ENDPOINT,
+            dry_run: bool = False,
+            pace_seconds: float = 2.0,
+            limit: int | None = None,
+            now: datetime | None = None,
+            ledger_path: Path = LEDGER_PATH,
+            since: datetime | None = None,
+            out=print) -> int:
+    """Run one sweep per codebase. Worst exit code wins.
+
+    The ledger is shared and keyed by absolute path, so two targets cannot
+    claim the same session -- and `load_targets` refuses a config where two
+    entries name the same root, which is the only way that could happen.
+
+    One target failing does not stop the others: a revoked key on one codebase
+    should not cost the day's measurements on the rest.
+    """
+    worst = 0
+    for target in targets:
+        if len(targets) > 1:
+            out(f"[{target.project}] {target.root}")
+        code = run(
+            root=target.root, endpoint=endpoint, dry_run=dry_run,
+            pace_seconds=pace_seconds, limit=limit, now=now,
+            ledger_path=ledger_path, key=target.api_key, since=since, out=out,
+        )
+        worst = max(worst, code)
+    return worst
