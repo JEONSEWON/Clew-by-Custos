@@ -110,8 +110,12 @@ def test_sessions_that_ended_before_install_are_not_swept_up(tmp_path):
 
 
 def test_a_session_still_has_to_be_closed_even_if_it_is_recent(tmp_path):
-    """The watermark narrows the rule, it does not replace it."""
-    _session(tmp_path / "busy.jsonl", NOW - timedelta(minutes=30))
+    """The watermark narrows the rule, it does not replace it.
+
+    Five minutes idle, against a close rule of twenty. This said thirty when
+    the rule was 240; the number moved with the threshold, not the intent.
+    """
+    _session(tmp_path / "busy.jsonl", NOW - timedelta(minutes=5))
     assert submit.pending(tmp_path, NOW, {}, since=NOW - timedelta(days=1)) == []
 
 
@@ -194,3 +198,70 @@ def test_one_target_failing_does_not_stop_the_others(tmp_path, monkeypatch):
     # printed lines does not: "NOT stored" contains "stored".
     assert tried == ["bdk_a", "bdk_b"]
     assert code == 1                                   # worst code wins
+
+
+# ── the latency amendment ──────────────────────────────────────────────────
+#
+# Shortening the wait is only safe because migration 0018 made a resubmission
+# replace the stored row. The client half of that is here: a session that grew
+# has to be sent again, or the shorter wait stores an early fragment and never
+# corrects it.
+
+
+def test_the_close_rule_matches_the_amendment():
+    """The threshold is frozen in a document, not chosen here."""
+    assert submit.CLOSE_AFTER == timedelta(minutes=20)
+
+
+def test_a_session_that_grew_is_sent_again(tmp_path):
+    """Distinguishes: with the ledger keyed on the path alone, a session sent
+    after twenty quiet minutes is never sent again, and what is stored is an
+    early fragment of a session that ran for hours. That is worse than the
+    four-hour wait it replaced.
+    """
+    path = _session(tmp_path / "s.jsonl", NOW - timedelta(hours=9))
+    ledger = {str(path): {"ok": True, "stored": True,
+                          "sent_through": (NOW - timedelta(hours=9)).isoformat()}}
+    assert submit.pending(tmp_path, NOW, ledger) == []
+
+    _session(path, NOW - timedelta(hours=1))          # the session continued
+    assert submit.pending(tmp_path, NOW, ledger) == [path]
+
+
+def test_a_session_that_did_not_grow_is_left_alone(tmp_path):
+    path = _session(tmp_path / "s.jsonl", NOW - timedelta(hours=9))
+    ledger = {str(path): {"ok": True, "stored": True,
+                          "sent_through": (NOW - timedelta(hours=9)).isoformat()}}
+    assert submit.pending(tmp_path, NOW, ledger) == []
+
+
+def test_a_ledger_written_before_this_field_does_not_resend_everything(tmp_path):
+    """Distinguishes: treating a missing `sent_through` as "new content" makes
+    the first run of an upgraded client resubmit every session on the machine.
+    On this laptop that is 72 of them.
+    """
+    path = _session(tmp_path / "s.jsonl", NOW - timedelta(hours=9))
+    ledger = {str(path): {"ok": True, "stored": True,
+                          "submitted_at": "2026-08-25T00:00:00+00:00"}}
+    assert submit.pending(tmp_path, NOW, ledger) == []
+
+
+def test_a_grown_session_still_has_to_be_quiet(tmp_path):
+    """Growth reopens a session for sending; it does not skip the close rule."""
+    path = _session(tmp_path / "s.jsonl", NOW - timedelta(minutes=5))
+    ledger = {str(path): {"ok": True, "stored": True,
+                          "sent_through": (NOW - timedelta(hours=9)).isoformat()}}
+    assert submit.pending(tmp_path, NOW, ledger) == []
+
+
+def test_a_send_records_how_far_it_reached(tmp_path, monkeypatch):
+    """Without this the next sweep cannot tell whether the file moved."""
+    last = NOW - timedelta(hours=9)
+    _session(tmp_path / "s.jsonl", last)
+    monkeypatch.setattr(submit, "submit_file",
+                        lambda p, k, e: {"ok": True, "stored": True})
+    led = tmp_path / "l.json"
+    submit.run(root=tmp_path, ledger_path=led, now=NOW, key="bdk_" + "a" * 24,
+               pace_seconds=0, out=lambda *a: None)
+    entry = next(iter(json.loads(led.read_text(encoding="utf-8")).values()))
+    assert entry["sent_through"] == last.isoformat()

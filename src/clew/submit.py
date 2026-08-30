@@ -5,10 +5,11 @@ the session close rule preregistration, and the numbers below are the ones that
 document fixed (see RULE_URL):
 
     R1  a session is finished when its last recorded event is CLOSE_AFTER
-        minutes old (240, from §5 — 60 was measured and rejected at 29%)
-    R2  a session is submitted once and never again, whatever the file does
-        afterwards (a grown file has a different payload hash, so the database
-        constraint would not catch the second copy)
+        minutes old (20, from the latency amendment; 240 originally)
+    R2  a session is submitted again when it has recorded events past what was
+        last sent, and the server replaces the row rather than adding one
+        (latency amendment §2; before that a resubmission became a second row
+        because a grown file has a different payload hash)
     R3  discovery is recursive, because sub-agent traces sit a directory
         deeper and are 13 of 84 files on the measured corpus
 
@@ -34,7 +35,11 @@ from pathlib import Path
 
 # docs/SESSION_CLOSE_RULE_PREREG.md §5. Changing this changes what the
 # baseline is made of, so it changes there first.
-CLOSE_AFTER = timedelta(minutes=240)
+# Latency amendment §2. The original 240 was not a fact about sessions: it was
+# how long you had to wait for "it will not grow again" to be true often enough,
+# because a grown file used to become a second row. Migration 0018 made
+# resubmission replace instead of add, so the wait has nothing left to do.
+CLOSE_AFTER = timedelta(minutes=20)
 
 DEFAULT_ROOT = Path.home() / ".claude" / "projects"
 DEFAULT_ENDPOINT = "https://jeonsewon--boxdawn-analyzer-web.modal.run/analyze"
@@ -147,6 +152,35 @@ def _unsent(entry: object) -> bool:
     return entry is None or (isinstance(entry, dict) and entry.get("ok") is False)
 
 
+def _has_new_content(path: Path, entry: object) -> bool:
+    """True when the file has recorded events past what was last sent.
+
+    Shortening the wait without this makes things worse rather than better: a
+    session would be sent after 20 quiet minutes and then, because the ledger
+    remembers the path, never sent again. The stored measurement would be an
+    early fragment of a session that went on for hours.
+
+    Compared on the last in-file timestamp, not file size or mtime, for the
+    reason `last_activity` gives: mtime moves for a backup or a sync, and size
+    is a proxy for the thing this can just read directly.
+
+    An entry with no `sent_through` was written before this field existed.
+    Those are left alone. Treating them as new would resend every session on
+    the machine the first time an upgraded client runs.
+    """
+    if not isinstance(entry, dict):
+        return False
+    stamp = entry.get("sent_through")
+    if not stamp:
+        return False
+    try:
+        sent_through = datetime.fromisoformat(str(stamp))
+    except ValueError:
+        return False
+    last = last_activity(path)
+    return last is not None and last > sent_through
+
+
 def pending(root: Path, now: datetime, ledger: dict,
             close_after: timedelta = CLOSE_AFTER,
             since: datetime | None = None) -> list[Path]:
@@ -160,7 +194,10 @@ def pending(root: Path, now: datetime, ledger: dict,
     """
     out = []
     for p in discover(root):
-        if not _unsent(ledger.get(str(p))) or not is_closed(p, now, close_after):
+        entry = ledger.get(str(p))
+        if not (_unsent(entry) or _has_new_content(p, entry)):
+            continue
+        if not is_closed(p, now, close_after):
             continue
         if since is not None:
             last = last_activity(p)
@@ -614,7 +651,14 @@ def run(root: Path = DEFAULT_ROOT,
         # that means recording the ticket now, ahead of the answer -- a poll
         # interrupted after this line is recoverable, one interrupted before it
         # would resend a trace the server already has.
-        ledger[str(path)] = {**result, "submitted_at": now.isoformat()}
+        # `sent_through` is what makes a later resubmission possible: it
+        # records how far into the session this upload reached.
+        last_sent = last_activity(path)
+        ledger[str(path)] = {
+            **result,
+            "submitted_at": now.isoformat(),
+            "sent_through": last_sent.isoformat() if last_sent else None,
+        }
         save_ledger(ledger, ledger_path)
 
         if result.get("pending"):

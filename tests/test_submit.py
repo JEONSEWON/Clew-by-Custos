@@ -1,7 +1,8 @@
 """submit (SESSION_CLOSE_RULE_PREREG §5) — R1/R2/R3 and what never travels.
 
 Tests cover:
-  1. R1 — closed only after CLOSE_AFTER of silence, measured from in-file
+  1. R1 — closed only after CLOSE_AFTER of silence (20 min since the latency
+     amendment; 240 before it), measured from in-file
      timestamps; a file with no timestamps is skipped rather than guessed at
   2. R2 — a path in the ledger is never queued again, and the ledger is
      written after each submission so an interrupted run does not resend
@@ -48,10 +49,10 @@ def _http_error(code: int, body: dict):
     return _Exc()
 
 @pytest.mark.parametrize("idle_min, closed", [
-    (239, False),
-    (240, True),    # the boundary is inclusive: "at least N older"
-    (241, True),
-    (60, False),    # the rejected threshold — prereg §4, 29% of sessions
+    (19, False),
+    (20, True),     # the boundary is inclusive: "at least N older"
+    (21, True),
+    (239, True),    # what used to be just under the old threshold
 ])
 
 def test_close_boundary(tmp_path, idle_min, closed):
@@ -271,9 +272,13 @@ def test_a_run_that_stores_nothing_exits_nonzero(tmp_path, monkeypatch):
 
     assert code == 1
     # Recorded anyway: a refused key is a fact, and R2 is about not repeating
-    # an upload, not about whether it succeeded.
-    assert submit.load_ledger(tmp_path / "l.json")[str(tmp_path / "a.jsonl")] == {
-        "ok": False, "reason": "bad_key", "submitted_at": NOW.isoformat()}
+    # an upload, not about whether it succeeded. `sent_through` is written even
+    # on a failure so that a later run compares against the same mark; a failed
+    # entry is re-queued by `_unsent` regardless.
+    entry = submit.load_ledger(tmp_path / "l.json")[str(tmp_path / "a.jsonl")]
+    assert entry == {
+        "ok": False, "reason": "bad_key", "submitted_at": NOW.isoformat(),
+        "sent_through": (NOW - timedelta(hours=9)).isoformat()}
 
 
 def test_limit_caps_a_backfill(tmp_path, monkeypatch):
