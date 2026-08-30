@@ -327,17 +327,99 @@ def _submit_rule_url() -> str:
 
 
 def _submit(args: argparse.Namespace) -> int:
+    from datetime import datetime, timezone
     from pathlib import Path
 
-    from clew import submit
+    from clew import schedule, submit
 
-    return submit.run(
-        root=Path(args.root) if args.root else submit.DEFAULT_ROOT,
-        endpoint=args.endpoint or submit.DEFAULT_ENDPOINT,
-        dry_run=args.dry_run,
-        pace_seconds=args.pace,
-        limit=args.limit,
+    if args.install or args.uninstall or args.status:
+        return _submit_schedule(args, schedule, submit)
+
+    endpoint = args.endpoint or submit.DEFAULT_ENDPOINT
+
+    # An explicit --root means "this folder, this key", which is the shape the
+    # command had before per-project routing existed. Honour it verbatim
+    # rather than routing around the operator.
+    if args.root:
+        return submit.run(
+            root=Path(args.root), endpoint=endpoint, dry_run=args.dry_run,
+            pace_seconds=args.pace, limit=args.limit,
+        )
+
+    try:
+        targets = submit.load_targets()
+    except ValueError as exc:
+        print(exc)
+        return 2
+
+    since = submit.installed_at() if args.auto else None
+    if args.auto and since is None:
+        # Nothing registered the watermark, so there is no "from here on".
+        # Sweeping the machine's history is what --install exists to prevent.
+        print("not installed: run `boxdawn submit --install` first")
+        return 2
+
+    lines: list[str] = []
+
+    def record(text):
+        lines.append(str(text))
+        print(text)
+
+    code = submit.run_all(
+        targets, endpoint=endpoint, dry_run=args.dry_run,
+        pace_seconds=args.pace, limit=args.limit, since=since,
+        out=record if args.auto else print,
     )
+
+    if args.auto:
+        # One line per run, whatever happened. A sweep that found nothing and a
+        # scheduler that never fired are indistinguishable otherwise.
+        summary = "; ".join(ln for ln in lines if ln.startswith(("done:", "nothing", "no key", "note:")))
+        schedule.log_run(
+            f"exit={code} targets={len(targets)} {summary or 'no output'}",
+            submit.AUTO_LOG_PATH,
+        )
+    return code
+
+
+def _submit_schedule(args: argparse.Namespace, schedule, submit) -> int:
+    """--install / --uninstall / --status."""
+    from datetime import datetime, timezone
+
+    if args.status:
+        registered = schedule.is_registered()
+        where = {True: "registered", False: "not registered",
+                 None: "unknown on this platform"}[registered]
+        print(f"scheduler   : {where} ({schedule.TASK_NAME})")
+        print(f"command     : {schedule.command_line()}")
+        stamp = submit.installed_at()
+        print(f"submits from: {stamp.isoformat() if stamp else '(never installed)'}")
+        tail = schedule.tail_log(submit.AUTO_LOG_PATH)
+        print("last runs   :" if tail else "last runs   : (none yet)")
+        for line in tail:
+            print(f"  {line}")
+        return 0
+
+    if args.uninstall:
+        ok, message = schedule.uninstall()
+        print(message)
+        # The watermark is left in place on purpose: reinstalling later should
+        # not become a licence to backfill everything since the first install.
+        return 0 if ok or schedule.is_registered() is None else 1
+
+    ok, message = schedule.install(args.every or schedule.DEFAULT_EVERY_MINUTES)
+    print(message)
+    if ok or schedule.is_registered() is None:
+        state = submit.read_auto_state()
+        if not state.get("installed_at"):
+            state["installed_at"] = datetime.now(timezone.utc).isoformat()
+            submit.write_auto_state(state)
+            print(f"submits sessions that end after {state['installed_at']}")
+            print("earlier sessions stay put — send them with `boxdawn submit`")
+        else:
+            print(f"watermark unchanged: {state['installed_at']}")
+        return 0
+    return 1
 
 
 def _estimate(args: argparse.Namespace) -> int:
@@ -454,6 +536,20 @@ def main() -> None:
                    help="send at most N this run")
     s.add_argument("--pace", type=float, default=2.0, metavar="SEC",
                    help="seconds between submissions (default: 2)")
+    s.add_argument("--install", action="store_true",
+                   help=(
+                       "register the hourly sweep with the OS scheduler. Only "
+                       "sessions that end after this moment are sent "
+                       "automatically; anything older stays put."
+                   ))
+    s.add_argument("--uninstall", action="store_true",
+                   help="remove the registered sweep")
+    s.add_argument("--status", action="store_true",
+                   help="show whether the sweep is registered and how it went")
+    s.add_argument("--every", type=int, default=None, metavar="MIN",
+                   help="minutes between sweeps for --install (default: 60)")
+    s.add_argument("--auto", action="store_true",
+                   help=argparse.SUPPRESS)
 
     e = sub.add_parser(
         "estimate",
