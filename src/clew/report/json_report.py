@@ -318,6 +318,10 @@ def render_json(
         "total_tokens_wasted": total_tok if total_tok is not None else "unknown",
         "total_cost_wasted": round(total_cost, 8) if total_cost is not None else "unknown",
         "amplification": amp_block,
+        # What the adapter dropped or rewrote before any detector ran.
+        # Absent when the trace file mapped cleanly, so its presence is
+        # the signal. Detector-level skips live under "amplification".
+        "ingest_notes": trace.metadata.get("ingest_notes") or {},
         "n_skipped_error_details": enrichment.n_skipped_error,
         "category_counts": {
             c: sum(1 for ed in enrichment.enriched if ed.category == c)

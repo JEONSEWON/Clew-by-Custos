@@ -368,3 +368,95 @@ def test_duplicate_tool_use_id_raises(tmp_path: Path) -> None:
     p = _write_jsonl(tmp_path, entries)
     with pytest.raises(ValueError, match="중복 tool_use.id"):
         ingest_claude_code_jsonl(p)
+
+
+def test_ingest_notes_absent_when_file_maps_cleanly(tmp_path: Path) -> None:
+    """The notes block is the signal, so a clean file must produce none.
+
+    Distinguishes: if `ingest_notes` were populated unconditionally, this
+    fails. A report that always shows the section teaches the reader to
+    skip it.
+    """
+    entries = [
+        _asst("a1", None, "2026-07-17T10:00:00Z", [
+            {"type": "tool_use", "id": "tu1", "name": "Read", "input": {"file_path": "/x"}},
+        ]),
+        _user("u1", "a1", "2026-07-17T10:00:05Z", [
+            {"type": "tool_result", "tool_use_id": "tu1", "content": "ok"},
+        ]),
+    ]
+    trace = ingest_claude_code_jsonl(_write_jsonl(tmp_path, entries))
+    assert trace.metadata["ingest_notes"] == {}
+
+
+def test_ingest_notes_record_orphan_skip(tmp_path: Path) -> None:
+    """A dropped tool call is recorded, not only warned about.
+
+    Distinguishes: the warning already existed and went to stderr, where a
+    hosted run has no reader. The count must survive into the Trace.
+    """
+    entries = [
+        _asst("a1", None, "2026-07-17T10:00:00Z", [
+            {"type": "tool_use", "id": "tu1", "name": "Read", "input": {"file_path": "/x"}},
+        ]),
+        _user("u1", "a1", "2026-07-17T10:00:05Z", [
+            {"type": "tool_result", "tool_use_id": "tu1", "content": "ok"},
+        ]),
+        _asst("a2", "u1", "2026-07-17T10:00:10Z", [
+            {"type": "tool_use", "id": "tu2", "name": "Bash", "input": {"cmd": "make"}},
+        ]),
+    ]
+    with pytest.warns(UserWarning, match="orphan tool_use"):
+        trace = ingest_claude_code_jsonl(_write_jsonl(tmp_path, entries))
+    assert trace.metadata["ingest_notes"]["orphan_tool_use_skipped"] == 1
+
+
+def test_ingest_notes_record_unknown_block_types(tmp_path: Path) -> None:
+    """Blocks left out of span creation are named, with their count."""
+    entries = [
+        _asst("a1", None, "2026-07-17T10:00:00Z", [
+            {"type": "tool_use", "id": "tu1", "name": "Read", "input": {"file_path": "/x"}},
+            {"type": "document", "source": {"data": "..."}},
+        ]),
+        _user("u1", "a1", "2026-07-17T10:00:05Z", [
+            {"type": "tool_result", "tool_use_id": "tu1", "content": "ok"},
+        ]),
+    ]
+    with pytest.warns(UserWarning, match="알 수 없는"):
+        trace = ingest_claude_code_jsonl(_write_jsonl(tmp_path, entries))
+    assert trace.metadata["ingest_notes"]["unknown_block_types"] == {"document": 1}
+
+
+def test_ingest_notes_count_nontext_chars_not_blocks(tmp_path: Path) -> None:
+    """Non-text results are counted in characters, because that is the unit
+    the byte-based waste rate is computed in.
+
+    Distinguishes: two blocks of wildly different size must not report the
+    same weight. A screenshot and a tool_reference are one block each.
+    """
+    big = "A" * 5000
+    entries = [
+        _asst("a1", None, "2026-07-17T10:00:00Z", [
+            {"type": "tool_use", "id": "tu1", "name": "Screenshot", "input": {"q": "x"}},
+        ]),
+        _user("u1", "a1", "2026-07-17T10:00:05Z", [
+            {"type": "tool_result", "tool_use_id": "tu1",
+             "content": [
+                 {"type": "text", "text": "shot taken"},
+                 {"type": "image", "source": {"data": big}},
+                 {"type": "tool_reference", "tool_name": "T"},
+             ]},
+        ]),
+    ]
+    import warnings as _w
+    with _w.catch_warnings():
+        _w.simplefilter("ignore")
+        trace = ingest_claude_code_jsonl(_write_jsonl(tmp_path, entries))
+    notes = trace.metadata["ingest_notes"]
+    assert notes["nontext_result_blocks"] == {"image": 1, "tool_reference": 1}
+    span = next(s for s in trace.spans if s.span_kind == "tool")
+    text_chars = len("shot taken")
+    # every character of the span's output_text is either the text block or
+    # one of the two serialized blocks, plus the two "\n" joiners
+    assert notes["nontext_result_chars"] == len(span.output_text) - text_chars - 2
+    assert notes["nontext_result_chars"] > 5000

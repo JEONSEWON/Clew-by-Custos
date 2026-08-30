@@ -574,6 +574,75 @@ def _waste_rate_line(wr: WasteRateMetric | None) -> str | None:
     )
 
 
+_NONTEXT_SHARE_FLOOR_PCT = 1.0
+
+
+def _render_ingest_notes(trace: Trace) -> list[str]:
+    """What the adapter dropped or rewrote before any detector ran.
+
+    Silent when the trace file mapped cleanly — the section appearing at all
+    is the signal. Every line answers the same question: is a number below
+    computed on less, or on other, than what was in the file?
+    """
+    notes = trace.metadata.get("ingest_notes") or {}
+    if not notes:
+        return []
+
+    items: list[str] = []
+
+    n_orphan = notes.get("orphan_tool_use_skipped", 0)
+    if n_orphan:
+        plural = "" if n_orphan == 1 else "s"
+        items.append(
+            f"**{n_orphan} tool call{plural} dropped** — the call was made "
+            f"but no result was recorded (a session that ended mid-call). "
+            f"Nothing below counts it."
+        )
+
+    if notes.get("no_tool_use_recovery"):
+        items.append(
+            "**no tool call was paired** — this report covers the session "
+            "envelope only, so a waste rate of 0 here means 'nothing to "
+            "measure', not 'nothing wasted'."
+        )
+
+    unknown = notes.get("unknown_block_types") or {}
+    if unknown:
+        detail = ", ".join(f"`{k}` ×{v}" for k, v in sorted(unknown.items()))
+        items.append(
+            f"**content blocks of an unrecognized type were left out of span "
+            f"creation**: {detail}."
+        )
+
+    nontext = notes.get("nontext_result_blocks") or {}
+    n_chars = notes.get("nontext_result_chars", 0)
+    total = sum(len(sp.output_text or "") for sp in trace.spans)
+    pct = (n_chars / total * 100) if total else 0.0
+    # Gated because a `tool_reference` block costs ~52 characters and appears
+    # in most sessions: saying so on every report is how a reader learns to
+    # skip the section. On 71 real Claude Code sessions the two populations
+    # separate with nothing in between - 36 traces under 1%, 13 above 10%,
+    # zero in the gap - so the cut sits in empty space rather than on a
+    # judgement call. The JSON report carries the raw counts either way.
+    if nontext and pct >= _NONTEXT_SHARE_FLOOR_PCT:
+        detail = ", ".join(f"`{k}` ×{v}" for k, v in sorted(nontext.items()))
+        share = f" ({pct:.1f}% of it)"
+        items.append(
+            f"**{n_chars:,} characters of the measured text{share} are "
+            f"non-text tool results rendered as JSON**: {detail}. Byte-based "
+            f"rates count those bytes, so a screenshot is measured at the "
+            f"size of its encoding rather than what it shows."
+        )
+
+    if not items:
+        return []
+
+    lines = ["## What the numbers were computed on", ""]
+    lines.extend(f"- {it}" for it in items)
+    lines.append("")
+    return lines
+
+
 def render_markdown(
     trace: Trace,
     cr: CascadeResult,
@@ -613,6 +682,8 @@ def render_markdown(
     lines.append(f"- **analyzed**: {now}")
     lines.append(f"- **detector params**: φ={_PHI}, N={_N}, model={_MODEL}")
     lines.append("")
+
+    lines.extend(_render_ingest_notes(trace))
 
     # Cost Attribution Completion prereg §5.2 — top-of-report cost summary.
     # Placed before existing content so pitch-critical dollar figures land

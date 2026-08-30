@@ -60,7 +60,17 @@ def _parse_ts(ts: str) -> datetime:
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
 
-def _extract_result_text(content: object) -> str:
+def _note_nontext(notes: dict[str, int] | None, btype: str, n_chars: int) -> None:
+    """Record one non-text tool_result block: its type and the chars it added."""
+    if notes is None:
+        return
+    notes[btype] = notes.get(btype, 0) + 1
+    notes["_chars"] = notes.get("_chars", 0) + n_chars
+
+
+def _extract_result_text(
+    content: object, notes: dict[str, int] | None = None
+) -> str:
     """tool_result.content -> string (§22.5 convention).
 
     - str -> return as-is.
@@ -69,6 +79,10 @@ def _extract_result_text(content: object) -> str:
         * all other types -> json.dumps(block, sort_keys=True, ensure_ascii=False)
                             + warnings.warn (signal preservation, §21.4).
     - If empty after rendering, the Span validator raises (at the caller). Harmless here.
+
+    `notes`: when given, counts each serialized non-text block by type and
+    accumulates the characters it contributed, so a report can say what the
+    measured text is made of.
     """
     if isinstance(content, str):
         return content
@@ -81,7 +95,9 @@ def _extract_result_text(content: object) -> str:
                     f"json.dumps 로 직렬화 (§22.5)",
                     stacklevel=3,
                 )
-                parts.append(json.dumps(block, sort_keys=True, ensure_ascii=False))
+                rendered = json.dumps(block, sort_keys=True, ensure_ascii=False)
+                _note_nontext(notes, type(block).__name__, len(rendered))
+                parts.append(rendered)
                 continue
             btype = block.get("type")
             if btype == "text":
@@ -92,7 +108,9 @@ def _extract_result_text(content: object) -> str:
                     f"json.dumps 로 직렬화 (§22.5, 벤더 포맷 신호)",
                     stacklevel=3,
                 )
-                parts.append(json.dumps(block, sort_keys=True, ensure_ascii=False))
+                rendered = json.dumps(block, sort_keys=True, ensure_ascii=False)
+                _note_nontext(notes, str(btype), len(rendered))
+                parts.append(rendered)
         return "\n".join(parts)
     raise ValueError(
         f"tool_result.content 지원 타입 아님: {type(content).__name__}"
@@ -321,6 +339,33 @@ def _extract_llm_calls(
     return llm_calls
 
 
+def _build_ingest_notes(
+    *,
+    n_orphan_use_skipped: int,
+    no_tool_use_recovery: bool,
+    unknown_block_types: dict[str, int],
+    nontext_notes: dict[str, int],
+) -> dict:
+    """What the adapter dropped or rewrote on the way to the Trace.
+
+    Every entry is something the numbers downstream were computed *without*
+    (dropped) or *on top of* (rewritten). Empty dict when the file mapped
+    cleanly, so a report can stay silent in the ordinary case.
+    """
+    notes: dict = {}
+    if n_orphan_use_skipped:
+        notes["orphan_tool_use_skipped"] = n_orphan_use_skipped
+    if no_tool_use_recovery:
+        notes["no_tool_use_recovery"] = True
+    if unknown_block_types:
+        notes["unknown_block_types"] = dict(unknown_block_types)
+    if nontext_notes:
+        counts = {k: v for k, v in nontext_notes.items() if k != "_chars"}
+        notes["nontext_result_blocks"] = counts
+        notes["nontext_result_chars"] = nontext_notes.get("_chars", 0)
+    return notes
+
+
 def ingest_claude_code_jsonl(
     path: Path,
     *,
@@ -449,6 +494,7 @@ def ingest_claude_code_jsonl(
             f"orphan tool_result={len(orphan_result)}건 "
             f"(첫 5개: {orphan_result[:5]})"
         )
+    n_orphan_use_skipped = len(orphan_use)
     if orphan_use:
         warnings.warn(
             f"{path.name}: orphan tool_use {len(orphan_use)}건 skip "
@@ -459,12 +505,13 @@ def ingest_claude_code_jsonl(
             tool_uses.pop(tid, None)
 
     # Create spans
+    nontext_notes: dict[str, int] = {}
     root_span_id = f"root-{session_id}"
     tool_spans: list[Span] = []
     for tid, (use_block, use_ts) in tool_uses.items():
         result_block, result_ts = tool_results[tid]
         input_text = _serialize_input(use_block.get("input", {}))
-        output_text = _extract_result_text(result_block.get("content"))
+        output_text = _extract_result_text(result_block.get("content"), nontext_notes)
         start = _parse_ts(use_ts)
         end = _parse_ts(result_ts)
         # Prevent end < start (clock inversion) - the Span validator catches this, but raises explicitly without clamping
@@ -487,6 +534,7 @@ def ingest_claude_code_jsonl(
         )
 
     # Root timing: prefer tool_span range; else fall back to entry timestamps (§29.1 no-tool-use recovery).
+    no_tool_use_recovery = not tool_spans
     if tool_spans:
         root_start = min(s.start_time for s in tool_spans)
         root_end = max(s.end_time for s in tool_spans)
@@ -537,5 +585,11 @@ def ingest_claude_code_jsonl(
             "cc_total_turns": cc_total_turns,
             "error_span_ids": error_span_ids,
             "llm_calls": llm_calls,
+            "ingest_notes": _build_ingest_notes(
+                n_orphan_use_skipped=n_orphan_use_skipped,
+                no_tool_use_recovery=no_tool_use_recovery,
+                unknown_block_types=unknown_block_types,
+                nontext_notes=nontext_notes,
+            ),
         },
     )
