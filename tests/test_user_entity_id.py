@@ -449,7 +449,7 @@ def test_format_ratios_labels_partial():
     out = format_extraction_ratios({"send_x": (1, 8)})
     assert out is not None
     assert "1/8" in out
-    assert "partial — response variance" in out
+    assert "partial, response variance" in out
 
 
 def test_format_ratios_omits_zero_failure_line():

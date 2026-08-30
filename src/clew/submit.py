@@ -318,10 +318,10 @@ def key_problem() -> str:
             import re
             if re.search(r"^\s*api_key:\S", raw, re.M):
                 # The whitespace case, named as whitespace. Nobody suspects it.
-                return (f"{CREDENTIALS_PATH} did not parse as `key: value` — YAML "
+                return (f"{CREDENTIALS_PATH} did not parse as `key: value`. YAML "
                         f"needs a space after the colon, as in "
                         f"`api_key: {KEY_PREFIX}…`")
-            return (f"{CREDENTIALS_PATH} has no `api_key:` line — the file needs "
+            return (f"{CREDENTIALS_PATH} has no `api_key:` line. The file needs "
                     f"`api_key: {KEY_PREFIX}…`, not the key on its own")
         if "api_key" not in loaded:
             return f"{CREDENTIALS_PATH} has no `api_key` entry"
@@ -531,10 +531,10 @@ def resolve_pending(ledger: dict, endpoint: str = DEFAULT_ENDPOINT,
             stored += 1
             out(f"  {name}  stored")
         elif result.get("pending"):
-            out(f"  {name}  still analyzing — {result.get('reason')}")
+            out(f"  {name}  still analyzing: {result.get('reason')}")
         else:
             failed += 1
-            out(f"  {name}  NOT stored — {result.get('reason')}")
+            out(f"  {name}  NOT stored: {result.get('reason')}")
     return stored, failed
 
 
@@ -629,10 +629,10 @@ def run(root: Path = DEFAULT_ROOT,
             stored += 1
             out(f"  {path.name}  stored")
         elif result.get("pending"):
-            out(f"  {path.name}  still analyzing — {result.get('reason')}")
+            out(f"  {path.name}  still analyzing: {result.get('reason')}")
         else:
             failed += 1
-            out(f"  {path.name}  NOT stored — {result.get('reason')}")
+            out(f"  {path.name}  NOT stored: {result.get('reason')}")
 
     stored += resolved_stored
     failed += resolved_failed

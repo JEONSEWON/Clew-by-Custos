@@ -245,7 +245,7 @@ def ingest_from_openinference_json(
     ]
     if not oi_raws:
         raise ValueError(
-            f"{path}: OpenInference 스팬(openinference.span.kind 보유)이 없음 — "
+            f"{path}: OpenInference 스팬(openinference.span.kind 보유)이 없음: "
             f"전체 {len(all_raws)}개 스팬 모두 미계측"
         )
 
@@ -259,7 +259,7 @@ def ingest_from_openinference_json(
             f"{r['span_name']}({r['span_id']})" for r in no_output
         )
         warnings.warn(
-            f"Format C ({path.name}): output.value 없는 OI 스팬 {len(no_output)}개 건너뜀 — "
+            f"Format C ({path.name}): output.value 없는 OI 스팬 {len(no_output)}개 건너뜀: "
             f"{skipped_ids}",
             stacklevel=2,
         )

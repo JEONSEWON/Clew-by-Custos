@@ -227,7 +227,7 @@ def ingest_exgentic_row(
             dropped_non_chat += 1
     if not chat_spans:
         raise ValueError(
-            f"Exgentic session {session_id!r}: 모든 span 이 non-chat 으로 filter — "
+            f"Exgentic session {session_id!r}: 모든 span 이 non-chat 으로 filter: "
             f"src {len(src_spans)}, dropped {dropped_non_chat}"
         )
 

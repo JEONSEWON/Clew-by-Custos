@@ -160,11 +160,11 @@ def load_user_config(path: Path) -> ResolvedTools:
     try:
         data = yaml.safe_load(text)
     except yaml.YAMLError as exc:
-        raise UserToolConfigError(f"{path}: invalid YAML — {exc}") from exc
+        raise UserToolConfigError(f"{path}: invalid YAML: {exc}") from exc
 
     if data is None:
         raise UserToolConfigError(
-            f"{path}: empty config — expected 'version: 1' and 'tools' mapping"
+            f"{path}: empty config: expected 'version: 1' and 'tools' mapping"
         )
     if not isinstance(data, dict):
         raise UserToolConfigError(
@@ -173,7 +173,7 @@ def load_user_config(path: Path) -> ResolvedTools:
 
     if "version" not in data:
         raise UserToolConfigError(
-            f"{path}: missing 'version' — expected 'version: 1'"
+            f"{path}: missing 'version': expected 'version: 1'"
         )
     version = data["version"]
     if version not in _SUPPORTED_VERSIONS:
@@ -184,7 +184,7 @@ def load_user_config(path: Path) -> ResolvedTools:
 
     if "tools" not in data:
         raise UserToolConfigError(
-            f"{path}: missing 'tools' key — nothing to register"
+            f"{path}: missing 'tools' key: nothing to register"
         )
     tools_raw = data["tools"]
     if not isinstance(tools_raw, dict):
@@ -208,7 +208,7 @@ def _reject_phase3_fields(path: Path, tools_raw: dict) -> None:
         if offenders:
             raise UserToolConfigError(
                 f"{path}: tool {tool_name!r} contains reserved field(s) "
-                f"{sorted(offenders)} — not supported in this Boxdawn version"
+                f"{sorted(offenders)}: not supported in this Boxdawn version"
             )
 
 
@@ -230,7 +230,7 @@ def _validate_tools_dict(
             raise UserToolConfigError(f"{path}: tool {name!r} defined twice")
         if not isinstance(spec, dict):
             raise UserToolConfigError(
-                f"{path}: tool {name!r} — value must be a mapping, got "
+                f"{path}: tool {name!r}: value must be a mapping, got "
                 f"{type(spec).__name__}"
             )
         if "category" not in spec:
@@ -240,7 +240,7 @@ def _validate_tools_dict(
         category = spec["category"]
         if category not in _ALLOWED_CATEGORIES:
             raise UserToolConfigError(
-                f"{path}: tool {name!r} — unknown category {category!r} "
+                f"{path}: tool {name!r}: unknown category {category!r} "
                 f"(allowed: {', '.join(_ALLOWED_CATEGORIES)})"
             )
         seen[name] = category
@@ -272,33 +272,33 @@ def _validate_entity_id(path: Path, name: str, category: str, value: Any) -> Non
         )
     if not isinstance(value, str):
         raise UserToolConfigError(
-            f"{path}: tool {name!r} — entity_id must be a string, got "
+            f"{path}: tool {name!r}: entity_id must be a string, got "
             f"{type(value).__name__}"
         )
     if not value:
         raise UserToolConfigError(
-            f"{path}: tool {name!r} — entity_id must be non-empty"
+            f"{path}: tool {name!r}: entity_id must be non-empty"
         )
     # Q2 — grammar: reject sigils outright.
     for bad in ("[", "]", "*", "$"):
         if bad in value:
             raise UserToolConfigError(
-                f"{path}: tool {name!r} — entity_id may not contain {bad!r}. "
+                f"{path}: tool {name!r}: entity_id may not contain {bad!r}. "
                 f"Only dot-separated path is supported (e.g. 'response.ticket.id'). "
-                f"Array indices are intentionally rejected — see design doc §2.2."
+                f"Array indices are intentionally rejected. see design doc §2.2."
             )
     segments = value.split(".")
     for i, seg in enumerate(segments):
         if not seg:
             raise UserToolConfigError(
-                f"{path}: tool {name!r} — entity_id has empty segment at "
+                f"{path}: tool {name!r}: entity_id has empty segment at "
                 f"position {i} in {value!r}"
             )
         if seg.isdigit():
             # Numeric segment == implicit array index. Also rejected (Q2).
             raise UserToolConfigError(
-                f"{path}: tool {name!r} — entity_id segment {seg!r} is numeric. "
-                f"Array indices are intentionally rejected — see design doc §2.2."
+                f"{path}: tool {name!r}: entity_id segment {seg!r} is numeric. "
+                f"Array indices are intentionally rejected. see design doc §2.2."
             )
 
 
@@ -320,7 +320,7 @@ def _suspicious_warn_for(name: str, path_str: str) -> str | None:
         return None
     if normalized in _AMBIGUOUS_TAIL_PATTERNS:
         return (
-            f"boxdawn: entity_id path for {name!r} ends in {tail!r} — transaction "
+            f"boxdawn: entity_id path for {name!r} ends in {tail!r}: transaction "
             f"identifiers are ambiguous: in payment/financial domains a "
             f"transaction can be a first-class entity, but elsewhere it names "
             f"the call, not what was created. Prefer payment_id or ticket_id "
@@ -328,7 +328,7 @@ def _suspicious_warn_for(name: str, path_str: str) -> str | None:
             f"Full context: {_ID_BRIDGE_URL}"
         )
     return (
-        f"boxdawn: entity_id path for {name!r} ends in {tail!r} — correlation IDs "
+        f"boxdawn: entity_id path for {name!r} ends in {tail!r}: correlation IDs "
         f"identify calls, not entities, so pinning entity_id to them will not "
         f"detect duplicate creation. "
         f"Full context: {_ID_BRIDGE_URL}"
@@ -392,7 +392,7 @@ def resolve_user_tools(
         if tool_name in _ID_BRIDGE_MAPPING:
             raise UserToolConfigError(
                 f"tool {tool_name!r}: entity_id conflicts with built-in ID "
-                f"mapping. Built-in extraction takes precedence — remove "
+                f"mapping. Built-in extraction takes precedence. remove "
                 f"entity_id from your config for this tool."
             )
         warn = _suspicious_warn_for(tool_name, path_str)

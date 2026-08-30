@@ -71,7 +71,7 @@ def _normalize_arguments(raw: Any) -> str:
             except json.JSONDecodeError as exc:
                 raise ValueError(
                     f"RedundancyBench: tool_calls.arguments JSON 파싱 실패 "
-                    f"(원문 앞 80자: {raw[:80]!r}) — {exc}"
+                    f"(원문 앞 80자: {raw[:80]!r}): {exc}"
                 ) from exc
     elif raw is None:
         obj = {}
@@ -91,7 +91,7 @@ def _render_content(content: Any) -> str:
         for i, block in enumerate(content):
             if not isinstance(block, dict):
                 warnings.warn(
-                    f"RedundancyBench: tool.content[{i}]: dict 아님 ({type(block).__name__}) — json.dumps",
+                    f"RedundancyBench: tool.content[{i}]: dict 아님 ({type(block).__name__}): json.dumps",
                     stacklevel=3,
                 )
                 parts.append(json.dumps(block, sort_keys=True, ensure_ascii=False))
@@ -101,7 +101,7 @@ def _render_content(content: Any) -> str:
                 parts.append(block.get("text", ""))
             else:
                 warnings.warn(
-                    f"RedundancyBench: tool.content[{i}]: 비-text 블록 {btype!r} — json.dumps",
+                    f"RedundancyBench: tool.content[{i}]: 비-text 블록 {btype!r}: json.dumps",
                     stacklevel=3,
                 )
                 parts.append(json.dumps(block, sort_keys=True, ensure_ascii=False))
@@ -190,7 +190,7 @@ def _build_trace_from_sim(sim: dict, domain: str | None) -> Trace:
     ]
     if orphan_calls or unmatched_results:
         raise ValueError(
-            f"RedundancyBench sim={sim_id}: 조인 실패 — orphan tool_call {len(orphan_calls)}건 "
+            f"RedundancyBench sim={sim_id}: 조인 실패: orphan tool_call {len(orphan_calls)}건 "
             f"(첫 5개: {orphan_calls[:5]}), orphan tool_result {len(unmatched_results)}건 "
             f"(첫 5개: {unmatched_results[:5]})"
         )
@@ -272,7 +272,7 @@ def _load_top_level(path: Path) -> dict:
         raise ValueError(f"{path}: 최상위가 dict 아님 ({type(obj).__name__})")
     if "simulations" not in obj or "tasks" not in obj:
         raise ValueError(
-            f"{path}: RedundancyBench 마커 없음 — 'tasks' 와 'simulations' 필요, "
+            f"{path}: RedundancyBench 마커 없음: 'tasks' 와 'simulations' 필요, "
             f"최상위 키: {list(obj.keys())[:8]}"
         )
     return obj

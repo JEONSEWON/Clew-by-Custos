@@ -474,7 +474,7 @@ def test_markdown_tier_order_evidence_strength():
 
     # Summary line: evidence-strength order + parallel "with X" phrasing.
     assert re.search(
-        r"idempotent 2 —\s*0 with no state change indicated,\s*"
+        r"idempotent 2:\s*0 with no state change indicated,\s*"
         r"1 with high tool volume,\s*"
         r"1 with writes to other targets",
         md,
@@ -607,7 +607,7 @@ def test_readme_example_matches_current_render_structure():
             _BW_OBS_DECLARATIVE, _BW_OBS_NO_CHANGE,
             _BW_OBS_TARGETED_WRITES, _BW_OBS_HIGH_VOLUME,
         )
-        per_pair_line = re.search(r"between_window: `[^`]+`\s*—\s*(.+)", example)
+        per_pair_line = re.search(r"between_window: `[^`]+`:\s*(.+)", example)
         if per_pair_line:
             wording = per_pair_line.group(1).strip().rstrip(".")
             current = {

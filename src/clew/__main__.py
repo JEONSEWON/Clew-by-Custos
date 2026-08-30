@@ -59,7 +59,7 @@ def _load_trace_auto(path: Path) -> "Trace":
         if cc_marker and toolathlon_marker:
             raise ValueError(
                 f"{path}: JSONL 첫 라인에 CC(sessionId)와 Toolathlon(modelname_run+task_status+messages) "
-                f"마커가 동시에 있음 — 형식 판별 불가"
+                f"마커가 동시에 있음. 형식 판별 불가"
             )
         if cc_marker:
             from clew.ingest.claude_code import ingest_claude_code_jsonl
@@ -76,7 +76,7 @@ def _load_trace_auto(path: Path) -> "Trace":
                 output_cost_table=_OUTPUT_COST_TABLE,
             )
         raise ValueError(
-            f"{path}: JSONL 형식 판별 실패 — 최상위 키 {list(first_obj.keys())[:8]}. "
+            f"{path}: JSONL 형식 판별 실패. 최상위 키 {list(first_obj.keys())[:8]}. "
             f"'sessionId' (CC) 또는 'modelname_run'+'task_status'+'messages' (Toolathlon) 필요."
         )
 
@@ -116,7 +116,7 @@ def _load_trace_auto(path: Path) -> "Trace":
             from clew.io import load_trace
             return load_trace(path)
         raise ValueError(
-            f"알 수 없는 JSON 형식 — 최상위 키: {list(obj.keys())[:5]}"
+            f"알 수 없는 JSON 형식. 최상위 키: {list(obj.keys())[:5]}"
         )
 
     if isinstance(obj, list):
@@ -223,7 +223,7 @@ def _analyze(args: argparse.Namespace) -> int:
         from clew.detect.semantic import Embedder
     except ImportError as e:
         print(
-            f"Error: detect dependencies missing — pip install 'boxdawn[detect]'\n{e}",
+            f"Error: detect dependencies missing. Run: pip install 'boxdawn[detect]'\n{e}",
             file=sys.stderr,
         )
         return 1
@@ -415,7 +415,7 @@ def _submit_schedule(args: argparse.Namespace, schedule, submit) -> int:
             state["installed_at"] = datetime.now(timezone.utc).isoformat()
             submit.write_auto_state(state)
             print(f"submits sessions that end after {state['installed_at']}")
-            print("earlier sessions stay put — send them with `boxdawn submit`")
+            print("earlier sessions stay put. Send them with `boxdawn submit`")
         else:
             print(f"watermark unchanged: {state['installed_at']}")
         return 0
@@ -469,7 +469,7 @@ def _setup(args: argparse.Namespace) -> int:
             matches = [d for d in found if d.label == args.project]
             if len(matches) != 1:
                 print(f"no single folder named {args.project!r} "
-                      f"({len(matches)} matches) — run `boxdawn setup --list`")
+                      f"({len(matches)} matches). Run `boxdawn setup --list`")
                 return 2
             chosen = matches[0]
         else:
