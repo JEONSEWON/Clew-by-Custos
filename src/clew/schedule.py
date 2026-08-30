@@ -20,7 +20,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 TASK_NAME = "BoxdawnSubmit"
-DEFAULT_EVERY_MINUTES = 60
+# Latency amendment: the sweep is the second largest term in the delay after
+# the close rule itself, so it moves with it. 15 minutes against a 20-minute
+# close rule means a finished session waits at most 35 for its upload.
+DEFAULT_EVERY_MINUTES = 15
 
 
 def _runner() -> list[str]:
