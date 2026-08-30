@@ -32,6 +32,9 @@ from clew.submit import (
 )
 
 
+_SEPARATORS = ("/", chr(92))
+
+
 @dataclass(frozen=True)
 class Discovered:
     """One trace folder, named the way its owner would recognise it."""
@@ -43,9 +46,20 @@ class Discovered:
 
     @property
     def label(self) -> str:
-        """What to show a person. Falls back to the folder when `cwd` is absent."""
+        """What to show a person. Falls back to the folder when `cwd` is absent.
+
+        The basename is taken without `Path`, because the path being named was
+        recorded on whichever machine ran the agent and is being read on
+        whichever machine is looking. `Path` only understands the separator of
+        the host it runs on, so a Windows `cwd` read on Linux — which is the
+        hosted analyzer's normal case — comes back whole, and the user is shown
+        the full path where a folder name belongs.
+        """
         if self.workspace:
-            return Path(self.workspace).name or self.workspace
+            trimmed = self.workspace.rstrip("".join(_SEPARATORS))
+            for sep in _SEPARATORS:
+                trimmed = trimmed.rsplit(sep, 1)[-1]
+            return trimmed or self.workspace
         return self.directory.name
 
 

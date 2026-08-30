@@ -52,7 +52,7 @@ def capture_langgraph(
     except ImportError as e:
         raise ImportError(
             "capture_to_file requires the 'adapter' extra: "
-            "pip install 'clew[adapter]'"
+            "pip install 'boxdawn[adapter]'"
         ) from e
 
     exporter = InMemorySpanExporter()

@@ -13,6 +13,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import yaml
 
+from pathlib import Path
+
 from clew import setup
 
 NOW = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)
@@ -29,6 +31,26 @@ def _session(path, last: datetime, cwd: str | None = None):
 
 
 # ── naming ─────────────────────────────────────────────────────────────────
+
+
+def test_a_name_is_read_the_same_on_either_operating_system():
+    """Distinguishes: `Path(cwd).name` understands only the host's separator,
+    so a Windows `cwd` read on Linux comes back whole — and the hosted
+    analyzer runs on Linux while the traces come from laptops. This failed in
+    CI and passed locally, which is the whole reason it is pinned here.
+    """
+    win = setup.Discovered(directory=Path("d"),
+                           workspace="C:\\Users\\User\\Desktop\\My App",
+                           sessions=1, last_seen=None)
+    posix = setup.Discovered(directory=Path("d"),
+                             workspace="/home/user/projects/my-app",
+                             sessions=1, last_seen=None)
+    trailing = setup.Discovered(directory=Path("d"),
+                                workspace="/home/user/my-app/",
+                                sessions=1, last_seen=None)
+    assert win.label == "My App"
+    assert posix.label == "my-app"
+    assert trailing.label == "my-app"
 
 
 def test_a_folder_is_named_by_the_directory_it_ran_in(tmp_path):

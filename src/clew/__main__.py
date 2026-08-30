@@ -223,7 +223,7 @@ def _analyze(args: argparse.Namespace) -> int:
         from clew.detect.semantic import Embedder
     except ImportError as e:
         print(
-            f"Error: detect dependencies missing — pip install 'clew[detect]'\n{e}",
+            f"Error: detect dependencies missing — pip install 'boxdawn[detect]'\n{e}",
             file=sys.stderr,
         )
         return 1
