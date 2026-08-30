@@ -223,7 +223,7 @@ def _analyze(args: argparse.Namespace) -> int:
         from clew.detect.semantic import Embedder
     except ImportError as e:
         print(
-            f"Error: detect dependencies missing — pip install 'clew[detect]'\n{e}",
+            f"Error: detect dependencies missing — pip install 'boxdawn[detect]'\n{e}",
             file=sys.stderr,
         )
         return 1
@@ -422,6 +422,73 @@ def _submit_schedule(args: argparse.Namespace, schedule, submit) -> int:
     return 1
 
 
+def _setup(args: argparse.Namespace) -> int:
+    """Configure this machine so `submit` has a key and knows where to look."""
+    from pathlib import Path
+
+    from clew import setup, submit
+
+    found = setup.discover(Path(args.root) if args.root else submit.DEFAULT_ROOT)
+
+    if args.list or not args.key:
+        if not found:
+            print("no agent trace folders found under "
+                  f"{args.root or submit.DEFAULT_ROOT}")
+            return 1
+        print(f"{'#':>2}  {'project':28s} {'sessions':>8}  last activity")
+        for i, d in enumerate(found, 1):
+            when = d.last_seen.strftime("%Y-%m-%d") if d.last_seen else "unknown"
+            print(f"{i:2d}  {d.label[:28]:28s} {d.sessions:8d}  {when}")
+        if not args.key:
+            print()
+            print("to configure one of these:")
+            print("  boxdawn setup --key bdk_... --project <n>      # that project only")
+            print("  boxdawn setup --key bdk_...                    # every folder, one key")
+            print()
+            print("one key per project keeps each codebase on its own baseline; the")
+            print("alert rule compares a day against the previous day within one.")
+        return 0
+
+    problem = setup.key_shape_problem(args.key)
+    if problem:
+        print(f"that does not look like a submission key: {problem}")
+        return 2
+
+    if args.project is None:
+        path = setup.write_credentials(args.key)
+        print(f"wrote {path}")
+        print(f"every folder under {submit.DEFAULT_ROOT} will be sent under this key.")
+        if len(found) > 1:
+            print(f"note: {len(found)} folders are there. Sent as one project, a day-over-day")
+            print("      rate answers 'which project did I work on', not 'how wasteful was")
+            print("      the work'. Use --project to keep them apart.")
+    else:
+        try:
+            index = int(args.project)
+        except ValueError:
+            matches = [d for d in found if d.label == args.project]
+            if len(matches) != 1:
+                print(f"no single folder named {args.project!r} "
+                      f"({len(matches)} matches) — run `boxdawn setup --list`")
+                return 2
+            chosen = matches[0]
+        else:
+            if not 1 <= index <= len(found):
+                print(f"--project {index} is out of range 1..{len(found)}")
+                return 2
+            chosen = found[index - 1]
+        path, action = setup.upsert_project(chosen.label, chosen.directory, args.key)
+        print(f"{action} {chosen.label} in {path}")
+
+    # Said plainly rather than implied: nothing here has spoken to the server.
+    print()
+    print("the key's shape is checked here; whether it is live and bound to a")
+    print("project is answered by the server on the first submission.")
+    print("next:  boxdawn submit --dry-run     # see what would be sent")
+    print("       boxdawn submit --install     # then let it run hourly")
+    return 0
+
+
 def _estimate(args: argparse.Namespace) -> int:
     """Report what makes a trace expensive to analyze. No verdict.
 
@@ -551,6 +618,27 @@ def main() -> None:
     s.add_argument("--auto", action="store_true",
                    help=argparse.SUPPRESS)
 
+    st = sub.add_parser(
+        "setup",
+        help="point this machine at your Boxdawn project",
+        description=(
+            "Finds the agent trace folders on this machine, names them the way "
+            "you would recognise them, and writes the key config so `submit` "
+            "works. Run with no arguments to see what is here."
+        ),
+    )
+    st.add_argument("--key", default=None, metavar="bdk_...",
+                    help="submission key, issued on your project's key page")
+    st.add_argument("--project", default=None, metavar="NAME|N",
+                    help=(
+                        "configure one folder only, by name or by its number in "
+                        "--list. Omit to send every folder under one key."
+                    ))
+    st.add_argument("--list", action="store_true",
+                    help="show the folders found and write nothing")
+    st.add_argument("--root", default=None, metavar="DIR",
+                    help="trace directory (default: ~/.claude/projects)")
+
     e = sub.add_parser(
         "estimate",
         help="report what makes a trace expensive to analyze",
@@ -571,6 +659,8 @@ def main() -> None:
         sys.exit(_analyze(args))
     elif args.cmd == "submit":
         sys.exit(_submit(args))
+    elif args.cmd == "setup":
+        sys.exit(_setup(args))
     elif args.cmd == "estimate":
         sys.exit(_estimate(args))
     else:
