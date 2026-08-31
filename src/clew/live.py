@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -230,6 +230,16 @@ def sweep(
             continue
         if finding is None:
             continue
+        # Stamped when the scan finished, not when the pass began. P2 is the
+        # gap between the repeat and this stamp, and a scan is 0.5 s at the
+        # median but 32 s on the largest session here -- charging that to the
+        # sweep's start time would report a latency nobody experienced.
+        finding = replace(
+            finding,
+            recorded_at=(
+                now + timedelta(seconds=time.perf_counter() - started)
+            ).isoformat(),
+        )
         if not hourly_room(findings, project, now):
             result.suppressed_hourly += 1
             continue
