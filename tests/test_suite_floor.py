@@ -37,8 +37,8 @@ import pytest
 # skipped entry of its own while its tests are not collected at all. That makes
 # these margins slightly more conservative than they look, which is the right
 # direction for a floor.
-FLOOR_WITHOUT_ADAPTER = 833        # 840 collected on a clean `.[detect,dev]`
-FLOOR_WITH_ADAPTER = 852           # 859 collected with the adapter extra
+FLOOR_WITHOUT_ADAPTER = 844        # 851 collected on a clean `.[detect,dev]`
+FLOOR_WITH_ADAPTER = 863           # 870 collected with the adapter extra
 
 
 def _adapter_stack_present() -> bool:
