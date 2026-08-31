@@ -10,6 +10,11 @@ pre-registered 0.70, on the identical 40 candidates where the structural rule
 scored 0.3250.** The interpretation layer is what the deterministic rule was
 missing, and the size of the gap is the result.
 
+§7 adds the second corpus, run the same day: on 40 traces from AG2 and MetaGPT
+the axis separated MAST's two strata by **45 points**, and on all **11 of 11**
+disagreements the trace agreed with our judge rather than with MAST's. No
+precision figure is claimed there, and §7.3 says why.
+
 | # | Prediction | Result |
 |---|---|---|
 | **P1** | precision ≥ 0.70 | **PASS**, **0.9286** (13/14) |
@@ -153,17 +158,111 @@ interpretation on this evidence.
 `claude-haiku-4-5`, mean 42 KB per session. The 522-candidate population is
 about 13 times that. Nothing here is priced for a customer.
 
-## 7. What comes next, in the order §8 fixed
+## 7. Step 5: the second corpus
 
-Step 5 is a second corpus:
+Run 2026-08-31, immediately after step 4.
 [`mcemri/MAST-Data`](https://huggingface.co/datasets/mcemri/MAST-Data),
-CC-BY-4.0, 1,642 traces across 7 multi-agent frameworks, with FM-3.2 marked on
-608 of them. **Their labels are not ground truth** — their README says the
-annotations come from an LLM judge, not from human labelling — so they stratify
-a sample we label ourselves, 20 marked 1 and 20 marked 0, and disagreement with
-their judge is reported as its own finding.
+CC-BY-4.0, restricted to its AG2 and MetaGPT traces (1,027 of 1,642) because
+those need no parsing and are the cheapest to read: median 6,117 characters.
+Stratified 20/20 by MAST's own FM-3.2 mark, `random.Random(20260901)`. The
+frozen prompt, unchanged.
 
-That corpus is read as text. Its trajectories are raw per-framework logs, not
-structured spans, and 48% of them carry no per-step timestamps at all, which is
-why the deterministic route would need seven parsers there and the judge needs
-none.
+**Their labels are not ground truth.** Their README says the annotations come
+from an LLM judge rather than from human labelling, so they stratify the sample
+and settle nothing.
+
+### 7.1 It discriminated, and the prediction that it would not was ours
+
+| | our judge's finding rate |
+|---|---|
+| MAST marked 1 (they say not verified) | **18/20 = 90.0%** |
+| MAST marked 0 (they say verified) | **9/20 = 45.0%** |
+| separation | **+45.0 pp** |
+
+Agreement with their judge 29/40, reported and not a validation. 78 seconds,
+$0.155, zero parse failures.
+
+★ **Before running this, we predicted it would be meaningless, and published
+the reasoning.** A regular expression over the sample counted execution
+evidence (`exitcode`, `Traceback`, `pytest`, …) and found it in 3 of 20 on each
+side, from which we concluded that our definition would mark 34 of 40 positive
+and a judge answering "not checked" everywhere would score 0.85 and clear the
+gate while discriminating nothing.
+
+The judge read better than the regular expression. The same word sits in
+"we wrote tests with pytest" and in "pytest output: 3 passed", and matching the
+string cannot tell those apart while reading the sentence can.
+
+**That is the third time in one day that a pattern we wrote stood in for a
+judgement and fell short of it**: the 18-command list that killed
+`unverified_edit` at 0.3250, the P4 checker that searched the wrong artifact,
+and this. The prediction is left in the record next to the result.
+
+### 7.2 The eleven disagreements, adjudicated by reading the traces
+
+All eleven were read. **Our judge matched the trace in 11 of 11**
+(`docs/labels/verification_judge_mad_disagreements.json`).
+
+Nine are the same shape: MetaGPT or AG2 writes code, writes tests, receives
+review comments from another agent, and **never executes anything.** MAST marked
+those verified. Under MAST's own definition — "(partial) omission of proper
+checking or confirmation of task outcomes" — writing a test and not running it
+is the omission, so their mark is the one that does not hold.
+
+The clearest case is MetaGPT ProgramDev-v2 #51, 33,967 characters. Counted
+directly in the trace: `exitcode` 0, `Traceback` 0, `pytest` 0, and the word
+`tips` **90 times**. The agents decline to write code and trade advice. MAST
+marked it verified.
+
+The other two ran the other way, MAST marking not-verified where our judge saw
+execution, and in both the trace carries the output: AG2 GSM #56 shows
+`Boating hours: 6 / Total time: 50`, and AG2 Olympiad #162 has
+`mathproxyagent` returning `['123456', '123465']` from the code.
+
+⚠️ **One reservation about #162.** Its evidence field is that list and nothing
+else: the value is in the trace, so it is not invented, but it quotes a result
+without saying what it decided. The prompt asks for the deciding action, and
+that verdict is right for a reason it did not state. Recorded as a quality
+observation on the evidence field, not as a P4 failure.
+
+### 7.3 What this does and does not add
+
+**Adds:** the axis separates the two strata by 45 points on 1,027 traces from
+seven frameworks we did not generate, read as raw text with no parsing, and on
+every disagreement examined it was the trace that agreed with our judge rather
+than with MAST's.
+
+**Does not add:**
+
+- **A precision figure.** There are no ground-truth labels on this corpus, and
+  none were made: our execution-based definition marks about 85% of these
+  traces positive, so a hand-labelled precision here would sit at the base rate
+  and prove nothing. The 0.9286 stands on Corpus D alone.
+- **A second labeller.** The eleven adjudications are one person's reading. MAST
+  reported inter-annotator agreement of κ = 0.88 for its own human study; we
+  have no equivalent.
+- **Anything about ChatDev, Magentic, OpenManus, AppWorld or HyperAgent.** They
+  were excluded for cost and parsing, not judged and found wanting.
+- **A claim that MAST's labels are unreliable in general.** Eleven
+  disagreements from a 40-trace stratified sample say what they say and no
+  more.
+
+### 7.4 What a proper attempt here would need
+
+A pre-registration of its own, because verification in conversational
+multi-agent systems is not the same event as verification in a single-agent
+coding session. In this corpus the review conversation is the verification
+attempt: `SimpleReviewer` objecting that the tests miss edge cases is a real
+check on the work, and our frozen prompt scores it as no check at all because
+nothing executed.
+
+Both readings are defensible and they are different questions. Ours is
+"was the result validated against reality"; the other is "did anyone examine
+this". The second needs its own prompt, its own labels, and its own gate.
+
+## 8. What comes next
+
+Step 5 above is complete. What remains, in the order §8 of the pre-registration fixed: whether the pair
+ships, and whether it ever feeds an alert, each as its own decision. §7.4 above
+adds a third: a conversational-verification axis, which needs its own
+pre-registration.
