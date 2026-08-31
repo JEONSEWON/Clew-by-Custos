@@ -25,7 +25,12 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from clew.detect.cascade import cascade
-from clew.detect.context_resend import _chunk_boundary, find_context_resend
+from clew.detect.context_resend import (
+    _chunk_boundary,
+    find_context_resend,
+    has_tier_split,
+    input_cost_for_call,
+)
 from clew.detect.redundant_read import find_redundant_reads
 from clew.model import Trace
 
@@ -98,9 +103,21 @@ def _compute_total_input(trace: Trace) -> tuple[int, float]:
     """Total input bytes and input cost across all llm_calls.
 
     Bytes: sum of UTF-8 byte length of each call's `input_text`.
-    Cost: sum of `input_tokens * input_cost_rate` (or `cost_rate_legacy`
-    fallback per CONTEXT_RESEND_DETECTOR_PREREG §4). Missing token count
-    or rate contributes 0.0 for that call.
+
+    Cost: what the input was billed, which for a call that records cache tiers
+    means the tier-aware price -- the same rule the resend numerator uses
+    (WR_COST_PRICE_BASIS_AMENDMENT_PREREG §2). Before that amendment this
+    summed `input_tokens * input_cost_rate` with `input_tokens` being all three
+    tiers added together and the rate being the flat base rate, so the ratio
+    divided billed waste by a bill nobody received: measured at 6.66x to 9.12x
+    on three Corpus A sessions.
+
+    Calls with no tier split keep the old arithmetic exactly. The two bases can
+    only differ where tiers exist, and pricing the rest through
+    `_rate_and_cost_for_call` would also have priced calls whose model carries
+    no rate -- resolving them to the default instead of contributing 0.0, which
+    silently un-excludes traces that §1.2 of the metric prereg excludes. That
+    is a different change and this amendment did not register it.
     """
     total_bytes = 0
     total_cost = 0.0
@@ -108,6 +125,9 @@ def _compute_total_input(trace: Trace) -> tuple[int, float]:
     for call in llm_calls:
         input_text = call.get("input_text") or ""
         total_bytes += _bytes_utf8(input_text)
+        if has_tier_split(call):
+            total_cost += input_cost_for_call(call)
+            continue
         tokens = call.get("input_tokens") or 0
         rate = call.get("input_cost_rate")
         if rate is None:
