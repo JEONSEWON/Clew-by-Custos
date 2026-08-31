@@ -17,12 +17,10 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-import pytest
 
 from clew.detect.cascade import CascadeResult
 from clew.detect.context_resend import (
     ContextResendResult,
-    ResentEvent,
     find_context_resend,
 )
 from clew.model import Span, Trace

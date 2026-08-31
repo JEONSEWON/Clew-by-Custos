@@ -12,8 +12,14 @@ import argparse
 import json as _json
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from clew.cost.pricing import build_default_cost_tables
+
+if TYPE_CHECKING:
+    # Annotation only. The runtime import stays inside the function so a CLI
+    # invocation that never loads a trace does not pay for the model import.
+    from clew.model import Trace
 
 
 def _load_trace_auto(path: Path) -> "Trace":
@@ -327,7 +333,6 @@ def _submit_rule_url() -> str:
 
 
 def _submit(args: argparse.Namespace) -> int:
-    from datetime import datetime, timezone
     from pathlib import Path
 
     from clew import schedule, submit

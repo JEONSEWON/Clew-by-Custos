@@ -8,7 +8,6 @@ src/clew 은 read-only import 만.
 """
 
 import sys
-from collections import Counter, defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -121,7 +120,7 @@ def main():
     print(f"{'='*64}")
     collapsed = collapse_to_logical_nodes(trace)
     print(f"  원본: {len(trace.spans)} → 변환 후: {len(collapsed.spans)}  (llm 제거: {collapsed.metadata['collapsed_llm_spans']})")
-    print(f"\n  변환 후 span 목록 (시간순):")
+    print("\n  변환 후 span 목록 (시간순):")
     for sp in sorted(collapsed.spans, key=lambda s: s.start_time):
         print(f"    {sp.span_id[:12]}  kind={sp.span_kind:8s}  id={sp.agent_or_node_id!r:20s}  "
               f"out[:50]={sp.output_text[:50]!r}")
@@ -196,7 +195,7 @@ def main():
         if sp.span_kind in ("llm", "tool") and sp.parent_span_id is not None
     }
 
-    print(f"\n  ─ 신호 1: has_llm_or_tool_child (collapse 전 위상 기반) ─")
+    print("\n  ─ 신호 1: has_llm_or_tool_child (collapse 전 위상 기반) ─")
     print(f"  (llm/tool 자식을 가진 parent span_id 집합: {len(worker_parent_ids)}개)")
 
     print(f"\n  {'agent_or_node_id':22s} {'span_id[:12]':14s} {'kind':8s} "
@@ -217,8 +216,8 @@ def main():
             sig1_correct = False
 
     print(f"\n  ─ 신호 1 판정: {'올바르게 분리 ✓' if sig1_correct else '분리 실패 ✗'}")
-    print(f"    researcher → has_llm_or_tool_child=True  (LLM 자식 보유)")
-    print(f"    should_loop → has_llm_or_tool_child=False (자식 없음)")
+    print("    researcher → has_llm_or_tool_child=True  (LLM 자식 보유)")
+    print("    should_loop → has_llm_or_tool_child=False (자식 없음)")
 
     # ──────────────────────────────────────────────────────────────────
     # [RAW-ATTR-COMPARE] should_loop vs researcher 원시 속성 비교
@@ -270,7 +269,7 @@ def main():
     print("    근거: 라우터는 순수 Python 분기 로직 → llm/tool 자식 span 없음.")
     print("          작업 노드는 반드시 llm/tool을 호출 → 자식 span 존재.")
     print("    한계: LLM-라우터(모델이 다음 노드 결정)는 구별 불가. 현재 스택엔 해당 없음.")
-    print(f"\n  [원시 속성] LangGraph 전용 속성(langgraph.* 등) 존재 여부 →")
+    print("\n  [원시 속성] LangGraph 전용 속성(langgraph.* 등) 존재 여부 →")
     print("    [CAPTURE-RAW] 섹션 참조. 없으면 위상 신호가 유일한 프레임워크-독립 수단.")
     print(f"{'='*64}\n")
 

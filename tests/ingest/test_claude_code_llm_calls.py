@@ -11,7 +11,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-import pytest
 
 from clew.ingest.claude_code import ingest_claude_code_jsonl
 

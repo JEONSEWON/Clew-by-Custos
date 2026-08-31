@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 
 from clew.ingest.toolathlon import (
-    _TS_BASE,
     _synth_ts,
     ingest_toolathlon_jsonl,
     iter_toolathlon_traces,

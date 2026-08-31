@@ -153,7 +153,7 @@ def main():
     tool_kept = [sp for sp in collapsed.spans if sp.span_kind == "tool"]
     print(f"  원본 span 수: {len(trace.spans)}  →  변환 후: {len(collapsed.spans)}")
     print(f"  제거된 llm span: {removed_count}  |  tool span 유지: {len(tool_kept)} (미제거 확인)")
-    print(f"\n  변환 후 span 목록:")
+    print("\n  변환 후 span 목록:")
     for sp in sorted(collapsed.spans, key=lambda s: s.start_time):
         print(f"    {sp.span_id[:12]:12s} kind={sp.span_kind:8s} agent_or_node_id={sp.agent_or_node_id!r}")
 
@@ -208,7 +208,7 @@ def main():
 
     if cr.waste_span_ids:
         span_map = {sp.span_id: sp for sp in trace.spans}
-        print(f"\n[WASTE SPANS 원문 + cosine]")
+        print("\n[WASTE SPANS 원문 + cosine]")
         for sid in cr.waste_span_ids:
             matching = [(o, c) for o, c in candidates if c.span_id == sid]
             if matching:

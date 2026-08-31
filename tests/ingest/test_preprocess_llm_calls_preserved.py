@@ -7,12 +7,9 @@ temporary key `_pending_llm_extras` is consumed and cleaned up.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
 
-import pytest
 
-from clew.ingest.langgraph import ingest_otel_spans, otel_spans_to_trace
-from clew.ingest.preprocess import preprocess_trace
+from clew.ingest.langgraph import ingest_otel_spans
 
 
 # ── OTel shim helpers (mirrors the shape ReadableSpan exposes) ──────────────

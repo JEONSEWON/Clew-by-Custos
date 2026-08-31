@@ -75,6 +75,7 @@ judge = [
 ]
 dev = [
     "pytest>=8.0",
+    "ruff>=0.16",
 ]
 all = [
     "boxdawn[detect,semantic,adapter,judge]",
@@ -104,3 +105,52 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+# ---------------------------------------------------------------------
+# ruff — introduced 2026-09-01, and deliberately narrow.
+#
+# `F` (pyflakes) and `E9` (syntax and IO errors) only. Those are the rules that
+# find code that is wrong rather than code that is unfashionable: an unused
+# import, an undefined name, an f-string with no placeholder, a variable
+# assigned and never read. `src/` and `tests/` are clean under them as of this
+# commit, which is why the selection is a gate rather than a wish.
+#
+# Everything else is left off on purpose. A wider default found about 110 more
+# in `src/` alone -- quoted annotations, import order, blind excepts -- and most
+# of those are choices this codebase made deliberately and documents in
+# comments. Turning them on would mean 110 diffs nobody asked for and a habit of
+# ignoring the linter.
+#
+# ★ `RUF100` (unused noqa) is excluded, and that is not an oversight. With a
+# narrow selection it reports every `# noqa` for a rule we have not enabled --
+# `non-enabled: F401`, `non-enabled: PLC0415` -- and "fixing" those deletes
+# suppressions that exist for rules we may enable later. It becomes safe to
+# enable only alongside the rules those directives name.
+#
+# `field_test/diagnostics/` is excluded: those are uncommitted probes by
+# convention, and they carry 283 of these on their own.
+[tool.ruff]
+target-version = "py312"   # matches requires-python = ">=3.12"
+line-length = 100
+extend-exclude = ["field_test/diagnostics", "eval", "data"]
+
+[tool.ruff.lint]
+select = ["F", "E9"]
+
+# `field_test/` (outside diagnostics) holds committed research scripts that
+# produced published numbers. They are not edited to satisfy a linter
+# introduced years later, so two rules are off there:
+#
+#   F841  seven unused locals, all cosmetic.
+#   F821  two hits in `recon_bash.py`, and both are false positives. `df` is a
+#         closure variable that a `del df` later in the same scope unbinds;
+#         every call to the nested function happens before the `del`, so the
+#         code is correct and ruff is reading scope without order.
+#
+# ★ Recorded because the first reading of those two was "ruff found real bugs".
+# The other apparent find, an f-string backslash flagged as invalid syntax, was
+# our own misconfiguration: `target-version` was set to py310 while
+# `requires-python` is >=3.12, where that syntax is legal. Acting on it would
+# have damaged working code to satisfy a setting we got wrong.
+[tool.ruff.lint.per-file-ignores]
+"field_test/*.py" = ["F841", "F821"]

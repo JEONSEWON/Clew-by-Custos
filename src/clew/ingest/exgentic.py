@@ -32,7 +32,6 @@ Main decisions (§1):
 from __future__ import annotations
 
 import hashlib
-import json
 from collections import Counter
 from collections.abc import Iterator
 from datetime import datetime

@@ -137,7 +137,7 @@ def section2_bashgrep_meta(pth, cols_all):
         print("[2b] turn_id MISSING")
 
     fill_cols = ['command', 'pattern', 'file_path', 'tool_input_json', 'bash_category']
-    print(f"\n[2c] tool x agent 조합별 채움률 (None + '' 모두 미충족)")
+    print("\n[2c] tool x agent 조합별 채움률 (None + '' 모두 미충족)")
     if 'agent' not in df.columns or 'tool_name' not in df.columns:
         print("  MISSING")
     else:
@@ -160,7 +160,7 @@ def section2_bashgrep_meta(pth, cols_all):
                 mx = grp[tc].fillna(0).max()
                 print(f"    {tc}: non-zero {nz}/{n} ({nz/max(n,1)*100:.2f}%) max={mx}")
 
-    print(f"\n[2d] 크로스탭: tool_input_json notna x command 채워짐 (per tool x agent)")
+    print("\n[2d] 크로스탭: tool_input_json notna x command 채워짐 (per tool x agent)")
     if ('tool_input_json' in df.columns and 'command' in df.columns
             and 'agent' in df.columns and 'tool_name' in df.columns):
         df['_tij'] = df.tool_input_json.notna()
@@ -196,12 +196,12 @@ def section3_bash_cardinality(df_bg):
         if total_nonempty:
             print(f"     distinct/total: {distinct/total_nonempty*100:.3f}%")
 
-        print(f"\n[3c] top 30 exact command 문자열")
+        print("\n[3c] top 30 exact command 문자열")
         for cmd, cnt in cmds.value_counts().head(30).items():
             preview = cmd.replace("\n", "\\n")[:120]
             print(f"  [{cnt}] {preview!r}")
 
-        print(f"\n[3d] top 30 첫 토큰")
+        print("\n[3d] top 30 첫 토큰")
         first_tok = cmds.str.split().str[0]
         for tok, cnt in first_tok.value_counts().head(30).items():
             print(f"  [{cnt}] {tok!r}")
@@ -209,12 +209,12 @@ def section3_bash_cardinality(df_bg):
         print("[3b-d] command column MISSING")
 
     if 'bash_category' in cc_bash.columns:
-        print(f"\n[3e] bash_category value_counts (dropna=False)")
+        print("\n[3e] bash_category value_counts (dropna=False)")
         for k, v in cc_bash.bash_category.value_counts(dropna=False).head(50).items():
             print(f"  {k!r}: {v}")
 
         if 'command' in cc_bash.columns:
-            print(f"\n[3f] bash_category x command 채워짐 크로스탭")
+            print("\n[3f] bash_category x command 채워짐 크로스탭")
             cc_bash['_cmd_filled'] = cc_bash.command.apply(is_filled)
             ct = cc_bash.groupby(['bash_category', '_cmd_filled'], dropna=False).size().unstack(fill_value=0)
             print(ct.to_string())
@@ -247,10 +247,10 @@ def section4_arg_schema(df_bg):
             except Exception:
                 parse_fail += 1
         print(f"\n[{tool} / {agent!r}] tool_input_json 있는 행 {len(rows_tij)} / parse_fail {parse_fail}")
-        print(f"  key-set 빈도 top 8:")
+        print("  key-set 빈도 top 8:")
         for ks, cnt in keyset_counter.most_common(8):
             print(f"    [{cnt}] {list(ks)}")
-        print(f"  raw 샘플 2건 (300자 절단):")
+        print("  raw 샘플 2건 (300자 절단):")
         for i, s in enumerate(rows_tij.tool_input_json.head(2).tolist()):
             print(f"    [{i}] {s[:300]!r}")
 
@@ -273,7 +273,7 @@ def section5_session_shape(df_bg):
         print(f"  세션 수 >=2: {(per_sess >= 2).sum()}")
         if len(per_sess) > 0:
             desc = per_sess.describe()
-            print(f"  세션당 개수 describe:")
+            print("  세션당 개수 describe:")
             for k, v in desc.items():
                 print(f"    {k}: {v}")
         else:

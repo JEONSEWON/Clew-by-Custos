@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import sys
-from collections import Counter, defaultdict
+from collections import defaultdict
 from pathlib import Path
 
 RB_ROOT = Path("data/redundancy_bench/data/domain")

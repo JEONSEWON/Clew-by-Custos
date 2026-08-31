@@ -38,7 +38,7 @@ from clew.ingest.preprocess import (
     mark_worker_span_ids,
     preprocess_trace,
 )
-from clew.model import Span, Trace
+from clew.model import Span
 
 # ── Frozen params ──────────────────────────────────────────────────────────
 PHI = 0.514345

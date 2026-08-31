@@ -444,7 +444,7 @@ def test_multipart_carries_the_bytes_and_names_the_field(tmp_path):
     f = _session(tmp_path / "trace.jsonl", NOW)
     boundary, body = submit._multipart(f)
 
-    assert f'name="file"'.encode() in body
+    assert 'name="file"'.encode() in body
     assert b'filename="trace.jsonl"' in body
     assert f.read_bytes() in body
     assert body.startswith(f"--{boundary}".encode())

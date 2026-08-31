@@ -163,9 +163,9 @@ def uninstall() -> tuple[bool, str]:
                            or f"schtasks exited {proc.returncode}")
         return True, f"removed task {TASK_NAME}"
     if sys.platform == "darwin":
-        return False, (f"remove it with:\n"
-                       f"  launchctl unload ~/Library/LaunchAgents/com.boxdawn.submit.plist\n"
-                       f"  rm ~/Library/LaunchAgents/com.boxdawn.submit.plist")
+        return False, ("remove it with:\n"
+                       "  launchctl unload ~/Library/LaunchAgents/com.boxdawn.submit.plist\n"
+                       "  rm ~/Library/LaunchAgents/com.boxdawn.submit.plist")
     return False, "remove the boxdawn line from `crontab -e`"
 
 

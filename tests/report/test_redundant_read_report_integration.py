@@ -6,8 +6,7 @@ optional param, backward compat when None/empty, content when populated.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import datetime, timezone
 
 import pytest
 

@@ -23,7 +23,6 @@ from clew.report._enrich import (
     _BW_DECLARATIVE_TOOLS,
     _BW_SIDE_EFFECT_TOOLS,
     _classify_between_window,
-    enrich,
 )
 from clew.report._model import WasteDetail
 from clew.report.json_report import render_json

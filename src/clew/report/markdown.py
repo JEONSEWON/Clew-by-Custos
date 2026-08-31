@@ -311,7 +311,7 @@ def _event_lookup(amp: AmplificationEstimate | None) -> dict[str, AmplificationE
 
 
 def _render_pair(idx: int, ed: EnrichedDetail, ev: AmplificationEvent | None) -> list[str]:
-    o, c = ed.detail.origin, ed.detail.candidate
+    c = ed.detail.candidate
     lines: list[str] = []
     label = ed.pattern_label
     tool = c.agent_or_node_id
@@ -833,9 +833,9 @@ def render_markdown(
             if high_volume_count > 0:
                 lines.append(f"    - high_volume: {high_volume_count}")
                 lines.append(
-                    f"      - Validated on Toolathlon: 29/30 hand-labeled TRUE "
-                    f"(95% two-sided Clopper-Pearson lower ≈ 82.78%). "
-                    f"One same-target repeated write observed."
+                    "      - Validated on Toolathlon: 29/30 hand-labeled TRUE "
+                    "(95% two-sided Clopper-Pearson lower ≈ 82.78%). "
+                    "One same-target repeated write observed."
                 )
             if writes_other_targets > 0:
                 lines.append(
@@ -843,9 +843,9 @@ def render_markdown(
                     f"targeted_writes {writes_other_targets}"
                 )
                 lines.append(
-                    f"      - Validated on Toolathlon: 28/30 hand-labeled TRUE "
-                    f"(95% two-sided Clopper-Pearson lower ≈ 77.93%). "
-                    f"Two write-then-revert observed."
+                    "      - Validated on Toolathlon: 28/30 hand-labeled TRUE "
+                    "(95% two-sided Clopper-Pearson lower ≈ 77.93%). "
+                    "Two write-then-revert observed."
                 )
             lines.append(f"  - _{_BW_JUDGE_DELEGATION}_")
 
