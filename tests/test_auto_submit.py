@@ -14,7 +14,9 @@ than not having it:
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 import yaml
@@ -170,6 +172,85 @@ def test_the_scheduled_command_names_this_interpreter(tmp_path):
     line = schedule.command_line()
     assert "-m clew submit --auto" in line
     assert "python" in line.lower()
+
+
+# ── the settings the scheduler is registered with ──────────────────────────
+#
+# A fourth way this feature could be worse than not having it, found by
+# measuring the latency it was supposed to shorten: the task registers fine,
+# reports Ready, counts zero missed runs, and does not fire. The default flags
+# hand Windows three conditions under which it declines to launch, and a
+# declined launch is not an error anywhere.
+
+
+def test_the_sweep_runs_on_battery(tmp_path):
+    """Distinguishes: `schtasks /SC MINUTE` takes DisallowStartIfOnBatteries
+    true, so an unplugged laptop never sweeps. Measured on this machine before
+    the fix: unplugged 03:57Z, back on AC 05:58Z, nine triggers skipped, one
+    session's upload delayed 136 minutes against a 100-minute prediction. The
+    log for those two and a half hours was empty, not failing.
+    """
+    xml = schedule._task_xml()
+    assert "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>" in xml
+    assert "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>" in xml
+
+
+def test_a_trigger_missed_while_the_machine_was_away_is_made_up(tmp_path):
+    """Distinguishes: without StartWhenAvailable the wait after a reboot is the
+    close rule plus however long the machine slept, which has no bound."""
+    assert "<StartWhenAvailable>true</StartWhenAvailable>" in schedule._task_xml()
+
+
+def test_the_machine_is_not_woken_to_upload(tmp_path):
+    """The other direction of the same setting. A sleeping machine writes no
+    sessions, so there is nothing to collect and no reason to wake it."""
+    assert "<WakeToRun>false</WakeToRun>" in schedule._task_xml()
+
+
+def test_a_hung_sweep_cannot_silence_the_ones_behind_it(tmp_path):
+    """Distinguishes: IgnoreNew plus the three-day default execution limit
+    means one stuck run swallows every trigger for three days, and the log
+    looks exactly like a machine that was switched off."""
+    xml = schedule._task_xml()
+    assert "<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>" in xml
+    assert "<ExecutionTimeLimit>PT1H</ExecutionTimeLimit>" in xml
+
+
+def test_the_definition_carries_the_interval_and_the_runner(tmp_path):
+    xml = schedule._task_xml(15)
+    assert "<Interval>PT15M</Interval>" in xml
+    assert "-m clew submit --auto" in xml
+
+
+def test_the_definition_keeps_the_order_the_schema_validates(tmp_path):
+    """Distinguishes: Windows rejects a task whose elements are out of order
+    with the same unhelpful message it gives for malformed XML."""
+    xml = schedule._task_xml()
+    assert xml.index("<Triggers>") < xml.index("<Settings>") < xml.index("<Actions")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="registers a Windows task")
+def test_registration_hands_schtasks_a_utf16_file(monkeypatch):
+    """Distinguishes: `schtasks /XML` reads UTF-16 and rejects a UTF-8 file as
+    malformed, which would leave the sweep unregistered while `install`
+    reported the reason as an XML problem.
+    """
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        seen["head"] = Path(cmd[cmd.index("/XML") + 1]).read_bytes()[:2]
+
+        class Done:
+            returncode = 0
+            stdout = stderr = ""
+        return Done()
+
+    monkeypatch.setattr(schedule.subprocess, "run", fake_run)
+    registered, _ = schedule.install()
+    assert registered
+    assert "/XML" in seen["cmd"]
+    assert seen["head"] == bytes([0xFF, 0xFE])   # UTF-16 LE byte order mark
 
 
 def test_one_target_failing_does_not_stop_the_others(tmp_path, monkeypatch):
