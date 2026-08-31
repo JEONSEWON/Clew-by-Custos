@@ -6,7 +6,7 @@ Measurement against the predictions in
 Measured 2026-08-31, one day after the client change landed (`ec608d4`).
 
 **Headline: P5 is rejected. Worst-case notification latency on the live
-schedule is 133 minutes, not under 100.** The amendment itself stands: §7 lists
+schedule is 103.48 minutes, not under 100.** The amendment itself stands: §7 lists
 what would make it fail, and P5 is not on that list. What failed is the latency
 figure the amendment advertised, and it failed for a reason visible in the
 amendment's own arithmetic rather than in anything the change did.
@@ -74,26 +74,37 @@ ever be at or below the worst case:
 | rule B (cost cap) | `35 * * * *` | `migrations/0012_cost_cap.sql` |
 | delivery | `50 * * * *` | `app.py`, `modal.Cron` |
 
+Only one of the two rules reaches a person. `0013` gives rule B's events
+`delivery_mode = 'email'` when the project has an address; rule A stays
+`'shadow'`, frozen by the alert pre-registration's §5.1 as recorded and not
+delivered, and `0010` additionally evaluates it on **completed days only**
+("오늘은 평가하지 않는다"), paying up to 24 hours for a comparison that a
+partial day would lock in wrong. So rule A has no notification latency to
+measure, and P5 is about rule B.
+
 Worst case from a session's last recorded event to a delivered mail, taken over
 every possible position of that event within the hour:
 
 | chain | worst case | |
 |---|---|---|
-| last event to stored | **35.00 min** | matches the 20 + 15 model |
-| rule B (no rollup: it joins `run` directly) | **103.47 min** | MISS |
-| rule A (waits for the rollup) | **133.47 min** | **P5 REJECTED** |
+| last event to stored | **34.99 min** | matches the 20 + 15 model |
+| rule B, the rule that delivers | **103.48 min** | **P5 REJECTED** |
+| rule A | not a notification channel | shadow, and day-gated |
 
 The amendment's §2 table costed the tail as "rollup, rules, delivery ≤ 45 min"
-and arrived at 1 h 20 m. The rollup alone is hourly, so the tail is at least
-about an hour on its own. **The 1 h 20 m figure was arithmetic on a cadence
-that was never checked, in a document whose whole subject was that cadence.**
+and arrived at 1 h 20 m. Rule B skips the rollup entirely, and still misses,
+because delivery is hourly on its own. **The 1 h 20 m figure was arithmetic on
+a cadence that was never checked, in a document whose whole subject was that
+cadence.**
 
-Re-phasing the sweep cannot rescue it. Over every possible sweep phase the best
-achievable worst case is **124.99 min** for rule A and **94.99 min** for rule
-B: shortening the head of a chain whose tail is hourly moves the total by
-minutes.
+It misses by 3.48 minutes, and re-phasing the sweep alone would clear it: over
+every sweep phase the best rule B worst case is **94.98 min**, at a sweep on
+the `:05` grid. That is a change made after the measurement rather than a
+reading of it. P5 is judged against the schedule the amendment shipped with,
+which is the one above.
 
-Arithmetic in `field_test/diagnostics/_p5_latency_worst_case.py`.
+Arithmetic in `field_test/diagnostics/_p5_latency_worst_case.py` and
+`_p5_rule_b_cadence.py`.
 
 ## 4. The sweep was not running, and said nothing
 
@@ -138,13 +149,16 @@ by this defect, and P5 is rejected by §3 without it.
 
 ## 5. What would reach under 100 minutes
 
-With the same client, moving the four tail jobs from hourly to quarter-hourly
-brings the worst case to **43.48 minutes** for both rules.
+For rule B, which is the channel that delivers, the binding steps are its own
+evaluation and the delivery job. Moving both from hourly to quarter-hourly
+brings the worst case to **50.48 minutes**. Moving only one of them does almost
+nothing: delivery alone reaches 95.48 minutes, and rule B alone stays at 103.48,
+because whichever step is still hourly sets the floor.
 
 That is not done here. It changes the latency this product claims, so it takes
 its own pre-registration with its own predictions, including what four times
-the rule-evaluation frequency costs on the database. Until then the honest
-figure is the one in §3, and any published latency number is that one.
+the evaluation frequency costs on the database. Until then the honest figure is
+the one in §3, and any published latency number is that one.
 
 ## 6. What is not claimed
 
