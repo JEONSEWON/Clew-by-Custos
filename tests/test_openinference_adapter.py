@@ -276,7 +276,7 @@ def test_dict_tool_raw_preserves_original_payload_in_raw_output_text():
             f"processed leaf should be the title, got {span.output_text!r}"
         )
         assert span.raw_output_text is not None, (
-            f"raw_output_text should preserve original JSON for tool spans, got None"
+            "raw_output_text should preserve original JSON for tool spans, got None"
         )
         assert '"ticket"' in span.raw_output_text and '"id"' in span.raw_output_text
     ids = sorted(json.loads(s.raw_output_text)["ticket"]["id"] for s in tickets)

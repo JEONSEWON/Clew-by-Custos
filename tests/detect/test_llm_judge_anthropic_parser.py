@@ -10,7 +10,6 @@ be discarded as parse_failed. The parser now strips fences before json.loads.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from clew.detect.llm_judge.anthropic_client import AnthropicJudge
 

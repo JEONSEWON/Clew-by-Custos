@@ -1,5 +1,5 @@
 """드라이런: self-loop 제거 확인 + 게이트 거절 증명 (API 호출 없음)."""
-import sys, os, datetime
+import sys, os
 from pathlib import Path
 
 # API 키 없어도 graph 객체 생성 가능하도록 더미 설정
@@ -33,7 +33,7 @@ for name, factory in [("requery_clean", make_requery_clean_app),
     if self_loops:
         print(f"  !! self-loop 발견: {self_loops}")
     else:
-        print(f"  OK: searcher→searcher self-loop 없음")
+        print("  OK: searcher→searcher self-loop 없음")
 
 print()
 print("=" * 60)
@@ -93,7 +93,7 @@ for label, queries in [
     for s in trace.spans:
         print(f"    span={s.span_id}  kind={s.span_kind}  input={s.input_text!r}")
 
-    print(f"  _normalize_input 비교 (tool 스팬끼리):")
+    print("  _normalize_input 비교 (tool 스팬끼리):")
     tool_spans = [s for s in trace.spans if s.span_kind == "tool"]
     a, b = tool_spans[0], tool_spans[1]
     na = _normalize_input(a.input_text)

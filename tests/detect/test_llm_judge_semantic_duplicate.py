@@ -7,11 +7,9 @@ all cases; the real Anthropic integration test lives separately.
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timezone
 from typing import Any
 
-import pytest
 
 from clew.detect.llm_judge.anthropic_client import JudgeVerdict
 from clew.detect.llm_judge.semantic_duplicate import (

@@ -135,7 +135,7 @@ def main():
     removed_count = collapsed.metadata.get("collapsed_llm_spans", 0)
     print(f"  원본 span 수: {len(trace.spans)}  →  변환 후: {len(collapsed.spans)}")
     print(f"  제거된 llm span: {removed_count}")
-    print(f"\n  변환 후 span 목록 (시간순):")
+    print("\n  변환 후 span 목록 (시간순):")
     for sp in sorted(collapsed.spans, key=lambda s: s.start_time):
         print(f"    {sp.span_id[:12]:12s} kind={sp.span_kind:8s} agent_or_node_id={sp.agent_or_node_id!r}")
 
@@ -163,7 +163,7 @@ def main():
     print(f"{'='*64}")
     embedder = Embedder(model_name=MODEL, revision=REV, cache_dir=CACHE)
     cos_val = cosine(embedder.embed(RESEARCHER_RESPONSE_1), embedder.embed(RESEARCHER_RESPONSE_2))
-    fire_check = "FIRE ✓" if cos_val >= PHI else f"NO-FIRE ✗ (< phi)"
+    fire_check = "FIRE ✓" if cos_val >= PHI else "NO-FIRE ✗ (< phi)"
     print(f"  cosine(R1, R2) = {cos_val:.6f}  →  {fire_check}")
     byte_check = "✓ 바이트 다름" if RESEARCHER_RESPONSE_1 != RESEARCHER_RESPONSE_2 else "✗ 동일"
     print(f"  R1 == R2? {RESEARCHER_RESPONSE_1 == RESEARCHER_RESPONSE_2}  {byte_check}")
@@ -191,9 +191,9 @@ def main():
                 o, c = matching[0]
                 cv = cosine(embedder.embed(o.output_text), embedder.embed(c.output_text))
                 print(f"  waste span_id: {sid[:12]}  cosine={cv:.6f}")
-                print(f"  ── origin ──────────────────────────────────────────────────")
+                print("  ── origin ──────────────────────────────────────────────────")
                 print(f"  {o.output_text}")
-                print(f"  ── candidate (waste) ────────────────────────────────────────")
+                print("  ── candidate (waste) ────────────────────────────────────────")
                 print(f"  {c.output_text}")
                 print(f"  ── 바이트 동일: {o.output_text == c.output_text} ────────────────────────────────")
     else:

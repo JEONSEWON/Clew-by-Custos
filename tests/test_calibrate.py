@@ -20,7 +20,6 @@ from eval.calibrate import (
     calibrate,
     choose_n,
     choose_phi,
-    collect_pair_cosines,
     separation_metrics,
 )
 

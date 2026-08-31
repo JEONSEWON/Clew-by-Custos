@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
-from clew.cost.pricing import get_pricing, resolve_pricing
+from clew.cost.pricing import resolve_pricing
 from clew.model import Span, Trace
 
 if TYPE_CHECKING:

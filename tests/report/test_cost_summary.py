@@ -11,9 +11,9 @@ from typing import Any
 import pytest
 
 from clew.detect.cascade import CascadeResult
-from clew.detect.context_resend import ContextResendResult, ResentEvent
+from clew.detect.context_resend import ContextResendResult
 from clew.model import Span, Trace
-from clew.report._model import TraceCostSummary, build_cost_summary
+from clew.report._model import build_cost_summary
 from clew.report.json_report import render_json
 from clew.report.markdown import render_markdown
 

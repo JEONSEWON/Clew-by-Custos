@@ -222,7 +222,7 @@ def scan():
     print("=== SPEC §19 SWE-chat 낭비 밀도 결과 (v1' 재실행, EDIT_TOOLS 오염 수정) ===")
     print(f"turn_id 데이터셋 중복 drop: {counters['turn_id_dupes_dropped']}")
     print(f"pool: Claude Code Read + tool_input_json non-null = {counters['reads_in_pool']}")
-    print(f"  (pool sanity 검증: turn_type=='tool_use'와 일치 확인 통과)")
+    print("  (pool sanity 검증: turn_type=='tool_use'와 일치 확인 통과)")
     print(f"target 파싱 실패 drop: {counters['reads_dropped_no_target']}")
     print(f"절대·상대 혼용으로 제외된 세션: {counters['sessions_excluded_mixed_paths']}")
     print(f"분석 대상 Read: {counters['reads_after_mixed_exclusion']}")

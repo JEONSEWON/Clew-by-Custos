@@ -24,7 +24,6 @@ from clew.detect.llm_judge.verification_judge import (
     render_trace_for_judge,
 )
 from clew.detect.llm_judge.verification_prompts import (
-    TOOL_OUTPUT_MAX_CHARS,
     VIEW_MAX_CHARS,
     build_verification_message,
 )
@@ -278,3 +277,180 @@ def test_the_output_cap_leaves_room_for_evidence():
     import inspect
     src = inspect.getsource(VerificationJudge.judge_checked)
     assert "max_tokens=512" in src
+
+
+# ── the retry path, and what a call costs ──────────────────────────────────
+#
+# ★ These exist because a mutation run said so, not because they were thought
+# of. `cosmic-ray` generated 305 mutations of this module against the tests
+# above and 130 survived; 16 of the survivors sat on the 429 condition and 21 on
+# the cost arithmetic. Both are code with no test at all: the retry loop needed
+# a fake client and the cost line was only ever asserted as `> 0`.
+#
+# The hand-written mutations run earlier all died, which is the point. They were
+# the ones we thought to write.
+
+
+class _FakeMessages:
+    """Raises the given sequence, then returns a good response."""
+
+    def __init__(self, failures: list[Exception], text: str) -> None:
+        self._failures = list(failures)
+        self._text = text
+        self.calls = 0
+
+    def create(self, **kwargs):
+        self.calls += 1
+        if self._failures:
+            raise self._failures.pop(0)
+        return _Resp(self._text)
+
+
+class _FakeClient:
+    def __init__(self, messages: _FakeMessages) -> None:
+        self.messages = messages
+
+
+def _rate_limited(status: int = 429) -> Exception:
+    e = RuntimeError("rate limited")
+    e.status_code = status
+    return e
+
+
+def _judge_with(client: _FakeClient, monkeypatch) -> VerificationJudge:
+    slept: list[float] = []
+    monkeypatch.setattr(
+        "clew.detect.llm_judge.verification_judge.time.sleep", slept.append)
+    j = _judge()
+    j._client = client
+    j._slept = slept                    # for assertions, not used by the code
+    return j
+
+
+GOOD = '{"checked": false, "evidence": "nothing ran", "confidence": 0.9}'
+
+
+def test_a_429_is_retried_and_the_verdict_survives(monkeypatch):
+    """Distinguishes giving up on the first rate limit. A judged run of 40
+    sessions back to back will meet 429 and must not lose verdicts to it."""
+    msgs = _FakeMessages([_rate_limited(), _rate_limited()], GOOD)
+    j = _judge_with(_FakeClient(msgs), monkeypatch)
+    v = j.judge_checked("session")
+    assert v.checked is False
+    assert not v.parse_failed
+    assert msgs.calls == 3
+
+
+def test_the_backoff_doubles(monkeypatch):
+    """Distinguishes a fixed sleep. A constant retry interval against a rate
+    limit is a way of staying rate-limited."""
+    msgs = _FakeMessages([_rate_limited(), _rate_limited(), _rate_limited()], GOOD)
+    j = _judge_with(_FakeClient(msgs), monkeypatch)
+    j.judge_checked("session")
+    assert j._slept == [1, 2, 4]
+
+
+def test_a_429_that_never_clears_gives_up_and_does_not_find(monkeypatch):
+    """★ Distinguishes an unbounded retry loop. Mutating the bound left every
+    test above passing, so nothing stood between this and a judge that hangs on
+    a rate-limited key. Giving up must also be a non-finding: the finding is
+    `checked: false`, and a rate limit is not evidence about the agent."""
+    msgs = _FakeMessages([_rate_limited() for _ in range(50)], GOOD)
+    j = _judge_with(_FakeClient(msgs), monkeypatch)
+    with pytest.warns(UserWarning, match="call failed"):
+        v = j.judge_checked("session")
+    assert v.checked is True
+    assert v.parse_failed is True
+    # Bound is BACKOFF_MAX_SECONDS = 32 with doubling from 1: 1,2,4,8,16,32 then stop.
+    assert j._slept == [1, 2, 4, 8, 16, 32]
+    assert msgs.calls == 7
+
+
+def test_an_error_that_is_not_a_rate_limit_is_not_retried(monkeypatch):
+    """Distinguishes retrying everything. A bad key or a malformed request does
+    not get better by waiting, and retrying it six times wastes a minute per
+    session."""
+    boom = RuntimeError("bad request")
+    boom.status_code = 400
+    msgs = _FakeMessages([boom], GOOD)
+    j = _judge_with(_FakeClient(msgs), monkeypatch)
+    with pytest.warns(UserWarning, match="call failed"):
+        v = j.judge_checked("session")
+    assert v.parse_failed is True
+    assert msgs.calls == 1
+    assert j._slept == []
+
+
+def test_an_error_with_no_status_code_is_not_retried(monkeypatch):
+    """A transport error carries no `status_code`; duck-typing on it must not
+    treat the absence as a 429."""
+    msgs = _FakeMessages([OSError("connection reset")], GOOD)
+    j = _judge_with(_FakeClient(msgs), monkeypatch)
+    with pytest.warns(UserWarning, match="call failed"):
+        j.judge_checked("session")
+    assert msgs.calls == 1
+    assert j._slept == []
+
+
+# ── what a call costs ──────────────────────────────────────────────────────
+
+
+def test_the_cost_is_the_price_table_arithmetic_not_merely_positive():
+    """★ Distinguishes `cost_usd > 0`, which is what the earlier tests asserted.
+    Mutating the multiply to an add, or the million to another number, left them
+    all passing. This is code that reports money."""
+    from clew.cost.pricing import get_pricing
+
+    pricing = get_pricing("claude-haiku-4-5")
+    v = _judge()._parse_checked(_Resp(GOOD, in_tok=1_000_000, out_tok=1_000_000))
+    expected = pricing.base_input_per_mtok + pricing.output_per_mtok
+    assert v.cost_usd == pytest.approx(expected)
+
+
+def test_the_cost_scales_with_tokens():
+    """Distinguishes a constant. Ten times the tokens is ten times the cost."""
+    one = _judge()._parse_checked(_Resp(GOOD, in_tok=1_000, out_tok=100))
+    ten = _judge()._parse_checked(_Resp(GOOD, in_tok=10_000, out_tok=1_000))
+    assert ten.cost_usd == pytest.approx(one.cost_usd * 10)
+
+
+def test_input_and_output_are_priced_differently():
+    """Distinguishes one rate for both. Output costs several times input on
+    every model in the table, and a judge is asked for a short answer about a
+    long session -- getting this backwards misprices the axis."""
+    in_only = _judge()._parse_checked(_Resp(GOOD, in_tok=1_000_000, out_tok=0))
+    out_only = _judge()._parse_checked(_Resp(GOOD, in_tok=0, out_tok=1_000_000))
+    assert out_only.cost_usd > in_only.cost_usd
+
+
+def test_a_response_with_no_usage_costs_nothing_rather_than_crashing():
+    class _NoUsage:
+        content = [type("B", (), {"text": GOOD})()]
+    v = _judge()._parse_checked(_NoUsage())
+    assert v.input_tokens == 0 and v.output_tokens == 0
+    assert v.cost_usd == 0.0
+
+
+# ── the metric's arithmetic, not just its verdict ──────────────────────────
+
+
+def test_precision_is_over_findings_not_over_the_sample():
+    """Distinguishes `tp / len(labels)`. Mutating the denominator survived the
+    earlier metric tests because 14 findings out of 40 happened to keep the
+    comparison on the right side of the gate in those fixtures."""
+    labels = [True, True, False, False, False, False, False, False, False, False]
+    findings = [True, False, True, False, False, False, False, False, False, False]
+    m = precision_recall(labels, findings)
+    assert m["precision"] == pytest.approx(0.5)      # 1 of 2 findings
+    assert m["recall"] == pytest.approx(0.5)         # 1 of 2 positives
+    assert m["findings"] == 2
+    assert m["true_positives"] == 1
+    assert m["false_positives"] == 1
+    assert m["labelled_positives"] == 2
+
+
+def test_no_labelled_positives_gives_zero_recall_not_a_crash():
+    m = precision_recall([False, False], [True, False])
+    assert m["recall"] == 0.0
+    assert m["precision"] == 0.0
+    assert m["labelled_positives"] == 0

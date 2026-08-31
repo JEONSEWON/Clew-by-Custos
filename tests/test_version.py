@@ -16,7 +16,6 @@ import tomllib
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 
 def test_version_matches_pyproject_toml():

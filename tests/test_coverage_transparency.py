@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 
 from clew.detect.cascade import CascadeResult
 from clew.model import Span, Trace
-from clew.report._enrich import coverage_stats, enrich
+from clew.report._enrich import coverage_stats
 from clew.report._model import WasteDetail
 from clew.report.json_report import render_json
 from clew.report.markdown import render_markdown

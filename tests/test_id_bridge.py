@@ -27,7 +27,6 @@ from clew.model import Span, Trace
 from clew.report._enrich import (
     _ID_BRIDGE_MAPPING,
     _SIDE_EFFECT_TOOLS,
-    IdBridgeCandidate,
     extract_entity_id,
     scan_id_bridge_candidates,
 )

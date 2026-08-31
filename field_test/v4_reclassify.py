@@ -284,7 +284,7 @@ def sub_classify_e_category(rr_pool):
 
     e_rows = rr_pool[rr_pool.content.apply(is_e)].reset_index(drop=True)
     print("=" * 70)
-    print(f"E 범주 (정규식 확장 후에도 매치 안 됨) 전수 sub-classify")
+    print("E 범주 (정규식 확장 후에도 매치 안 됨) 전수 sub-classify")
     print("=" * 70)
     print(f"  E rows: {len(e_rows)}  (SPEC 실측: 1,489)")
 
@@ -314,7 +314,7 @@ def sub_classify_e_category(rr_pool):
         else:
             unmatched.append(s)
 
-    print(f"\n  E 패턴별 건수 (첫 매치, 상호배제):")
+    print("\n  E 패턴별 건수 (첫 매치, 상호배제):")
     for name, _ in patterns:
         n = labeled[name]
         pct = n / max(len(e_rows), 1) * 100
@@ -335,7 +335,7 @@ def sub_classify_e_category(rr_pool):
     print("    (해석: SPEC §19.2 개정 3 우선순위상 이는 unknown 으로 분류됨. 문서 확인용.)")
 
     if unmatched:
-        print(f"\n  unmatched 잔여 앞 60자 (최대 15건):")
+        print("\n  unmatched 잔여 앞 60자 (최대 15건):")
         for i, s in enumerate(unmatched[:15]):
             preview = s[:60].replace('\n', ' ')
             print(f"    [{i+1}] {preview!r}")
@@ -436,13 +436,13 @@ def check_stop_conditions(v3p_len, join_fail_pct_v3p):
     # SPEC §19.1 확정치 병기 (§19.2 중단조건 3 은 "바뀌면 잘못됨" 검출용).
     file_level_spec = 15787
     removal_pct_spec = (1 - 2053 / file_level_spec) * 100
-    print(f"  [3a] file-level = 15,787             : SPEC 확정 15,787  "
-          f"(이 라운드 recompute 없음)")
+    print("  [3a] file-level = 15,787             : SPEC 확정 15,787  "
+          "(이 라운드 recompute 없음)")
     print(f"  [3b] 오탐 제거율 = 87.0%             : 유도값 "
           f"{removal_pct_spec:.3f}%  "
           f"{'✓' if abs(removal_pct_spec - 87.0) < 0.05 else '⚠ 다름'}")
-    print(f"        (구성상 불변: 본 라운드는 run_swechat_waste_scan.py 미실행,")
-    print(f"         classify_read_result 만 개정. file-level 계산 경로 무변경.)")
+    print("        (구성상 불변: 본 라운드는 run_swechat_waste_scan.py 미실행,")
+    print("         classify_read_result 만 개정. file-level 계산 경로 무변경.)")
 
     # 조건 1: prev-tcid 조인 실패율 5% 초과
     ok1 = (join_fail_pct_v3p < STOP_JOIN_FAIL_PCT)
@@ -471,7 +471,7 @@ def check_prediction(v4_pp):
     print(f"  v4'' (v3' × prev-tcid × [→\\t] × unknown): {v4_pp}")
     print(f"  예측 범위                                 : [{PREDICTION_LO}, {PREDICTION_HI}]")
     if hit:
-        print(f"  결과: 적중 ✓")
+        print("  결과: 적중 ✓")
     else:
         direction = "미달" if v4_pp < PREDICTION_LO else "초과"
         print(f"  결과: 빗나감 ({direction}). 예측에 맞춰 정의 조정 금지 — 그대로 기록.")
@@ -539,10 +539,10 @@ def main():
     print(f"  v3' × prev-tcid × unknown 건수: {n_unknown_prev_v3p} / {len(v3p)} "
           f"= {unknown_pct_v3p:.3f}%")
     if unknown_pct_v3p > UNKNOWN_NEGATIVE_PCT:
-        print(f"  ⚠ 5% 초과 — SPEC §19.2 음성 결과 정의 발동:")
-        print(f"    \"분류기가 데이터의 상당 부분을 이해하지 못한다\" 를 v4'' 숫자에 영구 부착.")
+        print("  ⚠ 5% 초과 — SPEC §19.2 음성 결과 정의 발동:")
+        print("    \"분류기가 데이터의 상당 부분을 이해하지 못한다\" 를 v4'' 숫자에 영구 부착.")
     else:
-        print(f"  5% 이하 — 음성 결과 정의 미발동.")
+        print("  5% 이하 — 음성 결과 정의 미발동.")
 
     # ----- 2×2 표 : v3 OLD -----
     r_v3o = render_2x2(
@@ -576,7 +576,7 @@ def main():
     print(f"  v4'' 밀도                                 : {v4pp}/{args.pool} "
           f"= {v4_density:.3f}%")
     print()
-    print(f"  병기 (금지: 삭제):")
+    print("  병기 (금지: 삭제):")
     print(f"    v4  (v3 OLD × 창문 any × [→])  = {r_v3o['win_old'].count('all_success')}"
           f"  (SPEC: 424)")
     print(f"    v4' (v3'    × 창문 any × [→])  = {r_v3p['win_old'].count('all_success')}"

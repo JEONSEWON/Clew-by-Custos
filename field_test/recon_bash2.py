@@ -9,7 +9,6 @@ import argparse
 import random
 
 import pyarrow.dataset as ds
-import pyarrow.parquet as pq
 from huggingface_hub import hf_hub_download
 
 SEP = "=" * 72
@@ -53,25 +52,25 @@ def q1_type_split(df):
         n = len(grp)
         print(f"\n[{tool} / {agent!r}] n={n}")
         vc = grp.turn_type.value_counts(dropna=False)
-        print(f"  turn_type value_counts:")
+        print("  turn_type value_counts:")
         for k, v in vc.items():
             print(f"    {k!r}: {v}")
 
         g = grp.copy()
         g['_tij_filled'] = g.tool_input_json.notna()
         ct = g.groupby(['turn_type', '_tij_filled'], dropna=False).size().unstack(fill_value=0)
-        print(f"  crosstab: turn_type × tool_input_json notna")
+        print("  crosstab: turn_type × tool_input_json notna")
         print("    " + ct.to_string().replace("\n", "\n    "))
 
         if tool == 'Bash':
             g['_cmd_filled'] = g.command.apply(is_filled)
             ct2 = g.groupby(['turn_type', '_cmd_filled'], dropna=False).size().unstack(fill_value=0)
-            print(f"  crosstab: turn_type × command 채워짐")
+            print("  crosstab: turn_type × command 채워짐")
             print("    " + ct2.to_string().replace("\n", "\n    "))
         else:
             g['_pat_filled'] = g.pattern.apply(is_filled)
             ct2 = g.groupby(['turn_type', '_pat_filled'], dropna=False).size().unstack(fill_value=0)
-            print(f"  crosstab: turn_type × pattern 채워짐")
+            print("  crosstab: turn_type × pattern 채워짐")
             print("    " + ct2.to_string().replace("\n", "\n    "))
 
         if agent == 'Claude Code':
@@ -104,7 +103,7 @@ def q2_tool_call_id(df):
         g = grp.copy()
         g['_tci_filled'] = g.tool_call_id.apply(is_filled)
         ct = g.groupby(['turn_type', '_tci_filled'], dropna=False).size().unstack(fill_value=0)
-        print(f"  turn_type × tool_call_id 채워짐:")
+        print("  turn_type × tool_call_id 채워짐:")
         print("    " + ct.to_string().replace("\n", "\n    "))
 
         tu = g[(g.turn_type == 'tool_use') & g.tool_call_id.apply(is_filled)]
@@ -148,7 +147,7 @@ def q4_result_content_sample(pth, df):
     print(f"  Claude Code Bash 세션 수: {len(all_sids)}")
     rng = random.Random(42)
     sample_sids = rng.sample(all_sids, min(20, len(all_sids)))
-    print(f"  seed=42 random 20 세션 (규모 상위 금지 원칙 준수)")
+    print("  seed=42 random 20 세션 (규모 상위 금지 원칙 준수)")
     print(f"  샘플 세션 앞 3개: {sample_sids[:3]}")
 
     dset = ds.dataset(pth, format='parquet')
@@ -162,7 +161,7 @@ def q4_result_content_sample(pth, df):
     ctx = tbl.to_pandas().sort_values(['session_id', 'turn_number'])
     print(f"  로드된 Bash tool_result 행: {len(ctx)}")
 
-    print(f"\n  세션당 1건씩 최대 20건 덤프 (첫 200자):")
+    print("\n  세션당 1건씩 최대 20건 덤프 (첫 200자):")
     seen = set()
     dumped = 0
     for _, r in ctx.iterrows():
@@ -178,7 +177,7 @@ def q4_result_content_sample(pth, df):
         if dumped >= 20:
             break
 
-    print(f"\n  실패 마커 검색 (content 전체 20 세션분 Bash tool_result):")
+    print("\n  실패 마커 검색 (content 전체 20 세션분 Bash tool_result):")
     markers = [
         "command not found",
         "Exit code:",
@@ -228,7 +227,7 @@ def q6_hash_commands(df):
     cmds = cc_bash.command.dropna().astype(str)
     cmds = cmds[cmds.str.strip().str.startswith('#')]
     print(f"  '#' 시작 command 총: {len(cmds)}")
-    print(f"  앞 10건 (150자 절단, 줄바꿈 escape):")
+    print("  앞 10건 (150자 절단, 줄바꿈 escape):")
     for i, c in enumerate(cmds.head(10).tolist()):
         prev = c[:150].replace("\n", "\\n").replace("\r", "\\r")
         print(f"    [{i}] {prev!r}")

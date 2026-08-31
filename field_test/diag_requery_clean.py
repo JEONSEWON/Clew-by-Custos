@@ -1,5 +1,5 @@
 """requery_clean FAIL 원인 진단 (read-only, 수정 없음)."""
-import sys, json
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -46,7 +46,7 @@ for origin, cand in pairs:
     print(f"    input_norm = {c_norm[:80]!r}")
     print(f"  게이트 판정: {'같음(후보)' if same else '다름(필터돼야 함)'}")
     print(f"  is_tool(origin): {origin.span_kind == 'tool'}")
-    print(f"  → 실제로 후보에 포함됨: YES  (←  이 쌍이 FIRE 원인)")
+    print("  → 실제로 후보에 포함됨: YES  (←  이 쌍이 FIRE 원인)")
 
 # ── 4. 스팬 32929bcd40f49540 분석 ────────────────────────────────────────────
 TARGET = "32929bcd40f49540"

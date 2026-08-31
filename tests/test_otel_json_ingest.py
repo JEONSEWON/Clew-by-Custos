@@ -20,7 +20,6 @@ from clew.ingest.otel_json import (
     _OISpan,
     _SdkJsonSpan,
     _iso_to_ns,
-    _parse_sdk_json,
     ingest_from_otel_json,
     ingest_from_openinference_json,
 )
@@ -79,7 +78,7 @@ MINIMAL_SDK_JSON = [_ROOT, _WORKER, _LLM]
 
 def test_iso_to_ns_roundtrip():
     """ISO datetime → ns → datetime round-trip (within 1µs)."""
-    from datetime import datetime, timezone
+    from datetime import datetime
     from clew.ingest.langgraph import _ns_to_utc
 
     iso = "2026-06-20T10:54:26.378797Z"
@@ -299,7 +298,6 @@ def _get_load_trace_auto():
 
 def test_load_trace_auto_clew_format(tmp_path):
     """Existing Clew Trace JSON → _load_trace_auto → Trace (G2 backward compat)."""
-    from clew.ingest.otel_json import ingest_from_otel_json as _ingest
 
     # Produce a valid Clew Trace JSON: build via Format A, then save_trace
     p_sdk = tmp_path / "spans.json"

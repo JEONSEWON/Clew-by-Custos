@@ -6,11 +6,9 @@ parent-AGENT gate. Cost via tier-aware pricing from the next LLM call.
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import pytest
 
 from clew.detect.redundant_read import find_redundant_reads
 from clew.model import Span, Trace

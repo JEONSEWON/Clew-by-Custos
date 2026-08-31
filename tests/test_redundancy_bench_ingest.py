@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 
 from clew.ingest.redundancy_bench import (
-    _TS_BASE,
     _synth_ts,
     ingest_redundancy_bench_json,
     iter_redundancy_bench_traces,

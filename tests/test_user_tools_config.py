@@ -17,7 +17,6 @@ from pathlib import Path
 import pytest
 
 from clew.config import (
-    ResolvedTools,
     UserToolConfigError,
     builtin_tools,
     emit_load_warnings,

@@ -14,7 +14,7 @@ from clew.detect.redundant_read import RedundantReadResult
 from clew.metrics.waste_rate import DETECTOR_ORDER, WasteRateMetric
 from clew.model import Trace
 from clew.report._enrich import coverage_stats, enrich, scan_id_bridge_candidates
-from clew.report._model import TraceCostSummary, WasteDetail, build_cost_summary
+from clew.report._model import WasteDetail, build_cost_summary
 
 if TYPE_CHECKING:
     from clew.config import ResolvedTools

@@ -39,5 +39,11 @@ jobs:
           python-version: "3.12"
       - name: Install with dev + detect
         run: pip install ".[detect,dev]"
+      # Lint before the suite: a syntax error or an undefined name is cheaper to
+      # read from ruff than from a collection error six minutes in. `F` and `E9`
+      # only -- the selection and the reasons for what is left out are in
+      # pyproject.toml.
+      - name: Lint (ruff)
+        run: ruff check
       - name: Run pytest
         run: pytest -q

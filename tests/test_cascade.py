@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from clew.detect.cascade import CascadeResult, cascade
+from clew.detect.cascade import cascade
 from clew.detect.semantic import Embedder
 from clew.model import Span, Trace
 

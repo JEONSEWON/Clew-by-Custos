@@ -3,7 +3,6 @@ import csv
 import os
 import random
 import re
-import sys
 from pathlib import Path
 
 import pyarrow.dataset as ds
@@ -70,7 +69,7 @@ def scan_v3_all():
     with open(CASES_CSV, encoding="utf-8") as f:
         cases = list(csv.DictReader(f))
     v3 = [c for c in cases if int(c["turn_number"]) != int(c["prev_turn_number"])]
-    print(f"=== v3 규모 확인: 사이 tool_result 에러/빈 비율 ===")
+    print("=== v3 규모 확인: 사이 tool_result 에러/빈 비율 ===")
     print(f"v3 candidates: {len(v3)}")
 
     sids = {c["session_id"] for c in v3}
