@@ -25,7 +25,7 @@ from datetime import datetime
 
 from clew.detect.semantic import Embedder, cosine
 from clew.detect.structural import find_candidates
-from clew.model import Trace
+from clew.model import Span, Trace
 
 
 @dataclass
@@ -45,6 +45,47 @@ def _has_compact_between(boundaries: list[datetime], o_start: datetime, c_start:
     return any(o_start < b < c_start for b in boundaries)
 
 
+def confirm_pair(
+    origin: Span,
+    candidate: Span,
+    embedder: Embedder,
+    phi: float,
+    compact_boundaries: list[datetime] | None = None,
+) -> bool:
+    """Whether one structural candidate pair is a duplicate. The whole cascade
+    verdict for a single pair, with no trace-wide work.
+
+    Lives outside `cascade()` because the live path calls it one pair at a time
+    (LIVE_FAILURE_ALERT_PREREG §2, §4). §4 requires that a pair the batch path
+    calls a duplicate is the same pair live; sharing the function is what makes
+    that structural rather than a claim to be maintained by hand.
+    """
+    boundaries = compact_boundaries or []
+    if candidate.span_kind == "tool":
+        # CASCADE_ABSENCE_SENTINEL_AMENDMENT_PREREG §4: absence is not
+        # expression — the same principle the non-tool branch below already
+        # applies. model.py forbids an empty tool output_text precisely so
+        # this sha256 gate cannot match empty-vs-empty; a vendor placeholder
+        # for "no output" is non-empty and walked straight through that
+        # guard. Measured: 22 of 31 flags across 40 Claude Code sessions
+        # were such placeholders; 0 of 347 on Corpus B.
+        if candidate.output_is_absent or origin.output_is_absent:
+            return False
+        if _has_compact_between(boundaries, origin.start_time, candidate.start_time):
+            return False
+        return _sha256_bytes(origin.output_text) == _sha256_bytes(candidate.output_text)
+    # ── non-tool branch ────────────────────────────────────────────
+    # R2 relaxation (docs/ADAPTER_R2_RELAXATION_PREREG.md §2.1 · §2.5):
+    # empty output_text is absence, not expression. cosine on absence is
+    # a malformed question — cosine(embed(""), embed("")) = 1.0 measured
+    # against phi=0.514345 would trigger a false waste flag. Skip both
+    # empty-vs-empty and empty-vs-value (§2.1 widened principle: absence
+    # on either side is not judgeable).
+    if not (origin.output_text.strip() and candidate.output_text.strip()):
+        return False
+    return cosine(embedder.embed(origin.output_text), embedder.embed(candidate.output_text)) >= phi
+
+
 def cascade(trace: Trace, embedder: Embedder, n: int, phi: float) -> CascadeResult:
     spans_by_id = {s.span_id: s for s in trace.spans}
     waste_span_ids: list[str] = []
@@ -56,32 +97,7 @@ def cascade(trace: Trace, embedder: Embedder, n: int, phi: float) -> CascadeResu
     for origin, candidate in find_candidates(trace, n):
         if candidate.span_id in seen_candidates:
             continue
-        if candidate.span_kind == "tool":
-            # CASCADE_ABSENCE_SENTINEL_AMENDMENT_PREREG §4: absence is not
-            # expression — the same principle the non-tool branch below already
-            # applies. model.py forbids an empty tool output_text precisely so
-            # this sha256 gate cannot match empty-vs-empty; a vendor placeholder
-            # for "no output" is non-empty and walked straight through that
-            # guard. Measured: 22 of 31 flags across 40 Claude Code sessions
-            # were such placeholders; 0 of 347 on Corpus B.
-            if candidate.output_is_absent or origin.output_is_absent:
-                continue
-            if _has_compact_between(compact_boundaries, origin.start_time, candidate.start_time):
-                continue
-            if _sha256_bytes(origin.output_text) == _sha256_bytes(candidate.output_text):
-                waste_span_ids.append(candidate.span_id)
-                seen_candidates.add(candidate.span_id)
-            continue
-        # ── non-tool branch ────────────────────────────────────────────
-        # R2 relaxation (docs/ADAPTER_R2_RELAXATION_PREREG.md §2.1 · §2.5):
-        # empty output_text is absence, not expression. cosine on absence is
-        # a malformed question — cosine(embed(""), embed("")) = 1.0 measured
-        # against phi=0.514345 would trigger a false waste flag. Skip both
-        # empty-vs-empty and empty-vs-value (§2.1 widened principle: absence
-        # on either side is not judgeable).
-        if not (origin.output_text.strip() and candidate.output_text.strip()):
-            continue
-        if cosine(embedder.embed(origin.output_text), embedder.embed(candidate.output_text)) >= phi:
+        if confirm_pair(origin, candidate, embedder, phi, compact_boundaries):
             waste_span_ids.append(candidate.span_id)
             seen_candidates.add(candidate.span_id)
 

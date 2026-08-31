@@ -332,6 +332,13 @@ def _submit_rule_url() -> str:
     return RULE_URL
 
 
+def _live_prereg_url() -> str:
+    """Same reason as above, for the fast path's preregistration."""
+    from clew.live import PREREG_URL
+
+    return PREREG_URL
+
+
 def _submit(args: argparse.Namespace) -> int:
     from pathlib import Path
 
@@ -499,6 +506,58 @@ def _setup(args: argparse.Namespace) -> int:
     return 0
 
 
+def _watch(args: argparse.Namespace) -> int:
+    """Watch running sessions and record repeats locally. Sends nothing.
+
+    LIVE_FAILURE_ALERT_PREREG §8 step 2: shadow first. Delivery is step 6 and
+    a separate decision, so there is no endpoint and no key read here -- a
+    watcher that could send is not in shadow mode, whatever its default says.
+    """
+    from datetime import datetime
+
+    from clew import live
+    from clew.detect.semantic import Embedder
+    from clew.submit import load_targets
+
+    if args.root:
+        targets = [("default", Path(args.root))]
+    else:
+        try:
+            targets = [(t.project, t.root) for t in load_targets()]
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+    missing = [str(root) for _, root in targets if not root.exists()]
+    if missing:
+        print(f"Error: no such trace directory: {', '.join(missing)}", file=sys.stderr)
+        return 1
+
+    embedder = Embedder(model_name=_MODEL, revision=_REV, cache_dir=_CACHE_DIR)
+
+    def on_finding(f) -> None:
+        print(f"finding  {f.signal}  {Path(f.session).name}  "
+              f"repeat at {f.occurred_at}  "
+              f"({f.latency_seconds():.0f}s behind, {f.candidates_seen} candidates)")
+
+    def on_sweep(project, result) -> None:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] {project}: "
+              f"{result.scanned} live · {result.recorded} recorded · "
+              f"{result.suppressed_hourly} over the hourly cap · "
+              f"{result.seconds:.1f}s")
+
+    print(f"shadow mode: recording to {live.FINDINGS_PATH}, sending nothing")
+    try:
+        live.watch(
+            targets, embedder, n=_N, phi=_PHI,
+            poll_seconds=args.interval, once=args.once,
+            on_finding=on_finding, on_sweep=on_sweep,
+        )
+    except KeyboardInterrupt:
+        print("stopped")
+    return 0
+
+
 def _estimate(args: argparse.Namespace) -> int:
     """Report what makes a trace expensive to analyze. No verdict.
 
@@ -649,6 +708,28 @@ def main() -> None:
     st.add_argument("--root", default=None, metavar="DIR",
                     help="trace directory (default: ~/.claude/projects)")
 
+    w = sub.add_parser(
+        "watch",
+        help="watch running sessions for a repeat, and record it locally",
+        description=(
+            "The fast path. The analyzer is already on this machine, so a "
+            "repeated step is found while the session is still open instead of "
+            "43 minutes after it closes. Shadow mode: findings are written to "
+            "~/.clew/live_findings.json and nothing is sent anywhere. See "
+            + _live_prereg_url()
+        ),
+    )
+    w.add_argument("--root", default=None, metavar="DIR",
+                   help="trace directory (default: the projects in ~/.clew/projects.yaml)")
+    w.add_argument("--interval", type=int, default=60, metavar="SEC",
+                   help=(
+                       "seconds between polls (default: 60). A poll that takes "
+                       "longer than a quarter of this stretches the wait, so a "
+                       "large session cannot pin a core."
+                   ))
+    w.add_argument("--once", action="store_true",
+                   help="one pass and exit")
+
     e = sub.add_parser(
         "estimate",
         help="report what makes a trace expensive to analyze",
@@ -671,6 +752,8 @@ def main() -> None:
         sys.exit(_submit(args))
     elif args.cmd == "setup":
         sys.exit(_setup(args))
+    elif args.cmd == "watch":
+        sys.exit(_watch(args))
     elif args.cmd == "estimate":
         sys.exit(_estimate(args))
     else:
