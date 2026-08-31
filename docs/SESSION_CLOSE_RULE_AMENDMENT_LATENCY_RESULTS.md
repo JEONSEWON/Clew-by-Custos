@@ -155,10 +155,19 @@ brings the worst case to **50.48 minutes**. Moving only one of them does almost
 nothing: delivery alone reaches 95.48 minutes, and rule B alone stays at 103.48,
 because whichever step is still hourly sets the floor.
 
-That is not done here. It changes the latency this product claims, so it takes
-its own pre-registration with its own predictions, including what four times
-the evaluation frequency costs on the database. Until then the honest figure is
-the one in §3, and any published latency number is that one.
+**Done, later the same day**, under its own pre-registration
+([`ALERT_DELIVERY_CADENCE_PREREG.md`](ALERT_DELIVERY_CADENCE_PREREG.md)) and
+published in its own results
+([`ALERT_DELIVERY_CADENCE_RESULTS.md`](ALERT_DELIVERY_CADENCE_RESULTS.md)).
+Both halves were applied live and read back from `cron.job` and from Modal's
+own log, and the measured worst case is 50.48 minutes.
+
+**The 103.48 figure above stands as this document's result.** P5 was a
+prediction about the schedule the amendment shipped with, and that schedule
+missed it. A later change to a different document's schedule does not make an
+earlier prediction pass, and the two numbers are not alternatives: 103.48 is
+what the latency amendment achieved, 50.48 is what the cadence amendment
+achieved on top of it.
 
 ## 6. What is not claimed
 

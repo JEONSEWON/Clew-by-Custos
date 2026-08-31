@@ -5,12 +5,12 @@ Measurement against the predictions in
 which its §8 step 4 requires be published whether it passes or not. Measured
 2026-08-31, the same day the pre-registration merged.
 
-**Headline: P2, P3, P4 and P5 pass. P1 is open, because it is the one that
-cannot be measured before a person applies the migration.**
+**Headline: all five pass. Applied live 2026-08-31; worst-case notification
+latency went from 103.48 minutes to 50.48.**
 
 | # | Prediction | Result |
 |---|---|---|
-| **P1** | worst case 50.48 min over the crons **as applied** | **open**: needs the live apply |
+| **P1** | worst case 50.48 min over the crons **as applied** | **PASS**, 50.48 |
 | **P2** | 4 evaluations inside one day leave exactly 1 `alert_event` | **PASS** |
 | **P3** | a 09:10 crossing fires on the 09:23 evaluation | **PASS** |
 | **P4** | one `evaluate_cost_cap` under 100 ms | **PASS**, 9.13 / 9.92 / 11.59 ms |
@@ -67,28 +67,54 @@ which is worse than no guard. The number is here instead.
 period per project with a limit; 20 rows is not 20,000. It is a reading at
 today's size, not a bound.
 
-## 4. P1 is open, and stays open until a person applies it
+## 4. P1: measured on the crons as applied
 
-P1 is arithmetic on the crons **as they appear in `cron.job`**, deliberately
-not on the crons as written in the migration. The reason is the failure mode
-this area keeps producing: a cron that did not take. The migration's own verify
-block carries the predictions for that moment, including one that matters more
-than the schedule string:
+Applied live 2026-08-31. P1 was written against the crons **as they appear in
+`cron.job`**, deliberately not as written in the migration, because a cron that
+did not take is the failure this area keeps producing. Both halves were read
+back rather than assumed.
 
-> `evaluate-cost-cap` appearing **twice** means the named `cron.schedule` added
-> a job instead of updating one, the old `35` entry is still live, and rule B
-> runs five times an hour.
+**Rule B**, from the migration's own verify block against the live database:
 
-Applying migrations to live is a person's job (`migrations/README.md`: no
-service session here holds credentials for the live database), and the Modal
-deploy is its pair. Neither is done in this session.
+```
+evaluate-alerts     '20 * * * *'            active   unchanged
+evaluate-cost-cap   '8,23,38,53 * * * *'    active   <- this change
+prune-details       '30 3 * * *'            active   unchanged
+rollup-hourly       '5 * * * *'             active   unchanged
+```
 
-**Until both are applied, the published worst-case latency is still 103.48
-minutes**, the figure in
-[`SESSION_CLOSE_RULE_AMENDMENT_LATENCY_RESULTS.md`](SESSION_CLOSE_RULE_AMENDMENT_LATENCY_RESULTS.md)
-§3. Half of this change would make it 95.48 or leave it at 103.48; neither is
-50.48, and publishing 50.48 before both halves are live would be publishing a
-number that is not true.
+Four jobs, and `evaluate-cost-cap` on **one** row. That was the stop condition
+the migration named: a second row would have meant the named `cron.schedule`
+added a job instead of updating one, the old `35` entry still live, and rule B
+running five times an hour. It updated.
+
+**Delivery**, from Modal's own log, which writes one line per run:
+
+```
+19:50:07 KST   deliver_alerts ran pending=1 sent=1 failed=0    hourly
+20:50:05 KST   deliver_alerts ran pending=0 sent=0 failed=0    hourly, last before deploy
+20:57:05 KST   deliver_alerts ran pending=0 sent=0 failed=0    <- the new schedule
+```
+
+The `:57` run is the evidence. Under the previous schedule the next run after
+20:50 would have been 21:50.
+
+**Worst case over those two, plus the 20-minute close rule and the 15-minute
+sweep: 50.48 minutes.** P1 predicted 50.48.
+
+| | worst case |
+|---|---|
+| before | 103.48 min |
+| **after** | **50.48 min** |
+| had only rule B moved | 103.48 min |
+| had only delivery moved | 95.48 min |
+
+The last two rows are why both landed in one commit. Either alone buys nothing
+or almost nothing, because whichever step is still hourly sets the floor, and
+shipping half of it would have published a figure that is not true.
+
+Arithmetic in `field_test/diagnostics/_p5_rule_b_cadence.py`, run against the
+schedules quoted above rather than the ones in the source.
 
 ## 5. Two guards that were not guards
 
@@ -131,7 +157,8 @@ back to `'35 * * * *'` left the test passing. It reads executable SQL now.
   day's first value as the transition. Evaluating rule A sooner makes it wrong,
   not faster.
 - **`occurred_at` unchanged.**
-- **50.48 minutes is not a published figure yet.** See §4.
+- **50.48 minutes applies to the cost-cap channel only.** Rule A does not
+  deliver and is day-gated, so it has no notification latency to shorten.
 - **50.48 minutes is not "real-time".** Whatever this reduces, it does not turn
   the alert channel into monitoring, and the web session's surfaces keep
   alerting in `building` rather than `shipped` on that basis.
