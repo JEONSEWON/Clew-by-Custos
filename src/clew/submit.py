@@ -134,6 +134,40 @@ def save_ledger(ledger: dict, path: Path = LEDGER_PATH) -> None:
     tmp.replace(path)
 
 
+def refused_too_large(ledger: dict) -> dict[str, int]:
+    """Paths the server refused as too large, and the size it refused.
+
+    These are excluded from every measurement, so the number is printed rather
+    than left to be inferred from a submission that never appears.
+    """
+    return {k: int(v["refused_bytes"]) for k, v in ledger.items()
+            if isinstance(v, dict) and v.get("refused_bytes")}
+
+
+def _refused_for_size(path: Path, entry: object) -> bool:
+    """True when the server refused this file for its size and it has not shrunk.
+
+    Without this the sweep re-uploads a payload the server has already refused,
+    every 15 minutes, indefinitely: `_unsent` re-queues anything with
+    `ok: False` so a transport failure cannot lose a session, and a 413 is not
+    a transport failure. Measured on this machine as one 12.3 MB session
+    re-sent on every sweep, and as an exit code that was 1 on every run, which
+    left the scheduler's own record of success carrying no information.
+
+    A file that grew is still too large, so growth does not re-open it. Only a
+    file that got smaller than what was refused is worth another attempt.
+    """
+    if not isinstance(entry, dict):
+        return False
+    refused = entry.get("refused_bytes")
+    if not refused:
+        return False
+    try:
+        return path.stat().st_size >= int(refused)
+    except OSError:
+        return False
+
+
 def _unsent(entry: object) -> bool:
     """True when nothing of this file ever reached the server.
 
@@ -195,6 +229,8 @@ def pending(root: Path, now: datetime, ledger: dict,
     out = []
     for p in discover(root):
         entry = ledger.get(str(p))
+        if _refused_for_size(p, entry):
+            continue
         if not (_unsent(entry) or _has_new_content(p, entry)):
             continue
         if not is_closed(p, now, close_after):
@@ -450,7 +486,17 @@ def submit_file(path: Path, key: str, endpoint: str = DEFAULT_ENDPOINT,
                                     context=ssl.create_default_context()) as response:
             report = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        return {"ok": False, "reason": f"http_{exc.code}", **_failure_detail(exc)}
+        refusal = {"ok": False, "reason": f"http_{exc.code}", **_failure_detail(exc)}
+        if exc.code == 413:
+            # The size the server refused, so a later run can tell whether
+            # anything changed. The limit itself is not recorded or guessed at
+            # here: it belongs to the server, and a client holding its own copy
+            # disagrees with it the moment either one moves.
+            try:
+                refusal["refused_bytes"] = path.stat().st_size
+            except OSError:
+                pass
+        return refusal
     except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
         # The key is in the request headers. Record the kind of failure, never
         # the request.
@@ -609,6 +655,12 @@ def run(root: Path = DEFAULT_ROOT,
 
     queued = pending(root, now, ledger, since=since)
 
+    oversized = refused_too_large(ledger)
+    if oversized:
+        out(f"not submitted: {len(oversized)} too large for the server "
+            f"(largest {max(oversized.values()) / 1e6:.1f} MB), "
+            "excluded from every measurement")
+
     if limit is not None:
         queued = queued[:limit]
 
@@ -654,10 +706,21 @@ def run(root: Path = DEFAULT_ROOT,
         # `sent_through` is what makes a later resubmission possible: it
         # records how far into the session this upload reached.
         last_sent = last_activity(path)
+        # How many times this session has been sent. The latency amendment
+        # predicts a bound on exactly this (§6 P4, "no more than 6x"), and
+        # nothing recorded it: the ledger holds one entry per path and each
+        # send overwrote the last, so the quantity the prediction is about was
+        # not in the data. An entry from before this field was sent at least
+        # once, which is what the default counts.
+        previous = ledger.get(str(path))
+        sends = 1
+        if isinstance(previous, dict):
+            sends = int(previous.get("sends", 1)) + 1
         ledger[str(path)] = {
             **result,
             "submitted_at": now.isoformat(),
             "sent_through": last_sent.isoformat() if last_sent else None,
+            "sends": sends,
         }
         save_ledger(ledger, ledger_path)
 

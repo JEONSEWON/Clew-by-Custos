@@ -13,7 +13,9 @@ Tests cover:
 """
 from __future__ import annotations
 
+import io
 import json
+import urllib.error
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -276,9 +278,139 @@ def test_a_run_that_stores_nothing_exits_nonzero(tmp_path, monkeypatch):
     # on a failure so that a later run compares against the same mark; a failed
     # entry is re-queued by `_unsent` regardless.
     entry = submit.load_ledger(tmp_path / "l.json")[str(tmp_path / "a.jsonl")]
+    # `sends` counts attempts, not analyses: a refused key never reached the
+    # analyser and cost nothing, so a P4 cost reading takes the `ok: True`
+    # entries. The count is here because the number has to exist somewhere.
     assert entry == {
         "ok": False, "reason": "bad_key", "submitted_at": NOW.isoformat(),
-        "sent_through": (NOW - timedelta(hours=9)).isoformat()}
+        "sent_through": (NOW - timedelta(hours=9)).isoformat(), "sends": 1}
+
+
+# ── P4's instrument ──────────────────────────────────────────────────
+
+
+def test_every_send_of_one_session_is_counted(tmp_path, monkeypatch):
+    """Distinguishes: without a counter the amendment's own cost prediction is
+    unmeasurable. P4 bounds submissions per session, and the ledger kept only
+    the most recent one, so the number the prediction is about existed nowhere.
+    """
+    path = _session(tmp_path / "s.jsonl", NOW - timedelta(hours=9))
+    monkeypatch.setattr(submit, "submit_file",
+                        lambda p, k, e: {"ok": True, "stored": True})
+    led = tmp_path / "l.json"
+    key = "bdk_" + "a" * 24
+
+    def sweep(at):
+        submit.run(root=tmp_path, ledger_path=led, now=at, key=key,
+                   pace_seconds=0, out=lambda *a: None)
+        return json.loads(led.read_text(encoding="utf-8"))[str(path)]["sends"]
+
+    assert sweep(NOW) == 1
+    _session(path, NOW + timedelta(hours=1))          # the session continued
+    assert sweep(NOW + timedelta(hours=2)) == 2
+    _session(path, NOW + timedelta(hours=3))
+    assert sweep(NOW + timedelta(hours=4)) == 3
+
+
+def test_a_ledger_written_before_the_counter_is_read_as_one_send(tmp_path, monkeypatch):
+    """Distinguishes: defaulting to zero would report every session on an
+    upgraded machine as never sent, and P4 would be measured against a
+    denominator that is short by one for all 88 of them."""
+    path = _session(tmp_path / "s.jsonl", NOW - timedelta(hours=9))
+    led = tmp_path / "l.json"
+    led.write_text(json.dumps({str(path): {
+        "ok": True, "stored": True,
+        "sent_through": (NOW - timedelta(hours=9)).isoformat()}}), encoding="utf-8")
+    _session(path, NOW - timedelta(hours=1))
+    monkeypatch.setattr(submit, "submit_file",
+                        lambda p, k, e: {"ok": True, "stored": True})
+    submit.run(root=tmp_path, ledger_path=led, now=NOW, key="bdk_" + "a" * 24,
+               pace_seconds=0, out=lambda *a: None)
+    assert json.loads(led.read_text(encoding="utf-8"))[str(path)]["sends"] == 2
+
+
+# ── a payload the server refuses for its size ─────────────────────
+#
+# `_unsent` re-queues anything that failed, because a transport failure must not
+# lose a session. A 413 is not a transport failure, and treating it as one had
+# the sweep re-uploading 12.3 MB every 15 minutes and exiting 1 every time.
+
+
+def _refuse_for_size(monkeypatch):
+    def boom(*args, **kwargs):
+        raise urllib.error.HTTPError(
+            "https://example/analyze", 413, "Payload Too Large", {},
+            io.BytesIO(json.dumps({"detail": "file exceeds 10 MB limit"}).encode()))
+    monkeypatch.setattr(submit.urllib.request, "urlopen", boom)
+
+
+def test_a_refusal_for_size_records_the_size_that_was_refused(tmp_path, monkeypatch):
+    """Distinguishes: without the size there is nothing to compare a later run
+    against, and the only options left are re-uploading forever or dropping the
+    session silently."""
+    f = _session(tmp_path / "big.jsonl", NOW - timedelta(hours=9))
+    _refuse_for_size(monkeypatch)
+    result = submit.submit_file(f, "bdk_x")
+    assert result["reason"] == "http_413"
+    assert result["refused_bytes"] == f.stat().st_size
+
+
+def test_another_http_failure_records_no_size(tmp_path, monkeypatch):
+    """The guard is about one refusal, not about failures in general: a 500 is
+    worth retrying and must stay retryable."""
+    f = _session(tmp_path / "s.jsonl", NOW - timedelta(hours=9))
+
+    def boom(*args, **kwargs):
+        raise urllib.error.HTTPError(
+            "https://example/analyze", 500, "Server Error", {},
+            io.BytesIO(json.dumps({"detail": "analyzer crashed"}).encode()))
+    monkeypatch.setattr(submit.urllib.request, "urlopen", boom)
+    assert "refused_bytes" not in submit.submit_file(f, "bdk_x")
+
+
+def test_a_payload_refused_for_its_size_is_not_sent_again(tmp_path):
+    f = _session(tmp_path / "big.jsonl", NOW - timedelta(hours=9))
+    ledger = {str(f): {"ok": False, "reason": "http_413",
+                       "refused_bytes": f.stat().st_size}}
+    assert submit.pending(tmp_path, NOW, ledger) == []
+
+
+def test_a_file_that_grew_past_the_refusal_is_still_not_sent(tmp_path):
+    """Distinguishes: `_has_new_content` re-opens a session that grew, and a
+    session that grew past a size limit is further past it, not closer."""
+    f = _session(tmp_path / "big.jsonl", NOW - timedelta(hours=9))
+    refused = f.stat().st_size
+    ledger = {str(f): {"ok": False, "reason": "http_413",
+                       "refused_bytes": refused,
+                       "sent_through": (NOW - timedelta(hours=9)).isoformat()}}
+    _session(f, NOW - timedelta(hours=1), lines=40)        # grew, and continued
+    assert f.stat().st_size > refused
+    assert submit.pending(tmp_path, NOW, ledger) == []
+
+
+def test_a_file_smaller_than_what_was_refused_is_tried_again(tmp_path):
+    """The exclusion is a comparison, not a permanent mark. A rotated or
+    truncated file is a different payload and the server may take it."""
+    f = _session(tmp_path / "big.jsonl", NOW - timedelta(hours=9), lines=40)
+    ledger = {str(f): {"ok": False, "reason": "http_413",
+                       "refused_bytes": f.stat().st_size * 2}}
+    assert submit.pending(tmp_path, NOW, ledger) == [f]
+
+
+def test_every_run_says_how_many_are_too_large(tmp_path, monkeypatch):
+    """Distinguishes: an exclusion nobody prints is inferred from a submission
+    that never appears, which is the same evidence as nothing being wrong."""
+    f = _session(tmp_path / "big.jsonl", NOW - timedelta(hours=9))
+    led = tmp_path / "l.json"
+    led.write_text(json.dumps({str(f): {"ok": False, "reason": "http_413",
+                                        "refused_bytes": 12_250_000}}),
+                   encoding="utf-8")
+    lines = []
+    monkeypatch.setenv(submit.KEY_ENV, "bdk_test")
+    submit.run(root=tmp_path, now=NOW, pace_seconds=0, ledger_path=led,
+               out=lines.append)
+    said = " ".join(lines)
+    assert "too large" in said and "12.2 MB" in said
 
 
 def test_limit_caps_a_backfill(tmp_path, monkeypatch):

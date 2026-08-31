@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,6 +25,35 @@ TASK_NAME = "BoxdawnSubmit"
 # the close rule itself, so it moves with it. 15 minutes against a 20-minute
 # close rule means a finished session waits at most 35 for its upload.
 DEFAULT_EVERY_MINUTES = 15
+
+# The definition `install` registers. Kept whole rather than assembled, because
+# the task schema validates element order and a reader has to be able to see it.
+TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers>
+    <TimeTrigger>
+      <StartBoundary>{begin}</StartBoundary>
+      <Repetition><Interval>PT{interval}M</Interval></Repetition>
+      <Enabled>true</Enabled>
+    </TimeTrigger>
+  </Triggers>
+  <Settings>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <WakeToRun>false</WakeToRun>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <ExecutionTimeLimit>PT1H</ExecutionTimeLimit>
+    <Enabled>true</Enabled>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{command}</Command>
+      <Arguments>{arguments}</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+"""
 
 
 def _runner() -> list[str]:
@@ -51,6 +81,48 @@ def command_line() -> str:
     return subprocess.list2cmdline(_runner())
 
 
+def _task_xml(every_minutes: int = DEFAULT_EVERY_MINUTES,
+              start: datetime | None = None) -> str:
+    """The full task definition, because the flags cannot express its settings.
+
+    `/SC MINUTE /MO 15` takes the Windows defaults, and three of those defaults
+    stop the sweep from running at all:
+
+      DisallowStartIfOnBatteries  a laptop on battery never sweeps. Measured
+        here: unplugged at 03:57Z, plugged back in at 05:58Z, and all nine
+        triggers in between were skipped while sessions kept being written. The
+        log showed a two and a half hour hole with no error in it, because a
+        trigger Windows declines to launch is not a failure it reports.
+      StopIfGoingOnBatteries  unplugging kills a sweep already in flight.
+      StartWhenAvailable  a trigger missed while the machine was off or asleep
+        is never made up, so the wait after a reboot is the close rule plus
+        however long the machine was away.
+
+    WakeToRun stays off. A sleeping machine is not writing sessions, so there is
+    nothing to collect, and waking someone's laptop to upload is not a trade
+    this feature makes on their behalf. StartWhenAvailable covers the wake.
+
+    ExecutionTimeLimit is bounded because MultipleInstancesPolicy is IgnoreNew:
+    one hung sweep holding the slot for the three-day default would silence
+    every trigger behind it, which is the same silence this whole file exists to
+    avoid. A killed run is recoverable -- `submit` writes the ledger entry
+    before it waits for the answer, and the next run resolves it.
+
+    Element order follows the task schema (Triggers, Settings, Actions); the
+    order is validated, not just the contents.
+    """
+    runner = _runner()
+    command = _xml_escape(runner[0])
+    arguments = _xml_escape(subprocess.list2cmdline(runner[1:]))
+    begin = (start or datetime.now()).replace(microsecond=0).isoformat()
+    return TASK_XML.format(begin=begin, interval=every_minutes,
+                           command=command, arguments=arguments)
+
+
+def _xml_escape(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def install(every_minutes: int = DEFAULT_EVERY_MINUTES) -> tuple[bool, str]:
     """Register the sweep. Returns (registered, message).
 
@@ -58,12 +130,18 @@ def install(every_minutes: int = DEFAULT_EVERY_MINUTES) -> tuple[bool, str]:
     so a caller never reports a task that was not created.
     """
     if sys.platform == "win32":
-        proc = subprocess.run(
-            ["schtasks", "/Create", "/F", "/TN", TASK_NAME,
-             "/SC", "MINUTE", "/MO", str(every_minutes),
-             "/TR", command_line()],
-            capture_output=True, text=True,
-        )
+        # Written out rather than piped: `schtasks /XML` takes a path, and it
+        # reads UTF-16, which is what Windows itself exports.
+        xml_path = Path(tempfile.gettempdir()) / f"{TASK_NAME}.xml"
+        xml_path.write_text(_task_xml(every_minutes), encoding="utf-16")
+        try:
+            proc = subprocess.run(
+                ["schtasks", "/Create", "/F", "/TN", TASK_NAME,
+                 "/XML", str(xml_path)],
+                capture_output=True, text=True,
+            )
+        finally:
+            xml_path.unlink(missing_ok=True)
         if proc.returncode != 0:
             return False, (proc.stderr.strip() or proc.stdout.strip()
                            or f"schtasks exited {proc.returncode}")
