@@ -394,6 +394,11 @@ def _submit_schedule(args: argparse.Namespace, schedule, submit) -> int:
         print(f"command     : {schedule.command_line()}")
         stamp = submit.installed_at()
         print(f"submits from: {stamp.isoformat() if stamp else '(never installed)'}")
+        oversized = submit.refused_too_large(submit.load_ledger())
+        if oversized:
+            print(f"too large   : {len(oversized)} refused by the server "
+                  f"(largest {max(oversized.values()) / 1e6:.1f} MB), "
+                  "not measured")
         tail = schedule.tail_log(submit.AUTO_LOG_PATH)
         print("last runs   :" if tail else "last runs   : (none yet)")
         for line in tail:
