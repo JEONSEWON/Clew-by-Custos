@@ -626,3 +626,37 @@ def test_a_call_with_no_rate_and_no_tiers_still_contributes_nothing(embedder: Em
 
     _bytes, cost = _compute_total_input(trace)
     assert cost == 0.0
+
+
+def test_tiers_without_a_rate_contribute_nothing(embedder: Embedder):
+    """WR_COST_PRICE_BASIS_AMENDMENT_2 §2, and the exact case the first gate
+    missed. Exgentic fills the tier fields as uncached-only and leaves the rate
+    None when the model is not a key in the table it was handed. Pricing that
+    through the tier function resolves the model through `get_pricing`, which
+    soft-fails to the Sonnet default -- 8,622 of Corpus C's 10,056 traces
+    joined an aggregate they had always been excluded from."""
+    from clew.metrics.waste_rate import _compute_total_input
+
+    call = _tiered_call("llm-1", "x", uncached=112_814, cache_read=0,
+                        model="DeepSeek-V3.2")
+    call["input_cost_rate"] = None
+    trace = Trace(trace_id="t", spans=[_root()], metadata={"llm_calls": [call]})
+
+    _bytes, cost = _compute_total_input(trace)
+    assert cost == 0.0
+
+
+def test_a_priced_call_with_tiers_is_still_priced_by_them(embedder: Embedder):
+    """The narrowing must not take the amendment with it: a call the adapter
+    priced still gets the tier-aware figure, not the flat one."""
+    from clew.cost.pricing import get_pricing
+    from clew.metrics.waste_rate import _compute_total_input
+
+    call = _tiered_call("llm-1", "x", uncached=1_000, cache_read=9_000)
+    trace = Trace(trace_id="t", spans=[_root()], metadata={"llm_calls": [call]})
+
+    _bytes, cost = _compute_total_input(trace)
+    pricing = get_pricing("claude-sonnet-4.5")
+    billed = (1_000 * pricing.base_input_per_mtok
+              + 9_000 * pricing.cache_read_per_mtok) / 1_000_000.0
+    assert cost == pytest.approx(billed)

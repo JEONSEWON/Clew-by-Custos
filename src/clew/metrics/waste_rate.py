@@ -112,12 +112,17 @@ def _compute_total_input(trace: Trace) -> tuple[int, float]:
     divided billed waste by a bill nobody received: measured at 6.66x to 9.12x
     on three Corpus A sessions.
 
-    Calls with no tier split keep the old arithmetic exactly. The two bases can
-    only differ where tiers exist, and pricing the rest through
-    `_rate_and_cost_for_call` would also have priced calls whose model carries
-    no rate -- resolving them to the default instead of contributing 0.0, which
-    silently un-excludes traces that §1.2 of the metric prereg excludes. That
-    is a different change and this amendment did not register it.
+    A call contributes only if the adapter priced it
+    (WR_COST_PRICE_BASIS_AMENDMENT_2_PREREG §2). The presence of a rate is what
+    decided corpus membership before any of this, so it stays the gate and no
+    trace joins an aggregate it was excluded from. The tier fields decide the
+    basis, not the membership: gating on them instead let through a call with
+    tiers and no rate, and Exgentic writes exactly that shape -- 8,622 of its
+    10,056 traces were priced at a substituted rate before this gate existed.
+
+    An unpriced call contributes 0.0 whatever it records, so a trace with no
+    priced call has `total_input_cost == 0` and `WR_cost` stays `None`, per
+    §1.2 of the metric prereg.
     """
     total_bytes = 0
     total_cost = 0.0
@@ -125,14 +130,16 @@ def _compute_total_input(trace: Trace) -> tuple[int, float]:
     for call in llm_calls:
         input_text = call.get("input_text") or ""
         total_bytes += _bytes_utf8(input_text)
+        rate = call.get("input_cost_rate")
+        if rate is None:
+            rate = call.get("cost_rate_legacy")
+        if rate is None:
+            continue
         if has_tier_split(call):
             total_cost += input_cost_for_call(call)
             continue
         tokens = call.get("input_tokens") or 0
-        rate = call.get("input_cost_rate")
-        if rate is None:
-            rate = call.get("cost_rate_legacy")
-        if rate is not None and tokens:
+        if tokens:
             total_cost += tokens * rate
     return total_bytes, total_cost
 
