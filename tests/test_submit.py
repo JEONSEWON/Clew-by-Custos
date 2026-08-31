@@ -407,6 +407,13 @@ def test_every_run_says_how_many_are_too_large(tmp_path, monkeypatch):
                    encoding="utf-8")
     lines = []
     monkeypatch.setenv(submit.KEY_ENV, "bdk_test")
+    # The ceiling is stated rather than fetched, and it is stated low so the
+    # fixture file is genuinely over it. Before the ceiling was consulted, this
+    # test passed while `pending` queued the same file: `refused_too_large`
+    # listed every entry carrying `refused_bytes` and `_refused_for_size`
+    # compared the file against that size, so a small file with a large
+    # recorded refusal was printed as excluded and submitted anyway.
+    monkeypatch.setattr(submit, "server_limit", lambda *a, **k: 100)
     submit.run(root=tmp_path, now=NOW, pace_seconds=0, ledger_path=led,
                out=lines.append)
     said = " ".join(lines)
@@ -735,3 +742,70 @@ def test_nothing_is_said_when_only_one_source_exists(tmp_path, monkeypatch):
     monkeypatch.delenv(submit.KEY_ENV, raising=False)
 
     assert submit.key_source() is None
+
+
+# ── the ceiling the server holds now, not the one it held then ─────────────
+
+def test_a_refusal_under_the_current_ceiling_is_tried_again(tmp_path):
+    """The 12.25 MB session. It was refused under a 10 MB ceiling, the ceiling
+    became 16 MB, and nothing on this side noticed because the refusal was
+    compared against the size that was refused. It had been excluded from every
+    measurement since."""
+    f = _session(tmp_path / "big.jsonl", NOW - timedelta(hours=9))
+    size = f.stat().st_size
+    ledger = {str(f): {"ok": False, "reason": "http_413", "refused_bytes": size}}
+
+    assert submit.pending(tmp_path, NOW, ledger) == []
+    assert submit.pending(tmp_path, NOW, ledger, limit_bytes=size + 1) == [f]
+
+
+def test_a_refusal_still_over_the_current_ceiling_stays_out(tmp_path):
+    f = _session(tmp_path / "big.jsonl", NOW - timedelta(hours=9))
+    size = f.stat().st_size
+    ledger = {str(f): {"ok": False, "reason": "http_413", "refused_bytes": size}}
+
+    assert submit.pending(tmp_path, NOW, ledger, limit_bytes=size - 1) == []
+
+
+def test_without_a_ceiling_the_old_comparison_still_decides(tmp_path):
+    """A sweep that cannot reach the server keeps the behaviour it had. An
+    unreachable endpoint is the upload's problem to report, not this one's."""
+    f = _session(tmp_path / "big.jsonl", NOW - timedelta(hours=9), lines=40)
+    ledger = {str(f): {"ok": False, "reason": "http_413",
+                       "refused_bytes": f.stat().st_size * 2}}
+    assert submit.pending(tmp_path, NOW, ledger, limit_bytes=None) == [f]
+
+
+def test_server_limit_reads_the_number_the_server_publishes(monkeypatch):
+    import contextlib
+    import io
+    import json as _json
+
+    seen = {}
+
+    @contextlib.contextmanager
+    def fake_urlopen(url, timeout=None):
+        seen["url"] = url
+        yield io.BytesIO(_json.dumps({"max_upload_bytes": 16_777_216}).encode())
+
+    monkeypatch.setattr(submit.urllib.request, "urlopen", fake_urlopen)
+    assert submit.server_limit("https://example.test/analyze") == 16_777_216
+    assert seen["url"] == "https://example.test/"
+
+
+def test_server_limit_is_none_when_the_server_will_not_say(monkeypatch):
+    import contextlib
+    import io
+
+    @contextlib.contextmanager
+    def no_field(url, timeout=None):
+        yield io.BytesIO(b'{"service": "boxdawn"}')
+
+    monkeypatch.setattr(submit.urllib.request, "urlopen", no_field)
+    assert submit.server_limit("https://example.test/analyze") is None
+
+    def boom(url, timeout=None):
+        raise OSError("no route to host")
+
+    monkeypatch.setattr(submit.urllib.request, "urlopen", boom)
+    assert submit.server_limit("https://example.test/analyze") is None

@@ -134,17 +134,54 @@ def save_ledger(ledger: dict, path: Path = LEDGER_PATH) -> None:
     tmp.replace(path)
 
 
-def refused_too_large(ledger: dict) -> dict[str, int]:
-    """Paths the server refused as too large, and the size it refused.
+def refused_too_large(ledger: dict, limit_bytes: int | None = None) -> dict[str, int]:
+    """Paths the server would still refuse for their size, and the refused size.
 
     These are excluded from every measurement, so the number is printed rather
     than left to be inferred from a submission that never appears.
+
+    `limit_bytes` is the server's ceiling now, and it decides here for the same
+    reason it decides in `_refused_for_size`: the two have to agree, or the
+    sweep prints "2 too large" while queueing one of them.
     """
-    return {k: int(v["refused_bytes"]) for k, v in ledger.items()
-            if isinstance(v, dict) and v.get("refused_bytes")}
+    out = {}
+    for key, entry in ledger.items():
+        if not (isinstance(entry, dict) and entry.get("refused_bytes")):
+            continue
+        if not _refused_for_size(Path(key), entry, limit_bytes):
+            continue
+        out[key] = int(entry["refused_bytes"])
+    return out
 
 
-def _refused_for_size(path: Path, entry: object) -> bool:
+def server_limit(endpoint: str = DEFAULT_ENDPOINT, timeout: float = 10.0) -> int | None:
+    """The server's current upload ceiling in bytes, or None if it will not say.
+
+    Asked once per run and used to decide whether a refusal still stands. The
+    ceiling moved from 10 MB to 16 MB on 2026-08-31 and nothing on this side
+    noticed, because a refusal was compared against the size that was refused
+    rather than against what the server accepts now. One 12.25 MB session on
+    this machine has been excluded from every measurement since, and would have
+    stayed excluded forever.
+
+    None on any failure. A sweep that cannot reach the root endpoint still has
+    the old behaviour to fall back on, and an unreachable server is the upload's
+    problem to report, not this function's.
+    """
+    root = endpoint.rsplit("/", 1)[0] + "/"
+    try:
+        with urllib.request.urlopen(root, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+        return None
+    value = payload.get("max_upload_bytes")
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _refused_for_size(path: Path, entry: object, limit: int | None = None) -> bool:
     """True when the server refused this file for its size and it has not shrunk.
 
     Without this the sweep re-uploads a payload the server has already refused,
@@ -156,6 +193,11 @@ def _refused_for_size(path: Path, entry: object) -> bool:
 
     A file that grew is still too large, so growth does not re-open it. Only a
     file that got smaller than what was refused is worth another attempt.
+
+    `limit` is the server's ceiling now, from `server_limit`. When it is known
+    it decides, because the question is whether the server would take this file
+    today and the size it refused last month does not answer that. Without it
+    the refused size is the only thing on hand and the old rule applies.
     """
     if not isinstance(entry, dict):
         return False
@@ -163,9 +205,12 @@ def _refused_for_size(path: Path, entry: object) -> bool:
     if not refused:
         return False
     try:
-        return path.stat().st_size >= int(refused)
+        size = path.stat().st_size
     except OSError:
         return False
+    if limit is not None:
+        return size >= limit
+    return size >= int(refused)
 
 
 def _unsent(entry: object) -> bool:
@@ -217,7 +262,8 @@ def _has_new_content(path: Path, entry: object) -> bool:
 
 def pending(root: Path, now: datetime, ledger: dict,
             close_after: timedelta = CLOSE_AFTER,
-            since: datetime | None = None) -> list[Path]:
+            since: datetime | None = None,
+            limit_bytes: int | None = None) -> list[Path]:
     """Files that are closed (R1) and not already sent (R2).
 
     `since` drops sessions whose last write predates it. Unattended runs pass
@@ -229,7 +275,7 @@ def pending(root: Path, now: datetime, ledger: dict,
     out = []
     for p in discover(root):
         entry = ledger.get(str(p))
-        if _refused_for_size(p, entry):
+        if _refused_for_size(p, entry, limit_bytes):
             continue
         if not (_unsent(entry) or _has_new_content(p, entry)):
             continue
@@ -653,9 +699,16 @@ def run(root: Path = DEFAULT_ROOT,
             ledger, endpoint, ledger_path, out=out,
         )
 
-    queued = pending(root, now, ledger, since=since)
+    # Asked once, and only when the answer can change something: the ceiling
+    # matters only against a recorded refusal. A machine that has never been
+    # refused makes no request here. Asked on a dry run too -- a dry run that
+    # lists a different set from the real one is worse than no dry run.
+    limit_bytes = None
+    if any(isinstance(v, dict) and v.get("refused_bytes") for v in ledger.values()):
+        limit_bytes = server_limit(endpoint)
+    queued = pending(root, now, ledger, since=since, limit_bytes=limit_bytes)
 
-    oversized = refused_too_large(ledger)
+    oversized = refused_too_large(ledger, limit_bytes)
     if oversized:
         out(f"not submitted: {len(oversized)} too large for the server "
             f"(largest {max(oversized.values()) / 1e6:.1f} MB), "

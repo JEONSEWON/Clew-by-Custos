@@ -406,7 +406,8 @@ def _submit_schedule(args: argparse.Namespace, schedule, submit) -> int:
         print(f"command     : {schedule.command_line()}")
         stamp = submit.installed_at()
         print(f"submits from: {stamp.isoformat() if stamp else '(never installed)'}")
-        oversized = submit.refused_too_large(submit.load_ledger())
+        oversized = submit.refused_too_large(
+            submit.load_ledger(), submit.server_limit())
         if oversized:
             print(f"too large   : {len(oversized)} refused by the server "
                   f"(largest {max(oversized.values()) / 1e6:.1f} MB), "
