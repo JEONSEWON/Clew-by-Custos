@@ -307,3 +307,51 @@ def test_the_shipped_module_cannot_send(monkeypatch):
     assert not (imported & forbidden), f"live.py imports {imported & forbidden}"
     assert "clew.submit.submit_file" not in imported
     assert "clew.submit.poll_status" not in imported
+
+
+# ── the registration, which is the artifact Windows actually reads ─────────
+
+def test_the_watch_task_registers_the_watch_command():
+    """What ships to the scheduler is the XML, not the function that built it."""
+    from clew import schedule
+
+    xml = schedule._task_xml(1, task_args=schedule.WATCH_ARGS, time_limit="PT10M")
+    assert "watch --once --auto" in xml
+    assert "<Interval>PT1M</Interval>" in xml
+    assert "<ExecutionTimeLimit>PT10M</ExecutionTimeLimit>" in xml
+    assert "<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>" in xml
+
+
+def test_the_watch_task_keeps_the_power_settings_that_stopped_the_sweep():
+    """A laptop on battery is exactly when someone is working, so a watcher
+    that skips on battery watches nothing. Same three defaults, same reason as
+    the sweep -- measured there as a two and a half hour hole with no error."""
+    from clew import schedule
+
+    xml = schedule._task_xml(1, task_args=schedule.WATCH_ARGS)
+    assert "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>" in xml
+    assert "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>" in xml
+    assert "<StartWhenAvailable>true</StartWhenAvailable>" in xml
+
+
+def test_the_sweep_registration_did_not_move():
+    """The watcher was added by widening these functions. The submission task
+    is what the alert chain runs on, so its definition has to come out
+    unchanged from the same code."""
+    from clew import schedule
+
+    xml = schedule._task_xml(15)
+    assert "submit --auto" in xml
+    assert "watch" not in xml
+    assert "<Interval>PT15M</Interval>" in xml
+    assert "<ExecutionTimeLimit>PT1H</ExecutionTimeLimit>" in xml
+    assert schedule.TASK_NAME != schedule.WATCH_TASK_NAME
+
+
+def test_the_two_tasks_do_not_share_a_name_or_a_log():
+    """Two registrations under one name would silently replace each other, and
+    one log for both would make each run ambiguous about which task wrote it."""
+    from clew import schedule, submit
+
+    assert schedule.WATCH_TASK_NAME not in {schedule.TASK_NAME}
+    assert live.WATCH_LOG_PATH != submit.AUTO_LOG_PATH

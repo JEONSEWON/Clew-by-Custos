@@ -21,6 +21,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 TASK_NAME = "BoxdawnSubmit"
+# The fast path is a second registration rather than a resident process, for
+# the reason at the top of this file: a watcher that loops forever is exactly
+# the daemon that argument rejects. `watch --once` exits, so a run that did not
+# happen leaves a gap in its log instead of looking like a quiet one.
+WATCH_TASK_NAME = "BoxdawnWatch"
+# One minute, because that is the interval P2 was measured at: 32.5 s median
+# from the repeat to the record, of which 0.36 s is the scan and the rest is
+# this wait. Widening it widens the latency by the same amount.
+WATCH_EVERY_MINUTES = 1
+SUBMIT_ARGS = ("submit", "--auto")
+WATCH_ARGS = ("watch", "--once", "--auto")
 # Latency amendment: the sweep is the second largest term in the delay after
 # the close rule itself, so it moves with it. 15 minutes against a 20-minute
 # close rule means a finished session waits at most 35 for its upload.
@@ -43,7 +54,7 @@ TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
     <StartWhenAvailable>true</StartWhenAvailable>
     <WakeToRun>false</WakeToRun>
     <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <ExecutionTimeLimit>PT1H</ExecutionTimeLimit>
+    <ExecutionTimeLimit>{time_limit}</ExecutionTimeLimit>
     <Enabled>true</Enabled>
   </Settings>
   <Actions Context="Author">
@@ -56,7 +67,7 @@ TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
 """
 
 
-def _runner() -> list[str]:
+def _runner(task_args: tuple[str, ...] = SUBMIT_ARGS) -> list[str]:
     """The command a scheduler should invoke.
 
     `sys.executable -m clew` rather than the `boxdawn` console script: the
@@ -73,16 +84,18 @@ def _runner() -> list[str]:
         quiet = exe.with_name("pythonw.exe")
         if quiet.exists():
             exe = quiet
-    return [str(exe), "-m", "clew", "submit", "--auto"]
+    return [str(exe), "-m", "clew", *task_args]
 
 
-def command_line() -> str:
+def command_line(task_args: tuple[str, ...] = SUBMIT_ARGS) -> str:
     """The runner as one shell-ready string."""
-    return subprocess.list2cmdline(_runner())
+    return subprocess.list2cmdline(_runner(task_args))
 
 
 def _task_xml(every_minutes: int = DEFAULT_EVERY_MINUTES,
-              start: datetime | None = None) -> str:
+              start: datetime | None = None,
+              task_args: tuple[str, ...] = SUBMIT_ARGS,
+              time_limit: str = "PT1H") -> str:
     """The full task definition, because the flags cannot express its settings.
 
     `/SC MINUTE /MO 15` takes the Windows defaults, and three of those defaults
@@ -111,19 +124,23 @@ def _task_xml(every_minutes: int = DEFAULT_EVERY_MINUTES,
     Element order follows the task schema (Triggers, Settings, Actions); the
     order is validated, not just the contents.
     """
-    runner = _runner()
+    runner = _runner(task_args)
     command = _xml_escape(runner[0])
     arguments = _xml_escape(subprocess.list2cmdline(runner[1:]))
     begin = (start or datetime.now()).replace(microsecond=0).isoformat()
     return TASK_XML.format(begin=begin, interval=every_minutes,
-                           command=command, arguments=arguments)
+                           command=command, arguments=arguments,
+                           time_limit=time_limit)
 
 
 def _xml_escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def install(every_minutes: int = DEFAULT_EVERY_MINUTES) -> tuple[bool, str]:
+def install(every_minutes: int = DEFAULT_EVERY_MINUTES,
+            task_name: str = TASK_NAME,
+            task_args: tuple[str, ...] = SUBMIT_ARGS,
+            time_limit: str = "PT1H") -> tuple[bool, str]:
     """Register the sweep. Returns (registered, message).
 
     `registered` is False when this platform is only being told what to run,
@@ -132,11 +149,13 @@ def install(every_minutes: int = DEFAULT_EVERY_MINUTES) -> tuple[bool, str]:
     if sys.platform == "win32":
         # Written out rather than piped: `schtasks /XML` takes a path, and it
         # reads UTF-16, which is what Windows itself exports.
-        xml_path = Path(tempfile.gettempdir()) / f"{TASK_NAME}.xml"
-        xml_path.write_text(_task_xml(every_minutes), encoding="utf-16")
+        xml_path = Path(tempfile.gettempdir()) / f"{task_name}.xml"
+        xml_path.write_text(
+            _task_xml(every_minutes, task_args=task_args, time_limit=time_limit),
+            encoding="utf-16")
         try:
             proc = subprocess.run(
-                ["schtasks", "/Create", "/F", "/TN", TASK_NAME,
+                ["schtasks", "/Create", "/F", "/TN", task_name,
                  "/XML", str(xml_path)],
                 capture_output=True, text=True,
             )
@@ -145,23 +164,23 @@ def install(every_minutes: int = DEFAULT_EVERY_MINUTES) -> tuple[bool, str]:
         if proc.returncode != 0:
             return False, (proc.stderr.strip() or proc.stdout.strip()
                            or f"schtasks exited {proc.returncode}")
-        return True, f"registered task {TASK_NAME}, every {every_minutes} min"
+        return True, f"registered task {task_name}, every {every_minutes} min"
 
     if sys.platform == "darwin":
-        return False, _launchd_instructions(every_minutes)
-    return False, _cron_instructions(every_minutes)
+        return False, _launchd_instructions(every_minutes, task_args)
+    return False, _cron_instructions(every_minutes, task_args)
 
 
-def uninstall() -> tuple[bool, str]:
+def uninstall(task_name: str = TASK_NAME) -> tuple[bool, str]:
     if sys.platform == "win32":
         proc = subprocess.run(
-            ["schtasks", "/Delete", "/F", "/TN", TASK_NAME],
+            ["schtasks", "/Delete", "/F", "/TN", task_name],
             capture_output=True, text=True,
         )
         if proc.returncode != 0:
             return False, (proc.stderr.strip() or proc.stdout.strip()
                            or f"schtasks exited {proc.returncode}")
-        return True, f"removed task {TASK_NAME}"
+        return True, f"removed task {task_name}"
     if sys.platform == "darwin":
         return False, ("remove it with:\n"
                        "  launchctl unload ~/Library/LaunchAgents/com.boxdawn.submit.plist\n"
@@ -169,36 +188,39 @@ def uninstall() -> tuple[bool, str]:
     return False, "remove the boxdawn line from `crontab -e`"
 
 
-def is_registered() -> bool | None:
+def is_registered(task_name: str = TASK_NAME) -> bool | None:
     """True/False on Windows; None where this file does not register."""
     if sys.platform != "win32":
         return None
     proc = subprocess.run(
-        ["schtasks", "/Query", "/TN", TASK_NAME],
+        ["schtasks", "/Query", "/TN", task_name],
         capture_output=True, text=True,
     )
     return proc.returncode == 0
 
 
-def _cron_instructions(every_minutes: int) -> str:
+def _cron_instructions(every_minutes: int,
+                       task_args: tuple[str, ...] = SUBMIT_ARGS) -> str:
     return (
         "not registered. Add this to `crontab -e` yourself:\n"
-        f"  */{every_minutes} * * * * {command_line()}\n"
+        f"  */{every_minutes} * * * * {command_line(task_args)}\n"
         "(this platform is not registered automatically, because a "
         "registration that fails silently is worse than none)"
     )
 
 
-def _launchd_instructions(every_minutes: int) -> str:
+def _launchd_instructions(every_minutes: int,
+                          task_args: tuple[str, ...] = SUBMIT_ARGS) -> str:
+    label = f"com.boxdawn.{task_args[0]}"
     return (
         "not registered. Save this as "
-        "~/Library/LaunchAgents/com.boxdawn.submit.plist and run\n"
-        "  launchctl load ~/Library/LaunchAgents/com.boxdawn.submit.plist\n\n"
+        f"~/Library/LaunchAgents/{label}.plist and run\n"
+        f"  launchctl load ~/Library/LaunchAgents/{label}.plist\n\n"
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<plist version="1.0"><dict>\n'
-        "  <key>Label</key><string>com.boxdawn.submit</string>\n"
+        f"  <key>Label</key><string>{label}</string>\n"
         "  <key>ProgramArguments</key><array>\n"
-        + "".join(f"    <string>{part}</string>\n" for part in _runner())
+        + "".join(f"    <string>{part}</string>\n" for part in _runner(task_args))
         + "  </array>\n"
         f"  <key>StartInterval</key><integer>{every_minutes * 60}</integer>\n"
         "</dict></plist>"
