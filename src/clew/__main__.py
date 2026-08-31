@@ -515,9 +515,12 @@ def _watch(args: argparse.Namespace) -> int:
     """
     from datetime import datetime
 
-    from clew import live
+    from clew import live, schedule
     from clew.detect.semantic import Embedder
     from clew.submit import load_targets
+
+    if args.install or args.uninstall or args.status:
+        return _watch_schedule(args, schedule, live)
 
     if args.root:
         targets = [("default", Path(args.root))]
@@ -546,6 +549,30 @@ def _watch(args: argparse.Namespace) -> int:
               f"{result.suppressed_hourly} over the hourly cap · "
               f"{result.seconds:.1f}s")
 
+    if args.auto:
+        # One line per run, whatever happened -- the same reason `submit
+        # --auto` writes one: a pass that found nothing and a task that never
+        # fired are the same silence otherwise, and this one is expected to
+        # find nothing on almost every run.
+        tally = {"live": 0, "recorded": 0, "capped": 0, "seconds": 0.0}
+
+        def count(project, result):
+            tally["live"] += result.scanned
+            tally["recorded"] += result.recorded
+            tally["capped"] += result.suppressed_hourly
+            tally["seconds"] += result.seconds
+
+        live.watch(targets, embedder, n=_N, phi=_PHI,
+                   poll_seconds=args.interval, once=True, on_sweep=count)
+        total = len(live.load_findings())
+        schedule.log_run(
+            f"projects={len(targets)} live={tally['live']} "
+            f"recorded={tally['recorded']} capped={tally['capped']} "
+            f"findings={total} {tally['seconds']:.1f}s",
+            live.WATCH_LOG_PATH,
+        )
+        return 0
+
     print(f"shadow mode: recording to {live.FINDINGS_PATH}, sending nothing")
     try:
         live.watch(
@@ -556,6 +583,52 @@ def _watch(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         print("stopped")
     return 0
+
+
+def _watch_schedule(args: argparse.Namespace, schedule, live) -> int:
+    """--install / --uninstall / --status for the fast path.
+
+    A second registration beside the submission sweep, not a resident loop.
+    `schedule.py` says why in its own first paragraph, and the watcher is the
+    daemon that paragraph is about.
+    """
+    name = schedule.WATCH_TASK_NAME
+
+    if args.status:
+        registered = schedule.is_registered(name)
+        where = {True: "registered", False: "not registered",
+                 None: "unknown on this platform"}[registered]
+        print(f"scheduler   : {where} ({name})")
+        print(f"command     : {schedule.command_line(schedule.WATCH_ARGS)}")
+        findings = live.load_findings()
+        print(f"findings    : {len(findings)} recorded, 0 sent (shadow)")
+        for f in findings[-5:]:
+            print(f"  {f.occurred_at}  {Path(f.session).name[:8]}  "
+                  f"{f.signal}  {f.latency_seconds():.0f}s behind")
+        tail = schedule.tail_log(live.WATCH_LOG_PATH)
+        print("last runs   :" if tail else "last runs   : (none yet)")
+        for line in tail:
+            print(f"  {line}")
+        return 0
+
+    if args.uninstall:
+        ok, message = schedule.uninstall(name)
+        print(message)
+        return 0 if ok or schedule.is_registered(name) is None else 1
+
+    every = args.every or schedule.WATCH_EVERY_MINUTES
+    ok, message = schedule.install(
+        every, task_name=name, task_args=schedule.WATCH_ARGS,
+        # Minutes, not the sweep's hour: one hung scan under IgnoreNew silences
+        # every trigger behind it, and at this cadence that is 60 of them.
+        time_limit="PT10M",
+    )
+    print(message)
+    if ok or schedule.is_registered(name) is None:
+        print("records findings locally. Nothing is sent, and there is no "
+              "endpoint to send to yet.")
+        return 0
+    return 1
 
 
 def _estimate(args: argparse.Namespace) -> int:
@@ -729,6 +802,16 @@ def main() -> None:
                    ))
     w.add_argument("--once", action="store_true",
                    help="one pass and exit")
+    w.add_argument("--install", action="store_true",
+                   help="register the watcher with the OS scheduler")
+    w.add_argument("--uninstall", action="store_true",
+                   help="remove the registered watcher")
+    w.add_argument("--status", action="store_true",
+                   help="show whether it is registered and what it has found")
+    w.add_argument("--every", type=int, default=None, metavar="MIN",
+                   help="minutes between passes for --install (default: 1)")
+    w.add_argument("--auto", action="store_true",
+                   help=argparse.SUPPRESS)
 
     e = sub.add_parser(
         "estimate",

@@ -43,6 +43,7 @@ PREREG_URL = f"{_GITHUB_BASE}/docs/LIVE_FAILURE_ALERT_PREREG.md"
 SIGNAL_REPEAT = "repeat"
 
 FINDINGS_PATH = Path.home() / ".clew" / "live_findings.json"
+WATCH_LOG_PATH = Path.home() / ".clew" / "watch.log"
 
 # §3.2. Across sessions, per project, on a rolling hour.
 PROJECT_HOURLY_CAP = 3
