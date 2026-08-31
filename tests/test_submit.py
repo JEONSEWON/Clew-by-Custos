@@ -276,9 +276,55 @@ def test_a_run_that_stores_nothing_exits_nonzero(tmp_path, monkeypatch):
     # on a failure so that a later run compares against the same mark; a failed
     # entry is re-queued by `_unsent` regardless.
     entry = submit.load_ledger(tmp_path / "l.json")[str(tmp_path / "a.jsonl")]
+    # `sends` counts attempts, not analyses: a refused key never reached the
+    # analyser and cost nothing, so a P4 cost reading takes the `ok: True`
+    # entries. The count is here because the number has to exist somewhere.
     assert entry == {
         "ok": False, "reason": "bad_key", "submitted_at": NOW.isoformat(),
-        "sent_through": (NOW - timedelta(hours=9)).isoformat()}
+        "sent_through": (NOW - timedelta(hours=9)).isoformat(), "sends": 1}
+
+
+# ── P4's instrument ──────────────────────────────────────────────────
+
+
+def test_every_send_of_one_session_is_counted(tmp_path, monkeypatch):
+    """Distinguishes: without a counter the amendment's own cost prediction is
+    unmeasurable. P4 bounds submissions per session, and the ledger kept only
+    the most recent one, so the number the prediction is about existed nowhere.
+    """
+    path = _session(tmp_path / "s.jsonl", NOW - timedelta(hours=9))
+    monkeypatch.setattr(submit, "submit_file",
+                        lambda p, k, e: {"ok": True, "stored": True})
+    led = tmp_path / "l.json"
+    key = "bdk_" + "a" * 24
+
+    def sweep(at):
+        submit.run(root=tmp_path, ledger_path=led, now=at, key=key,
+                   pace_seconds=0, out=lambda *a: None)
+        return json.loads(led.read_text(encoding="utf-8"))[str(path)]["sends"]
+
+    assert sweep(NOW) == 1
+    _session(path, NOW + timedelta(hours=1))          # the session continued
+    assert sweep(NOW + timedelta(hours=2)) == 2
+    _session(path, NOW + timedelta(hours=3))
+    assert sweep(NOW + timedelta(hours=4)) == 3
+
+
+def test_a_ledger_written_before_the_counter_is_read_as_one_send(tmp_path, monkeypatch):
+    """Distinguishes: defaulting to zero would report every session on an
+    upgraded machine as never sent, and P4 would be measured against a
+    denominator that is short by one for all 88 of them."""
+    path = _session(tmp_path / "s.jsonl", NOW - timedelta(hours=9))
+    led = tmp_path / "l.json"
+    led.write_text(json.dumps({str(path): {
+        "ok": True, "stored": True,
+        "sent_through": (NOW - timedelta(hours=9)).isoformat()}}), encoding="utf-8")
+    _session(path, NOW - timedelta(hours=1))
+    monkeypatch.setattr(submit, "submit_file",
+                        lambda p, k, e: {"ok": True, "stored": True})
+    submit.run(root=tmp_path, ledger_path=led, now=NOW, key="bdk_" + "a" * 24,
+               pace_seconds=0, out=lambda *a: None)
+    assert json.loads(led.read_text(encoding="utf-8"))[str(path)]["sends"] == 2
 
 
 def test_limit_caps_a_backfill(tmp_path, monkeypatch):

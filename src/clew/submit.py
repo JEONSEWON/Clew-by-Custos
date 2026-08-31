@@ -654,10 +654,21 @@ def run(root: Path = DEFAULT_ROOT,
         # `sent_through` is what makes a later resubmission possible: it
         # records how far into the session this upload reached.
         last_sent = last_activity(path)
+        # How many times this session has been sent. The latency amendment
+        # predicts a bound on exactly this (§6 P4, "no more than 6x"), and
+        # nothing recorded it: the ledger holds one entry per path and each
+        # send overwrote the last, so the quantity the prediction is about was
+        # not in the data. An entry from before this field was sent at least
+        # once, which is what the default counts.
+        previous = ledger.get(str(path))
+        sends = 1
+        if isinstance(previous, dict):
+            sends = int(previous.get("sends", 1)) + 1
         ledger[str(path)] = {
             **result,
             "submitted_at": now.isoformat(),
             "sent_through": last_sent.isoformat() if last_sent else None,
+            "sends": sends,
         }
         save_ledger(ledger, ledger_path)
 
