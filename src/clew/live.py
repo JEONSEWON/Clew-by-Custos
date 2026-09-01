@@ -29,11 +29,15 @@ import time
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from clew.detect.cascade import confirm_pair
 from clew.detect.structural import find_candidates
 from clew.model import Span, Trace
 from clew.submit import _GITHUB_BASE, CLOSE_AFTER, discover, last_activity
+
+if TYPE_CHECKING:
+    from clew.config import ResolvedTools
 
 # A pip-install user has no docs/ tree, so the prereg is named as a URL.
 PREREG_URL = f"{_GITHUB_BASE}/docs/LIVE_FAILURE_ALERT_PREREG.md"
@@ -88,21 +92,53 @@ def is_live(path: Path, now: datetime, close_after: timedelta = CLOSE_AFTER) -> 
     return last is not None and (now - last) < close_after
 
 
+def alertable(candidate: Span, tools: "ResolvedTools | None" = None) -> bool:
+    """Whether a confirmed pair on this tool may interrupt a person.
+
+    IDEMPOTENT_TRIGGER_PREREG §2. Only calls that cannot change the world:
+    for those, "same input, nothing wrote to the target, same output" leaves no
+    room for the second call to have informed anything. For a shell command an
+    identical output can be the command succeeding at what it does -- a
+    `Stop-Process` guarded by `if ($c)` prints `stopped` whether or not
+    anything was listening -- and the trace cannot tell that from waste.
+    Measured: precision 1.0000 on 21 idempotent pairs, 0.0000 on 7 shell pairs.
+
+    The category is not a list written for this. `clew.config` has classified
+    tools into four categories since July and `idempotent` is one of them, so
+    the boundary was already drawn and shipped before any of this was
+    measured. `tools` carries the user's `clew.yaml`, so somebody who declares
+    their own read tool gets alerts about it -- the correct consequence of the
+    declaration they made.
+
+    ★ This narrows what interrupts a person. It does not narrow what is
+    measured: the batch path, every waste rate and every stored figure still
+    see all tools (§3).
+    """
+    from clew.config import builtin_tools                        # noqa: PLC0415
+
+    snapshot = tools if tools is not None else builtin_tools()
+    return candidate.agent_or_node_id in snapshot.idempotent
+
+
 def first_confirmed(
-    trace: Trace, embedder: object, n: int, phi: float
+    trace: Trace, embedder: object, n: int, phi: float,
+    tools: "ResolvedTools | None" = None,
 ) -> tuple[Span, Span] | None:
-    """The earliest confirmed repeat in the trace, or None.
+    """The earliest confirmed, alertable repeat in the trace, or None.
 
     Earliest by the candidate's start_time, not by the order
     `find_candidates` happens to group in: §3.2 fires on "the first confirmed
     pair", and the finding's own timestamp is what P2 measures against.
 
-    Confirmation stops at the first hit, so a session with 24 candidates pays
-    for the ones before the hit and nothing after it.
+    Non-alertable candidates are skipped before confirmation rather than after,
+    so a session full of repeated shell calls costs nothing to look at.
+    Confirmation still stops at the first hit.
     """
     boundaries = list(trace.metadata.get("compact_boundaries", []) or [])
     pairs = sorted(find_candidates(trace, n), key=lambda pair: pair[1].start_time)
     for origin, candidate in pairs:
+        if not alertable(candidate, tools):
+            continue
         if confirm_pair(origin, candidate, embedder, phi, boundaries):
             return origin, candidate
     return None
@@ -115,6 +151,7 @@ def scan(
     n: int,
     phi: float,
     now: datetime,
+    tools: "ResolvedTools | None" = None,
 ) -> Finding | None:
     """Read one session file and return a finding, or None.
 
@@ -125,7 +162,7 @@ def scan(
 
     trace = ingest_claude_code_jsonl(path)
     candidates = find_candidates(trace, n)
-    hit = first_confirmed(trace, embedder, n, phi)
+    hit = first_confirmed(trace, embedder, n, phi, tools)
     if hit is None:
         return None
     origin, candidate = hit
@@ -209,6 +246,7 @@ def sweep(
     findings: list[Finding],
     close_after: timedelta = CLOSE_AFTER,
     on_finding=None,
+    tools: "ResolvedTools | None" = None,
 ) -> SweepResult:
     """Scan every live session under `root` once, appending to `findings`.
 
@@ -224,7 +262,7 @@ def sweep(
             continue
         result.scanned += 1
         try:
-            finding = scan(path, project, embedder, n, phi, now)
+            finding = scan(path, project, embedder, n, phi, now, tools)
         except Exception:                                          # noqa: BLE001
             # One unreadable session must not stop the watcher on the others.
             # A session being written to right now is the ordinary case here.
@@ -262,6 +300,7 @@ def watch(
     once: bool = False,
     on_finding=None,
     on_sweep=None,
+    tools: "ResolvedTools | None" = None,
 ) -> None:
     """Poll every project until interrupted. Records; sends nothing.
 
@@ -277,6 +316,7 @@ def watch(
             result = sweep(
                 root, project, embedder, n, phi,
                 datetime.now(timezone.utc), findings, on_finding=on_finding,
+                tools=tools,
             )
             elapsed += result.seconds
             if on_sweep is not None:

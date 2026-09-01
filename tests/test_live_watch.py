@@ -116,16 +116,23 @@ def test_first_confirmed_returns_none_when_outputs_differ():
 
 def test_confirmation_stops_at_the_first_hit():
     """§3.1's cost claim: confirmation is per pair, so a session with many
-    candidates does not pay for the ones after the hit."""
+    candidates does not pay for the ones after the hit.
+
+    Two `Read` pairs, and only the first is confirmed. `Read` because the
+    IDEMPOTENT_TRIGGER amendment skips non-idempotent candidates before
+    confirmation -- an `llm` pair, which this test used to use, now costs zero
+    embeddings and would make the assertion pass for the wrong reason.
+    """
     trace = _trace([
-        _span("a", "llm", "plan", "same plan", 0),
-        _span("b", "llm", "plan", "same plan", 1),
-        _span("c", "llm", "other", "same other", 2),
-        _span("d", "llm", "other", "same other", 3),
+        _span("a", "tool", "Read", "same body", 0, inp='{"f":1}'),
+        _span("b", "tool", "Read", "same body", 1, inp='{"f":1}'),
+        _span("c", "tool", "Read", "same other", 2, inp='{"f":2}'),
+        _span("d", "tool", "Read", "same other", 3, inp='{"f":2}'),
     ])
     embedder = _FixedEmbedder()
-    live.first_confirmed(trace, embedder, n=2, phi=0.5)
-    assert embedder.calls == 2
+    assert live.first_confirmed(trace, embedder, n=2, phi=0.5) is not None
+    # A tool pair confirms by sha256, so the embedder is never asked at all.
+    assert embedder.calls == 0
 
 
 # ── §3.2: live only, and one per session ───────────────────────────────────
@@ -355,3 +362,89 @@ def test_the_two_tasks_do_not_share_a_name_or_a_log():
 
     assert schedule.WATCH_TASK_NAME not in {schedule.TASK_NAME}
     assert live.WATCH_LOG_PATH != submit.AUTO_LOG_PATH
+
+
+# ── IDEMPOTENT_TRIGGER_PREREG §2: only calls that cannot change the world ──
+
+def test_a_repeated_shell_command_does_not_alert():
+    """The seven pairs that scored 0.0000. `Stop-Process` guarded by `if ($c)`
+    prints `stopped` whether or not anything was listening, and `make` re-run
+    after thirty calls of editing is a check whose identical output is the
+    information. The trace cannot tell either from waste."""
+    for tool in ("Bash", "PowerShell"):
+        trace = _trace([
+            _span("a", "tool", tool, "stopped", 0, inp='{"command":"x"}'),
+            _span("b", "tool", tool, "stopped", 5, inp='{"command":"x"}'),
+        ])
+        assert live.first_confirmed(trace, _FixedEmbedder(), n=2, phi=0.5) is None, tool
+
+
+@pytest.mark.parametrize("tool", ["Read", "Glob", "Grep", "LS"])
+def test_a_repeated_read_still_alerts(tool):
+    """The twenty-one that scored 1.0000."""
+    trace = _trace([
+        _span("a", "tool", tool, "body", 0, inp='{"p":1}'),
+        _span("b", "tool", tool, "body", 5, inp='{"p":1}'),
+    ])
+    assert live.first_confirmed(trace, _FixedEmbedder(), n=2, phi=0.5) is not None
+
+
+def test_the_category_is_the_shipped_one_and_not_a_list_written_here():
+    """§1: the boundary was drawn in July and this amendment found it. A list
+    re-declared in `live.py` would drift from the one `analyze` uses, and the
+    argument for the restriction is that it was not invented for the occasion."""
+    import inspect
+
+    from clew.config import builtin_tools
+
+    source = inspect.getsource(live.alertable)
+    assert "builtin_tools" in source
+    for name in ("Read", "Glob", "Grep"):
+        assert f'"{name}"' not in source, f"{name} hard-coded in live.py"
+    for name in ("Bash", "PowerShell"):
+        assert f'"{name}"' not in source, f"{name} hard-coded in live.py"
+
+    snapshot = builtin_tools()
+    assert {"Read", "Glob", "Grep", "LS"} <= set(snapshot.idempotent)
+    assert not ({"Bash", "PowerShell", "Edit", "Write"} & set(snapshot.idempotent))
+
+
+def test_a_shell_repeat_costs_no_confirmation_at_all():
+    """Skipped before confirmation, not after: a session full of repeated shell
+    calls must not pay embeddings to be told it has nothing to say."""
+    trace = _trace([
+        _span(f"s{i}", "tool", "Bash", "same", i, inp='{"command":"x"}')
+        for i in range(8)
+    ])
+    embedder = _FixedEmbedder()
+    assert live.first_confirmed(trace, embedder, n=2, phi=0.5) is None
+    assert embedder.calls == 0
+
+
+def test_a_user_who_declares_a_tool_idempotent_gets_alerts_about_it(monkeypatch):
+    """§2: `clew.yaml` follows. Somebody who classifies their own read tool
+    into the category gets alerted on it, which is the consequence of the
+    declaration they made."""
+    from clew.config import resolve_user_tools
+
+    tools = resolve_user_tools({"my-fetch": "read_only"}, {})
+    trace = _trace([
+        _span("a", "tool", "my-fetch", "body", 0, inp='{"u":1}'),
+        _span("b", "tool", "my-fetch", "body", 5, inp='{"u":1}'),
+    ])
+    assert live.first_confirmed(trace, _FixedEmbedder(), n=2, phi=0.5) is None
+    assert live.first_confirmed(trace, _FixedEmbedder(), n=2, phi=0.5,
+                                tools=tools) is not None
+
+
+def test_the_batch_path_still_sees_every_tool():
+    """§3. This narrows what interrupts a person, not what is measured. A
+    repeated shell call is still waste to `cascade` and still enters the cost
+    figures -- if this ever stops being true, a stored number moved."""
+    trace = _trace([
+        _span("a", "tool", "Bash", "stopped", 0, inp='{"command":"x"}'),
+        _span("b", "tool", "Bash", "stopped", 5, inp='{"command":"x"}'),
+    ])
+    result = cascade(trace, _FixedEmbedder(), n=2, phi=0.5)
+    assert result.wasteful is True
+    assert result.waste_span_ids == ["b"]
