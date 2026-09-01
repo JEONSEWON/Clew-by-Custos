@@ -162,15 +162,66 @@ POST /live-finding  (unknown key)                      ->  401 {"ok":false,"reas
 
 Modal log: `live_finding rpc failed kind=HTTPStatusError`, three times.
 
-**R3 could not be measured, because `record_live_finding` is not callable on the
-live database.** The grant fix is merged (`cloud 7629714`) and was never
-executed — the Supabase dashboard was down on 2026-08-31 and it is the only SQL
-path this machine has. The key resolution around it is correct, which is how we
-know this is the RPC and not the credential.
+**R3 could not be measured, because `record_live_finding` was not callable on
+the live database.** The grant fix was merged (`cloud 7629714`) and had never
+been executed — the Supabase dashboard was down on 2026-08-31 and it is the
+only SQL path this machine has. The key resolution around it was correct, which
+is how we knew this was the RPC and not the credential.
 
-So R3 stays a prediction and step 2 of §7 cannot be closed until the grant runs.
-This is also, independently, what would have happened to the first real alert:
-its two feedback links answer through functions from the same file.
+### The same run, after the grants were executed (2026-09-01, later)
+
+```
+POST /live-finding  (valid key, new session_key)  ->  200 {"ok":true,"event_id":487,"recorded":true,"delivery_mode":"shadow"}
+POST /live-finding  (same session_key, 2nd)       ->  200 {"ok":true,"recorded":false,"reason":"already_recorded"}
+POST /live-finding  (same session_key, 3rd)       ->  200 {"ok":true,"recorded":false,"reason":"already_recorded"}
+```
+
+**§3's flip condition is now measured rather than read off the SQL.** A repeat
+POST is `ok: true` with `recorded: false` and `already_recorded`, which is
+exactly the answer the drain must treat as delivered.
+
+`delivery_mode: "shadow"` on the first POST also re-confirms the original P2
+against the live server: the allow-list is empty, so nothing could be mailed,
+and this dry-run therefore cost no mail. Row `alert_event 487` carries
+`params_key = 'probe-retry-dryrun-20260901-0001'` and is a probe: it must be
+excluded from any finding or label count.
+
+R3 itself — *two POSTs, one mail* — still needs email mode to count mails, so it
+remains a prediction until the allow-list row exists. What is settled is that
+the second POST writes no row.
+
+The feedback links are alive too, checked without writing a label (a
+non-existent event id distinguishes "the function ran and found nothing" from
+"the function cannot be called"):
+
+```
+GET /live-feedback/999999999?real=yes    ->  404 <p>Unknown alert.</p>      (was 502)
+GET /live-feedback/999999999?real=maybe  ->  400 <p>Unknown answer.</p>
+```
+
+`pending_live_alerts` is the one of the four that no request of ours calls — the
+scheduled sender does — and it was answering `403 42501 permission denied for
+function pending_live_alerts` on every run up to 22:06 KST. Those runs all
+predate the grants. Asked directly instead of inferred from a log:
+
+```sql
+select p.oid::regprocedure, has_function_privilege('service_role', p.oid, 'EXECUTE') ...
+```
+
+```
+record_live_finding(uuid,text,text,jsonb)   true
+pending_live_alerts(integer)                true
+mark_live_delivered(bigint)                 true
+record_live_feedback(bigint,boolean)        true
+```
+
+Four rows, all true, **and four signatures** — no overload, which is the failure
+this query was written to rule out. 0021's own verify block counts
+`has_function_privilege` by `proname`, so it would answer 4 even if a second
+overload of one name were the one being called; a signature-level read cannot.
+
+Confirming the sender itself goes quiet is a log line on the next scheduled run
+and belongs in step 2 of §7.
 
 ## 6. What would make this fail
 
