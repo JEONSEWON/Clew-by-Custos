@@ -47,3 +47,27 @@ jobs:
         run: ruff check
       - name: Run pytest
         run: pytest -q
+
+  tests-windows:
+    name: Test suite (Windows)
+    # The suite has a Windows-only test and it has never run anywhere. `schtasks
+    # /XML` reads UTF-16 and rejects a UTF-8 file as malformed, which would leave
+    # the sweep unregistered while `install` reported it as an XML problem --
+    # that is what the test distinguishes, and on ubuntu it is skipped, so the
+    # guard has been passing by not running since the day it was written.
+    #
+    # It also matters that the whole suite runs here: this is the only platform
+    # the scheduler, the paths and the file locking are written for, and every
+    # measurement in docs/ was produced on it.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install with dev + detect
+        run: pip install ".[detect,dev]"
+      - name: Lint (ruff)
+        run: ruff check
+      - name: Run pytest
+        run: pytest -q
