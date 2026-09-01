@@ -39,8 +39,11 @@ _FOOTER = (
     "non-tool spans; tool spans use exact sha256 identity._\n\n"
     "_Cost is estimated saving potential, not measured: it assumes the "
     "wasted output is re-consumed each subsequent turn (structural "
-    "assumption). Range spans cache-hit (lower) to cache-miss (upper). "
-    "Attribution uses per-model rates; unknown models fall back to Sonnet 4.5._"
+    "assumption). Range spans cache-hit (lower) to cache-miss (upper) — two "
+    "billing outcomes for the same tokens, not a ratio. Attribution uses "
+    "per-model rates; a model the table does not carry resolves to the "
+    "nearest named one where an alias exists, and falls back to Sonnet 4.5 "
+    "otherwise. Only the fallback is reported as a substitution._"
 )
 
 _POSSIBLE_CAUSES = (

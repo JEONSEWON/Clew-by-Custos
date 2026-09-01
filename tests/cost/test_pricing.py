@@ -420,3 +420,45 @@ def test_the_default_is_cheaper_than_the_tier_it_stands_in_for():
 
     assert default.base_input_per_mtok < opus.base_input_per_mtok
     assert default.base_input_per_mtok / opus.base_input_per_mtok == 0.6
+
+
+# ── the four rates the 2026-09-01 audit found wrong ────────────────────────
+
+@pytest.mark.parametrize("model,base,cache_read,output", [
+    # Every one of these was wrong before the audit, and each was wrong
+    # silently: a prefix match reports `matched=True`, so `get_pricing` warned
+    # about nothing and `unpriced_models` stayed empty.
+    ("claude-opus-4-1", 15.0, 1.50, 75.0),   # was 5.0 via the bare opus-4 alias
+    ("claude-opus-4", 15.0, 1.50, 75.0),     # was 5.0, same alias
+    ("claude-haiku-3-5", 0.80, 0.08, 4.0),   # was 3.0, the Sonnet default
+    ("claude-mythos-5", 10.0, 1.00, 50.0),   # was 3.0, the Sonnet default
+])
+def test_audit_2026_09_01_rates(model, base, cache_read, output):
+    """Vendor page fetched 2026-09-01; see
+    field_test/diagnostics/_pricing_audit_2026_09_01.md."""
+    pricing = get_pricing(model)
+    assert pricing.base_input_per_mtok == base
+    assert pricing.cache_read_per_mtok == cache_read
+    assert pricing.output_per_mtok == output
+
+
+@pytest.mark.parametrize("model", [
+    "claude-opus-4-5", "claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8",
+])
+def test_opus_4_5_through_4_8_did_not_move(model):
+    """Adding an Opus 4 entry put a 15.0 rate behind the bare `claude-opus-4`
+    alias. Every more specific Opus prefix has to sit above it: `startswith`
+    takes the first match, so a 4.5 reaching the bare alias would be priced at
+    three times its rate. This is the test that fails if the ordering slips."""
+    assert get_pricing(model).base_input_per_mtok == 5.0
+
+
+def test_the_bare_opus_4_alias_no_longer_borrows_another_opus_rate():
+    """Mutation check in test form: point `claude-opus-4` back at `opus-4.7`
+    and this fails. It was the shape of the defect -- a retired model priced at
+    a third of its cost, with `matched=True` and no warning."""
+    from clew.cost.pricing import resolve_pricing
+
+    _pricing, matched = resolve_pricing("claude-opus-4")
+    assert matched
+    assert get_pricing("claude-opus-4") is not PRICING["opus-4.7"]

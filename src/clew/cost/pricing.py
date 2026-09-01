@@ -95,6 +95,55 @@ PRICING: dict[str, ModelPricing] = {
         cache_write_1h_per_mtok=10.0,
         output_per_mtok=25.0,
     ),
+    "opus-4.1": ModelPricing(
+        # Source: https://platform.claude.com/docs/en/about-claude/pricing
+        # Verified: 2026-09-01
+        # ★ Three times the price of the Opus the prefix alias used to hand it.
+        # A trace naming this model was priced at 5.0 against a real 15.0,
+        # silently, because a prefix match reports `matched=True` and warns
+        # about nothing -- so it was not in `unpriced_models` either. Retired
+        # except on Bedrock and Google Cloud, which is exactly where an old
+        # trace comes from.
+        name="claude-opus-4-1",
+        base_input_per_mtok=15.0,
+        cache_read_per_mtok=1.50,
+        cache_write_5m_per_mtok=18.75,
+        cache_write_1h_per_mtok=30.0,
+        output_per_mtok=75.0,
+    ),
+    "opus-4": ModelPricing(
+        # Source: https://platform.claude.com/docs/en/about-claude/pricing
+        # Verified: 2026-09-01 · retired except on Google Cloud
+        name="claude-opus-4",
+        base_input_per_mtok=15.0,
+        cache_read_per_mtok=1.50,
+        cache_write_5m_per_mtok=18.75,
+        cache_write_1h_per_mtok=30.0,
+        output_per_mtok=75.0,
+    ),
+    "haiku-3.5": ModelPricing(
+        # Source: https://platform.claude.com/docs/en/about-claude/pricing
+        # Verified: 2026-09-01 · retired except on Bedrock and Google Cloud
+        # Nothing matched this, so it took the Sonnet 4.5 default at 3.0
+        # against a real 0.80 -- 3.75x over, the opposite direction to the
+        # Opus cases and for the opposite reason.
+        name="claude-haiku-3-5",
+        base_input_per_mtok=0.80,
+        cache_read_per_mtok=0.08,
+        cache_write_5m_per_mtok=1.00,
+        cache_write_1h_per_mtok=1.60,
+        output_per_mtok=4.0,
+    ),
+    "mythos-5": ModelPricing(
+        # Source: https://platform.claude.com/docs/en/about-claude/pricing
+        # Verified: 2026-09-01 · limited availability
+        name="claude-mythos-5",
+        base_input_per_mtok=10.0,
+        cache_read_per_mtok=1.00,
+        cache_write_5m_per_mtok=12.50,
+        cache_write_1h_per_mtok=20.0,
+        output_per_mtok=50.0,
+    ),
     "sonnet-5": ModelPricing(
         # Source: https://platform.claude.com/docs/en/about-claude/pricing
         # Verified: 2026-08-27
@@ -407,9 +456,20 @@ _ALIASES: tuple[tuple[str, str], ...] = (
     # Exgentic canonical `claude-opus-4-5`: Opus 4.5 rate ($5/$25 per
     # Anthropic pricing 2026-08-13) matches opus-4.7 exactly; explicit
     # alias documents intent and locks against `claude-opus-4` drift.
+    ("claude-opus-4-6", "opus-4.7"),   # same rate as 4.7; see §1.3 note above
+    ("claude-opus-4.6", "opus-4.7"),
     ("claude-opus-4-5", "opus-4.7"),
-    ("claude-opus-4", "opus-4.7"),  # falls to nearest known Opus
+    ("claude-opus-4.5", "opus-4.7"),
+    ("claude-opus-4-1", "opus-4.1"),
+    ("claude-opus-4.1", "opus-4.1"),
+    # Bare `claude-opus-4` is Opus 4 at three times the 4.x rate. Every more
+    # specific Opus prefix sits above this line on purpose: `startswith` takes
+    # the first match, so a 4.5 reaching here would be priced as a 4.
+    ("claude-opus-4", "opus-4"),
     ("claude-haiku-4-5", "haiku-4.5"),
+    ("claude-haiku-3-5", "haiku-3.5"),
+    ("claude-haiku-3.5", "haiku-3.5"),
+    ("claude-mythos-5", "mythos-5"),
     ("claude-haiku-4.5", "haiku-4.5"),
     # Google
     ("gemini-1.5-pro", "gemini-1.5-pro"),
