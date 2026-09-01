@@ -549,6 +549,22 @@ def _watch(args: argparse.Namespace) -> int:
 
     embedder = Embedder(model_name=_MODEL, revision=_REV, cache_dir=_CACHE_DIR)
 
+    # The user's own tool classifications, when they have declared any. A tool
+    # they mark `read_only` becomes alertable; one they mark `side_effect`
+    # stops being. IDEMPOTENT_TRIGGER_PREREG §2 -- the declaration they already
+    # made is what decides, rather than a second list they never saw.
+    user_tools = None
+    try:
+        from clew.config import find_clew_yaml, load_user_config  # noqa: PLC0415
+        yaml_path = find_clew_yaml(Path.cwd())
+        if yaml_path is not None:
+            user_tools = load_user_config(yaml_path)
+    except Exception:                                             # noqa: BLE001
+        # A malformed or unreadable clew.yaml must not stop the watcher; the
+        # built-in categories are a complete answer on their own. `analyze`
+        # reports the error loudly, and that is the right place for it.
+        user_tools = None
+
     def on_finding(f) -> None:
         print(f"finding  {f.signal}  {Path(f.session).name}  "
               f"repeat at {f.occurred_at}  "
@@ -574,7 +590,8 @@ def _watch(args: argparse.Namespace) -> int:
             tally["seconds"] += result.seconds
 
         live.watch(targets, embedder, n=_N, phi=_PHI,
-                   poll_seconds=args.interval, once=True, on_sweep=count)
+                   poll_seconds=args.interval, once=True, on_sweep=count,
+                   tools=user_tools)
         total = len(live.load_findings())
         schedule.log_run(
             f"projects={len(targets)} live={tally['live']} "
@@ -589,7 +606,7 @@ def _watch(args: argparse.Namespace) -> int:
         live.watch(
             targets, embedder, n=_N, phi=_PHI,
             poll_seconds=args.interval, once=args.once,
-            on_finding=on_finding, on_sweep=on_sweep,
+            on_finding=on_finding, on_sweep=on_sweep, tools=user_tools,
         )
     except KeyboardInterrupt:
         print("stopped")
