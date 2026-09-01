@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from clew import live
+from clew import live, live_send
 from clew.detect.cascade import cascade, confirm_pair
 from clew.detect.structural import find_candidates
 from clew.model import Span, Trace
@@ -654,3 +654,279 @@ def test_the_banner_does_not_claim_silence_while_sending():
         "the shadow banner is printed unconditionally while --send exists"
     )
     assert "--send" in source
+
+
+# ── the drain: retry, and the key that names the project ───────────────────
+#
+# RETRY AMENDMENT R1-R7. What these exist to stop: a finding whose send failed
+# used to be dropped, and P5 wants twenty labelled findings in sixty days
+# against an arrival rate of one per three days, so one loss is five per cent
+# of the sample P6 is computed on.
+
+
+class _Answering:
+    """An opener that records the requests and answers however it is told."""
+
+    def __init__(self, answers):
+        self.answers = list(answers)
+        self.requests = []
+
+    def __call__(self, request, timeout=None):
+        self.requests.append(request)
+        answer = self.answers.pop(0) if self.answers else self.answers
+        if isinstance(answer, Exception):
+            raise answer
+        return _Answer(json.dumps(answer).encode("utf-8"))
+
+
+class _Answer:
+    def __init__(self, body):
+        self._body = body
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+OK = {"ok": True, "event_id": 1, "recorded": True, "delivery_mode": "shadow"}
+DUP = {"ok": True, "recorded": False, "reason": "already_recorded"}
+REFUSED = {"ok": False, "reason": "no_key"}
+KEYS = {"p": "bdk_" + "a" * 32, "other": "bdk_" + "b" * 32}
+
+
+def _ledger(tmp_path, *findings):
+    path = tmp_path / "live_findings.json"
+    live.save_findings(list(findings), path)
+    return path
+
+
+def test_a_failed_send_is_offered_again(tmp_path):
+    """R1. The whole point: one attempt used to be all a finding ever got."""
+    path = _ledger(tmp_path, _finding(session="one.jsonl", project="p"))
+    opener = _Answering([REFUSED, REFUSED])
+
+    first = live_send.drain(path, flag=True, keys=KEYS, opener=opener)
+    assert (first.attempted, first.delivered, first.pending) == (1, 0, 1)
+    assert first.last_reason == "no_key"
+    assert [f.delivered for f in live.load_findings(path)] == [False]
+
+    second = live_send.drain(path, flag=True, keys=KEYS, opener=opener)
+    assert (second.attempted, second.delivered) == (1, 0)
+    assert len(opener.requests) == 2, "the second pass did not try again"
+
+
+def test_a_transport_failure_is_offered_again(tmp_path):
+    """The case retry is really for: the send never reached the server."""
+    path = _ledger(tmp_path, _finding(session="one.jsonl", project="p"))
+    opener = _Answering([TimeoutError("no route"), OK])
+
+    first = live_send.drain(path, flag=True, keys=KEYS, opener=opener)
+    assert (first.delivered, first.pending) == (0, 1)
+    assert first.last_reason == "TimeoutError"
+
+    second = live_send.drain(path, flag=True, keys=KEYS, opener=opener)
+    assert (second.delivered, second.pending) == (1, 0)
+    assert [f.delivered for f in live.load_findings(path)] == [True]
+
+
+def test_already_recorded_counts_as_delivered(tmp_path):
+    """R2. The server committed and the response was lost -- which is the case
+    retry exists for, so it must not be a reason to keep retrying."""
+    path = _ledger(tmp_path, _finding(session="one.jsonl", project="p"))
+    opener = _Answering([DUP])
+
+    out = live_send.drain(path, flag=True, keys=KEYS, opener=opener)
+
+    assert (out.delivered, out.pending) == (1, 0)
+    assert [f.delivered for f in live.load_findings(path)] == [True]
+
+    again = live_send.drain(path, flag=True, keys=KEYS, opener=opener)
+    assert (again.attempted, again.delivered, again.pending) == (0, 0, 0)
+    assert len(opener.requests) == 1, "a delivered finding was offered again"
+
+
+def test_two_attempts_send_the_same_bytes(tmp_path):
+    """R3's client half. The server dedupes on `(project, session_key, signal)`
+    and answers a repeat `already_recorded`, so one mail -- but only while the
+    retry keeps sending the same key. A retry that varied the session key would
+    be a second finding as far as the server is concerned."""
+    path = _ledger(tmp_path, _finding(session="one.jsonl", project="p"))
+    opener = _Answering([TimeoutError("lost"), OK])
+
+    live_send.drain(path, flag=True, keys=KEYS, opener=opener)
+    live_send.drain(path, flag=True, keys=KEYS, opener=opener)
+
+    first, second = opener.requests
+    assert first.data == second.data
+    assert json.loads(first.data)["session_key"] == live_send.session_key(
+        pathlib.Path("one.jsonl"))
+
+
+def test_with_delivery_off_nothing_is_attempted(tmp_path):
+    """R4. Shadow means shadow -- the backlog is counted so the log can say
+    so, and not one request goes out."""
+    path = _ledger(tmp_path, _finding(session="one.jsonl", project="p"),
+                   _finding(session="two.jsonl", project="p"))
+    opener = _Answering([OK, OK])
+
+    out = live_send.drain(path, flag=False, keys=KEYS, opener=opener)
+
+    assert (out.attempted, out.delivered, out.pending) == (0, 0, 2)
+    assert out.last_reason == "disabled"
+    assert opener.requests == []
+    assert [f.delivered for f in live.load_findings(path)] == [False, False]
+
+
+def test_each_finding_goes_under_its_own_projects_key(tmp_path):
+    """R5. §0.2 of the amendment. The server binds a finding to a project
+    through the key, so one key for three projects records all three against
+    whichever project that key names."""
+    path = _ledger(tmp_path, _finding(session="one.jsonl", project="p"),
+                   _finding(session="two.jsonl", project="other"))
+    opener = _Answering([OK, OK])
+
+    out = live_send.drain(path, flag=True, keys=KEYS, opener=opener)
+
+    assert out.delivered == 2
+    used = [r.get_header("Authorization") for r in opener.requests]
+    assert used == [f"Bearer {KEYS['p']}", f"Bearer {KEYS['other']}"]
+
+
+def test_a_finding_whose_project_has_no_key_is_not_sent(tmp_path):
+    """R5's other half. Not attempted at all: a send under the wrong key is a
+    wrong row in the baseline, and a wrong row does not announce itself."""
+    path = _ledger(tmp_path, _finding(session="one.jsonl", project="stranger"))
+    opener = _Answering([OK])
+
+    out = live_send.drain(path, flag=True, keys=KEYS, opener=opener)
+
+    assert (out.attempted, out.delivered, out.pending) == (0, 0, 1)
+    assert out.last_reason == "no_project_key"
+    assert opener.requests == []
+
+
+def test_the_project_keys_come_from_the_file_submission_routes_by(tmp_path):
+    """The watcher drops `Target.api_key`; this is where it is picked back up."""
+    from clew.submit import Target
+
+    keys = live_send.project_keys([
+        Target("p", tmp_path, "bdk_one"),
+        Target("q", tmp_path, "bdk_two"),
+        Target("r", tmp_path, None),
+    ])
+
+    assert keys == {"p": "bdk_one", "q": "bdk_two"}
+
+
+def test_an_unreadable_projects_file_loses_nothing(tmp_path, monkeypatch):
+    """A malformed projects.yaml must not consume the pass -- nothing is
+    marked, so the same findings are offered again next minute."""
+    path = _ledger(tmp_path, _finding(session="one.jsonl", project="p"))
+
+    def explode():
+        raise ValueError("two entries share a root")
+
+    monkeypatch.setattr(live_send, "project_keys", explode)
+    out = live_send.drain(path, flag=True)
+
+    assert (out.attempted, out.pending) == (0, 1)
+    assert out.last_reason == "projects_ValueError"
+    assert [f.delivered for f in live.load_findings(path)] == [False]
+
+
+def test_a_partial_pass_keeps_what_landed(tmp_path):
+    """One of two lands. The ledger has to remember which, or the next pass
+    re-offers a delivered finding and the one that failed stays lost."""
+    path = _ledger(tmp_path, _finding(session="one.jsonl", project="p"),
+                   _finding(session="two.jsonl", project="p"))
+    opener = _Answering([OK, REFUSED])
+
+    out = live_send.drain(path, flag=True, keys=KEYS, opener=opener)
+
+    assert (out.delivered, out.pending) == (1, 1)
+    assert [f.delivered for f in live.load_findings(path)] == [True, False]
+
+    again = live_send.drain(path, flag=True, keys=KEYS, opener=_Answering([OK]))
+    assert (again.attempted, again.delivered) == (1, 1)
+    assert [f.delivered for f in live.load_findings(path)] == [True, True]
+
+
+def test_an_empty_ledger_does_no_work(tmp_path):
+    path = tmp_path / "live_findings.json"
+    out = live_send.drain(path, flag=True, keys=KEYS,
+                          opener=_Answering([]))
+    assert (out.attempted, out.delivered, out.pending) == (0, 0, 0)
+
+
+def test_watch_runs_the_cycle_hook_after_writing_the_ledger(sessions, tmp_path):
+    """The wiring the drain hangs on. Without this hook nothing is delivered.
+
+    And the order matters, not just the call: the hook reads the ledger off
+    disk, so it has to run after the write or it sees a file without this
+    pass's findings in it and reports a backlog of zero while two sit unsent.
+    """
+    stamped = datetime.now(timezone.utc)
+    for name in ("one.jsonl", "two.jsonl"):
+        (sessions / name).write_text(
+            json.dumps({"timestamp": stamped.isoformat()}) + "\n",
+            encoding="utf-8")
+    path = tmp_path / "live_findings.json"
+    seen = []
+
+    live.watch([("p", sessions)], _FixedEmbedder(), 2, 0.5,
+               findings_path=path, once=True,
+               on_cycle=lambda: seen.append(len(live.load_findings(path))))
+
+    assert seen == [2], "the hook did not run, or ran before the ledger existed"
+
+
+# ── the log line, which is the only thing an unattended run leaves ─────────
+
+def test_the_log_line_carries_the_backlog():
+    """R6. There is no give-up counter, so this number is the whole difference
+    between "nothing to send" and "sending has failed all day"."""
+    from clew.__main__ import _watch_log_line
+
+    tally = {"live": 2, "recorded": 1, "capped": 0, "seconds": 1.25}
+    line = _watch_log_line(
+        3, tally,
+        live_send.DrainResult(attempted=1, delivered=0, pending=1,
+                              last_reason="http_401"),
+        7)
+
+    assert "pending=1" in line
+    assert "last=http_401" in line
+    assert "sent=0" in line
+    assert line.endswith("findings=7 1.2s")
+
+
+def test_a_quiet_run_says_pending_zero_and_no_reason():
+    """Non-zero exactly when something is undelivered -- a run with nothing
+    pending must not carry a stale reason."""
+    from clew.__main__ import _watch_log_line
+
+    tally = {"live": 0, "recorded": 0, "capped": 0, "seconds": 0.4}
+    line = _watch_log_line(3, tally, live_send.DrainResult(), 0)
+
+    assert "pending=0" in line
+    assert "last=" not in line
+
+
+# ── the separation, restated for the drain ────────────────────────────────
+
+def test_the_watcher_still_does_not_reach_the_sender():
+    """R7. The drain lives in the delivery module and is called by the CLI.
+
+    `live.py` gaining an import of `live_send` would make the detector able to
+    send, which is the thing the shadow guarantee is. The existing guard
+    collects top-level module names, so `from clew.live_send import drain`
+    would register as `clew` and slip through it.
+    """
+    source = pathlib.Path(live.__file__).read_text(encoding="utf-8")
+
+    assert "live_send" not in source, "live.py names the sender"

@@ -517,6 +517,24 @@ def _setup(args: argparse.Namespace) -> int:
     return 0
 
 
+def _watch_log_line(projects: int, tally: dict, drained, total: int) -> str:
+    """The one line an unattended pass leaves behind.
+
+    `pending` is here because a finding that could not be delivered has to be
+    visible without anyone asking: the retry has no give-up counter, so the
+    only thing separating "nothing to send" from "sending has been failing all
+    day" is this number and the reason beside it (RETRY AMENDMENT §3). The
+    reason is appended only when something is pending, so a quiet run stays one
+    short line.
+    """
+    line = (f"projects={projects} live={tally['live']} "
+            f"recorded={tally['recorded']} capped={tally['capped']} "
+            f"sent={drained.delivered} pending={drained.pending}")
+    if drained.pending:
+        line += f" last={drained.last_reason or 'unknown'}"
+    return line + f" findings={total} {tally['seconds']:.1f}s"
+
+
 def _watch(args: argparse.Namespace) -> int:
     """Watch running sessions and record repeats locally. Sends nothing.
 
@@ -573,14 +591,18 @@ def _watch(args: argparse.Namespace) -> int:
     sending = live_send.enabled(args.send)
 
     def on_finding(f) -> None:
+        # Records only. Delivery is `deliver` below, once per pass over the
+        # ledger, so that a send which fails is simply still undelivered next
+        # pass -- RETRY AMENDMENT §1.
         print(f"finding  {f.signal}  {Path(f.session).name}  "
               f"repeat at {f.occurred_at}  "
               f"({f.latency_seconds():.0f}s behind, {f.candidates_seen} candidates)")
-        if not sending:
-            return
-        sent = live_send.send_finding(f, flag=True)
-        print(f"         sent: ok={sent.ok} recorded={sent.recorded} "
-              f"mode={sent.delivery_mode or '-'} {sent.reason}")
+
+    def deliver() -> None:
+        out = live_send.drain(flag=args.send)
+        if out.attempted or out.pending:
+            print(f"         delivery: sent={out.delivered} "
+                  f"pending={out.pending} {out.last_reason or '-'}")
 
     def on_sweep(project, result) -> None:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {project}: "
@@ -594,6 +616,7 @@ def _watch(args: argparse.Namespace) -> int:
         # fired are the same silence otherwise, and this one is expected to
         # find nothing on almost every run.
         tally = {"live": 0, "recorded": 0, "capped": 0, "seconds": 0.0}
+        drained = live_send.DrainResult()
 
         def count(project, result):
             tally["live"] += result.scanned
@@ -601,19 +624,16 @@ def _watch(args: argparse.Namespace) -> int:
             tally["capped"] += result.suppressed_hourly
             tally["seconds"] += result.seconds
 
-        def relay(f) -> None:
-            if live_send.enabled(args.send):
-                tally["sent"] += 1 if live_send.send_finding(f, flag=True).ok else 0
+        def deliver_once() -> None:
+            nonlocal drained
+            drained = live_send.drain(flag=args.send)
 
-        tally["sent"] = 0
         live.watch(targets, embedder, n=_N, phi=_PHI,
                    poll_seconds=args.interval, once=True, on_sweep=count,
-                   on_finding=relay, tools=user_tools)
+                   on_cycle=deliver_once, tools=user_tools)
         total = len(live.load_findings())
         schedule.log_run(
-            f"projects={len(targets)} live={tally['live']} "
-            f"recorded={tally['recorded']} capped={tally['capped']} "
-            f"sent={tally['sent']} findings={total} {tally['seconds']:.1f}s",
+            _watch_log_line(len(targets), tally, drained, total),
             live.WATCH_LOG_PATH,
         )
         return 0
@@ -627,7 +647,8 @@ def _watch(args: argparse.Namespace) -> int:
         live.watch(
             targets, embedder, n=_N, phi=_PHI,
             poll_seconds=args.interval, once=args.once,
-            on_finding=on_finding, on_sweep=on_sweep, tools=user_tools,
+            on_finding=on_finding, on_sweep=on_sweep, on_cycle=deliver,
+            tools=user_tools,
         )
     except KeyboardInterrupt:
         print("stopped")
