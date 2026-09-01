@@ -138,6 +138,36 @@ def _chunk_token_len(text: str, model: str | None) -> int:
 
 # ── Detector entry point ────────────────────────────────────────────────────
 
+def has_tier_split(call: dict[str, Any]) -> bool:
+    """Whether this call records how its input was billed across cache tiers.
+
+    The condition is named because two modules branch on it and they must
+    branch identically: `_rate_and_cost_for_call` below, and the waste-rate
+    denominator (WR_COST_PRICE_BASIS_AMENDMENT_PREREG §2). Adapters that do not
+    record tiers leave all three fields None; Toolathlon sets them to
+    uncached-only zeros, which is a tier split that happens to be flat.
+    """
+    return any(
+        call.get(key) is not None
+        for key in (
+            "input_tokens_uncached",
+            "input_tokens_cache_read",
+            "input_tokens_cache_write",
+        )
+    )
+
+
+def input_cost_for_call(call: dict[str, Any]) -> float:
+    """What this call's input actually cost, tiers included.
+
+    The public form of the pricing the resend numerator already uses. Exposed
+    so the denominator can be computed by the same rule rather than by a second
+    one that agrees with it only by accident.
+    """
+    _rate, cost, _pricing = _rate_and_cost_for_call(call)
+    return cost
+
+
 def _rate_and_cost_for_call(
     call: dict[str, Any],
 ) -> tuple[float, float, ModelPricing | None]:
@@ -160,7 +190,7 @@ def _rate_and_cost_for_call(
     model = call.get("model")
 
     # (1) tier-split path
-    if uncached is not None or cache_read is not None or cache_write is not None:
+    if has_tier_split(call):
         pricing = get_pricing(model) if model else get_pricing(None)
         u = int(uncached or 0)
         r = int(cache_read or 0)

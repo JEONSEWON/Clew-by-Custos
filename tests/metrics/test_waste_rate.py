@@ -506,3 +506,157 @@ def test_aggregate_sdr_at_10_per_detector_independent():
     assert agg["redundant_read_sdr_at_10"] == 0.0
     assert agg["duplicate_creation_sdr_at_10"] == 0.0
     assert agg["union_sdr_at_10"] == 1.0
+
+
+# ── WR_COST_PRICE_BASIS_AMENDMENT_PREREG §2 ────────────────────────────────
+
+def _tiered_call(
+    span_id: str,
+    input_text: str,
+    *,
+    uncached: int,
+    cache_read: int,
+    cache_write: int = 0,
+    model: str = "claude-sonnet-4.5",
+):
+    """A call that records how its input was billed, the way Claude Code does."""
+    return {
+        "span_id": span_id,
+        "input_text": input_text,
+        "input_tokens": uncached + cache_read + cache_write,
+        "input_tokens_uncached": uncached,
+        "input_tokens_cache_read": cache_read,
+        "input_tokens_cache_write": cache_write,
+        "input_cost_rate": 3e-6,
+        "cost_rate_legacy": None,
+        "model": model,
+        "start_time": "2026-01-01T00:00:01+00:00",
+    }
+
+
+def test_denominator_prices_cache_reads_at_the_cache_read_rate(embedder: Embedder):
+    """The defect this amendment exists for: 90% of this call's input is a
+    cache read, billed at a tenth, and the denominator has to say so."""
+    from clew.cost.pricing import get_pricing
+    from clew.metrics.waste_rate import _compute_total_input
+
+    call = _tiered_call("llm-1", "x", uncached=1_000, cache_read=9_000)
+    trace = Trace(trace_id="t", spans=[_root()], metadata={"llm_calls": [call]})
+
+    _bytes, cost = _compute_total_input(trace)
+
+    pricing = get_pricing("claude-sonnet-4.5")
+    billed = (1_000 * pricing.base_input_per_mtok
+              + 9_000 * pricing.cache_read_per_mtok) / 1_000_000.0
+    assert cost == pytest.approx(billed)
+
+    # And what it used to be: every tier at the base rate, which is the bill
+    # for a session that never cached anything.
+    no_cache = 10_000 * pricing.base_input_per_mtok / 1_000_000.0
+    assert no_cache > cost * 3
+
+
+def test_numerator_and_denominator_price_the_same_token_the_same_way(embedder: Embedder):
+    """§4 of the amendment in one assertion: a call whose input is entirely
+    resent must come out at a ratio of 1, whatever the tier mix. Under the old
+    denominator this call scored 0.30."""
+    from clew.detect.context_resend import input_cost_for_call
+    from clew.metrics.waste_rate import _compute_total_input
+
+    call = _tiered_call("llm-1", "x", uncached=1_000, cache_read=9_000)
+    trace = Trace(trace_id="t", spans=[_root()], metadata={"llm_calls": [call]})
+
+    _bytes, denominator = _compute_total_input(trace)
+    assert denominator == pytest.approx(input_cost_for_call(call))
+
+
+def test_a_call_without_tiers_is_priced_exactly_as_before(embedder: Embedder):
+    """Adapters that record no tiers cannot express the two bases, so nothing
+    about them moves. `input_tokens * input_cost_rate`, as it always was."""
+    from clew.metrics.waste_rate import _compute_total_input
+
+    call = _mk_llm_call("llm-1", "x", input_tokens=500, input_cost_rate=3e-6)
+    trace = Trace(trace_id="t", spans=[_root()], metadata={"llm_calls": [call]})
+
+    _bytes, cost = _compute_total_input(trace)
+    assert cost == pytest.approx(500 * 3e-6)
+
+
+def test_the_toolathlon_shape_does_not_move(embedder: Embedder):
+    """P4. Toolathlon sets uncached to everything and both cache fields to 0,
+    which is a tier split that happens to be flat -- so the new denominator has
+    to return the base-rate figure the old one did."""
+    from clew.cost.pricing import get_pricing
+    from clew.metrics.waste_rate import _compute_total_input
+
+    call = _tiered_call("llm-1", "x", uncached=4_000, cache_read=0, cache_write=0)
+    trace = Trace(trace_id="t", spans=[_root()], metadata={"llm_calls": [call]})
+
+    _bytes, cost = _compute_total_input(trace)
+    base = get_pricing("claude-sonnet-4.5").base_input_per_mtok
+    assert cost == pytest.approx(4_000 * base / 1_000_000.0)
+
+
+def test_the_exgentic_shape_does_not_move(embedder: Embedder):
+    """P5. Exgentic sets uncached to everything and leaves both cache fields
+    None, which is still a tier split and still flat."""
+    from clew.cost.pricing import get_pricing
+    from clew.metrics.waste_rate import _compute_total_input
+
+    call = _mk_llm_call("llm-1", "x", input_tokens=4_000)
+    call["input_tokens_uncached"] = 4_000
+    call["input_tokens_cache_read"] = None
+    call["input_tokens_cache_write"] = None
+    trace = Trace(trace_id="t", spans=[_root()], metadata={"llm_calls": [call]})
+
+    _bytes, cost = _compute_total_input(trace)
+    base = get_pricing("claude-sonnet-4.5").base_input_per_mtok
+    assert cost == pytest.approx(4_000 * base / 1_000_000.0)
+
+
+def test_a_call_with_no_rate_and_no_tiers_still_contributes_nothing(embedder: Embedder):
+    """The exclusion §1.2 of the metric prereg defines is not collateral of
+    this amendment. Pricing every call through the tier function would have
+    resolved this model to the default rate and quietly included a trace the
+    frozen rule excludes."""
+    from clew.metrics.waste_rate import _compute_total_input
+
+    call = _mk_llm_call("llm-1", "x", input_cost_rate=None, cost_rate_legacy=None)
+    trace = Trace(trace_id="t", spans=[_root()], metadata={"llm_calls": [call]})
+
+    _bytes, cost = _compute_total_input(trace)
+    assert cost == 0.0
+
+
+def test_tiers_without_a_rate_contribute_nothing(embedder: Embedder):
+    """WR_COST_PRICE_BASIS_AMENDMENT_2 §2, and the exact case the first gate
+    missed. Exgentic fills the tier fields as uncached-only and leaves the rate
+    None when the model is not a key in the table it was handed. Pricing that
+    through the tier function resolves the model through `get_pricing`, which
+    soft-fails to the Sonnet default -- 8,622 of Corpus C's 10,056 traces
+    joined an aggregate they had always been excluded from."""
+    from clew.metrics.waste_rate import _compute_total_input
+
+    call = _tiered_call("llm-1", "x", uncached=112_814, cache_read=0,
+                        model="DeepSeek-V3.2")
+    call["input_cost_rate"] = None
+    trace = Trace(trace_id="t", spans=[_root()], metadata={"llm_calls": [call]})
+
+    _bytes, cost = _compute_total_input(trace)
+    assert cost == 0.0
+
+
+def test_a_priced_call_with_tiers_is_still_priced_by_them(embedder: Embedder):
+    """The narrowing must not take the amendment with it: a call the adapter
+    priced still gets the tier-aware figure, not the flat one."""
+    from clew.cost.pricing import get_pricing
+    from clew.metrics.waste_rate import _compute_total_input
+
+    call = _tiered_call("llm-1", "x", uncached=1_000, cache_read=9_000)
+    trace = Trace(trace_id="t", spans=[_root()], metadata={"llm_calls": [call]})
+
+    _bytes, cost = _compute_total_input(trace)
+    pricing = get_pricing("claude-sonnet-4.5")
+    billed = (1_000 * pricing.base_input_per_mtok
+              + 9_000 * pricing.cache_read_per_mtok) / 1_000_000.0
+    assert cost == pytest.approx(billed)
