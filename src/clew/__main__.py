@@ -655,6 +655,34 @@ def _watch(args: argparse.Namespace) -> int:
     return 0
 
 
+def _registration_note(task_args) -> str:
+    """What the registration actually does, read off its own arguments.
+
+    This sentence said "Nothing is sent, and there is no endpoint to send to
+    yet" while `WATCH_ARGS` already carried `--send` and the endpoint was
+    deployed. It was false because it was written by hand beside a constant that
+    later changed, and it is the sentence somebody registering the task reads.
+    Deriving it from the tuple means the claim cannot outlive the flag.
+    """
+    if "--send" in tuple(task_args):
+        return ("registered with --send: every finding is offered to the "
+                "server, which mails you only if your project is on its "
+                "allow-list. Re-register without it to record only.")
+    return "records findings locally and sends nothing."
+
+
+def _findings_note(findings, task_args) -> str:
+    """`N recorded, M delivered (mode)`.
+
+    `M` was the literal `0` and the mode the literal `shadow`, which stopped
+    being true twice over: findings now carry `delivered`, and the registration
+    can send. Both halves are now read rather than asserted.
+    """
+    delivered = sum(1 for f in findings if f.delivered)
+    mode = "sending" if "--send" in tuple(task_args) else "shadow"
+    return f"{len(findings)} recorded, {delivered} delivered ({mode})"
+
+
 def _watch_schedule(args: argparse.Namespace, schedule, live) -> int:
     """--install / --uninstall / --status for the fast path.
 
@@ -671,7 +699,7 @@ def _watch_schedule(args: argparse.Namespace, schedule, live) -> int:
         print(f"scheduler   : {where} ({name})")
         print(f"command     : {schedule.command_line(schedule.WATCH_ARGS)}")
         findings = live.load_findings()
-        print(f"findings    : {len(findings)} recorded, 0 sent (shadow)")
+        print(f"findings    : {_findings_note(findings, schedule.WATCH_ARGS)}")
         for f in findings[-5:]:
             print(f"  {f.occurred_at}  {Path(f.session).name[:8]}  "
                   f"{f.signal}  {f.latency_seconds():.0f}s behind")
@@ -695,8 +723,7 @@ def _watch_schedule(args: argparse.Namespace, schedule, live) -> int:
     )
     print(message)
     if ok or schedule.is_registered(name) is None:
-        print("records findings locally. Nothing is sent, and there is no "
-              "endpoint to send to yet.")
+        print(_registration_note(schedule.WATCH_ARGS))
         return 0
     return 1
 
