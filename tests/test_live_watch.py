@@ -289,8 +289,14 @@ def test_watch_once_writes_the_ledger(sessions, tmp_path):
     assert all(f.delivered is False for f in recorded)
 
 
-def test_the_shipped_module_cannot_send(monkeypatch):
-    """§2, §8 step 2: shadow means there is nothing here that could send.
+def test_the_watcher_module_still_cannot_send(monkeypatch):
+    """The detector cannot reach the network, and delivery lives elsewhere.
+
+    This guard used to say "nothing in this project can send". That stopped
+    being true when `live_send.py` landed, and the honest move is to narrow
+    what it protects rather than delete it: `live.py` is the module that runs
+    on every poll, and keeping it unable to open a socket means turning
+    delivery on is a change to the CLI, never a change to the detector.
 
     Asserted on the file that ships rather than on a mocked call, because a
     watcher that never happens to send during a test is not the same as one
@@ -448,3 +454,162 @@ def test_the_batch_path_still_sees_every_tool():
     result = cascade(trace, _FixedEmbedder(), n=2, phi=0.5)
     assert result.wasteful is True
     assert result.waste_span_ids == ["b"]
+
+
+# ── LIVE_ALERT_AUTHOR_ONLY_DELIVERY_PREREG: the one place that can send ────
+
+def _sent_finding(**over):
+    base = dict(project="p", session="/tmp/abc-123.jsonl", signal="repeat",
+                origin_span_id="a", candidate_span_id="b",
+                occurred_at=T0.isoformat(),
+                recorded_at=(T0 + timedelta(seconds=32)).isoformat(),
+                candidates_seen=3, tool="Read")
+    base.update(over)
+    return live.Finding(**base)
+
+
+class _Recorder:
+    """Stands in for `urlopen`, keeping what was actually sent."""
+
+    def __init__(self, payload=None, raise_with=None):
+        self.payload = payload if payload is not None else {
+            "ok": True, "recorded": True, "delivery_mode": "email"}
+        self.raise_with = raise_with
+        self.calls = []
+
+    def __call__(self, request, timeout=None):
+        self.calls.append(request)
+        if self.raise_with is not None:
+            raise self.raise_with
+        import io
+        import json as _json
+
+        class _Ctx(io.BytesIO):
+            def __enter__(self_inner):
+                return self_inner
+
+            def __exit__(self_inner, *a):
+                return False
+
+        return _Ctx(_json.dumps(self.payload).encode())
+
+
+def test_nothing_is_sent_unless_asked(monkeypatch):
+    """§2. Off by default, and off is measured by nobody being called."""
+    from clew import live_send
+
+    monkeypatch.delenv(live_send.ENV_FLAG, raising=False)
+    rec = _Recorder()
+    result = live_send.send_finding(_sent_finding(), key="bdk_x", opener=rec)
+    assert result.attempted is False and result.reason == "disabled"
+    assert rec.calls == []
+
+
+def test_no_key_means_no_request(monkeypatch):
+    from clew import live_send
+
+    rec = _Recorder()
+    result = live_send.send_finding(_sent_finding(), flag=True, key="", opener=rec)
+    assert result.attempted is False and result.reason == "no_key"
+    assert rec.calls == []
+
+
+def test_the_payload_is_counts_and_never_a_path(monkeypatch):
+    """§5 bounds what crosses the wire to an enum with counts. A path names
+    somebody's directory layout, and this is the one place anything leaves the
+    machine."""
+    import json as _json
+
+    from clew import live_send
+
+    rec = _Recorder()
+    live_send.send_finding(
+        _sent_finding(session=r"C:\Users\Someone\secret-project\abc-123.jsonl"),
+        flag=True, key="bdk_x", opener=rec)
+
+    assert len(rec.calls) == 1
+    body = _json.loads(rec.calls[0].data.decode("utf-8"))
+    assert set(body) == {"session_key", "tool", "occurrences", "latency_seconds"}
+    assert body["tool"] == "Read"
+    assert body["occurrences"] == 3
+    assert body["latency_seconds"] == 32.0
+
+    blob = _json.dumps(body)
+    for leak in ("secret-project", "Users", "abc-123", ".jsonl", "\\", "/"):
+        assert leak not in blob, f"{leak!r} reached the wire"
+
+
+def test_the_session_key_is_stable_and_opaque():
+    from clew import live_send
+
+    a = live_send.session_key(pathlib.Path("/one/place/abc-123.jsonl"))
+    b = live_send.session_key(pathlib.Path("/somewhere/else/abc-123.jsonl"))
+    c = live_send.session_key(pathlib.Path("/one/place/def-456.jsonl"))
+    assert a == b, "the same session under two paths must dedupe as one"
+    assert a != c
+    assert len(a) == 32 and all(ch in "0123456789abcdef" for ch in a)
+
+
+def test_it_posts_to_the_live_route_and_not_to_analyze():
+    """`/analyze` would start an analysis, which is the thing §6 P3 counts."""
+    from clew import live_send
+
+    rec = _Recorder()
+    live_send.send_finding(_sent_finding(), flag=True, key="bdk_x", opener=rec)
+    url = rec.calls[0].full_url
+    assert url.endswith("/live-finding"), url
+    assert "/analyze" not in url
+
+
+def test_a_failed_send_is_reported_and_not_raised():
+    """The finding is already recorded locally, and the local record is what
+    the measurement is made of. Losing the mail beats losing the pass."""
+    from clew import live_send
+
+    rec = _Recorder(raise_with=OSError("no route to host"))
+    result = live_send.send_finding(_sent_finding(), flag=True, key="bdk_x",
+                                    opener=rec)
+    assert result.attempted is True and result.ok is False
+    assert result.reason == "OSError"
+
+
+def test_the_watcher_does_not_import_the_sender():
+    """The separation is the shadow guarantee in shipped form. If `live.py`
+    ever imports `live_send`, a poll can send and the guard above stops
+    meaning anything."""
+    import ast
+
+    source = pathlib.Path(live.__file__).read_text(encoding="utf-8")
+    # Both halves of an import statement, because `from clew import live_send`
+    # puts the module in `names` and only `clew` in `.module`. The first
+    # version of this checked `.module` alone and passed under a mutation that
+    # added exactly that line.
+    seen = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom):
+            seen.add(node.module or "")
+            seen.update(f"{node.module or ''}.{a.name}" for a in node.names)
+            seen.update(a.name for a in node.names)
+        elif isinstance(node, ast.Import):
+            seen.update(a.name for a in node.names)
+    offenders = sorted(n for n in seen if "live_send" in n)
+    assert not offenders, f"live.py imports the sender: {offenders}"
+
+
+def test_the_banner_does_not_claim_silence_while_sending():
+    """A screen that says "sending nothing" next to a `--send` flag is a
+    screen that lies on one of its two paths. Asserted on the source of the
+    command rather than on the flag, because the sentence is the artifact."""
+    import pathlib as _p
+
+    import clew.__main__ as cli
+
+    source = _p.Path(cli.__file__).read_text(encoding="utf-8")
+    watch_fn = source.split("def _watch(")[1].split("\ndef ")[0]
+    assert "sending nothing" in watch_fn, "the shadow banner is gone entirely"
+    # The claim must sit behind the branch that makes it true.
+    before, _, after = watch_fn.partition("sending nothing")
+    assert "if sending:" in before, (
+        "the shadow banner is printed unconditionally while --send exists"
+    )
+    assert "--send" in source
