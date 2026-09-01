@@ -23,6 +23,7 @@ from clew.report._model import TraceCostSummary, WasteDetail, build_cost_summary
 
 if TYPE_CHECKING:
     from clew.config import ResolvedTools
+    from clew.detect.llm_judge.verification_axis import VerificationAxisResult
 
 _PHI = 0.514345
 _N = 2
@@ -375,6 +376,55 @@ def _render_pair(idx: int, ed: EnrichedDetail, ev: AmplificationEvent | None) ->
     return lines
 
 
+_VERIFICATION_HEADER = "## Verification"
+
+
+def _render_verification_badge(vr: "VerificationAxisResult | None") -> list[str]:
+    """One line about the whole session, or nothing (shipping prereg §3).
+
+    A badge and not a list, because this finding has no target and no span
+    pair. "You changed code and never checked it" is a claim about the session,
+    so it cannot be grouped, counted, or priced, and rendering it beside items
+    that can be would make both meaningless.
+
+    Three outcomes and the third is not optional. Silence means the axis was
+    off; a passed judgement prints nothing either, because a report that says
+    "no problem found" for every axis it ran is a report nobody reads to the
+    end.
+    """
+    if vr is None or not vr.enabled:
+        return []
+
+    lines = [_VERIFICATION_HEADER, ""]
+    if vr.not_judged_reason is not None:
+        # Never "not verified". The rule this axis replaced scored 0.3250 by
+        # treating a check it could not see as a check that did not happen.
+        lines.append(f"- **not judged** — {vr.not_judged_reason}.")
+        lines.append(
+            "  This is not a finding. It says the axis could not answer, "
+            "which is a different thing from answering no."
+        )
+        lines.append("")
+        return lines
+
+    if not vr.finding:
+        return []
+
+    lines.append(
+        "- ⚠ **the session changed code and no check of it appears in the trace**"
+    )
+    if vr.evidence:
+        lines.append(f"  - what decided it: {vr.evidence}")
+    lines.append(f"  - judge confidence: {vr.confidence:.2f}")
+    lines.append(
+        "  - LLM judgement, not a deterministic detector: non-reproducible "
+        "even at temperature=0, and measured at precision 0.9286 on 40 "
+        "hand-labelled sessions. It enters no cost figure and no waste rate."
+    )
+    lines.append("")
+    return lines
+
+
 _LLM_JUDGE_HEADER = "## Semantic duplicates (LLM judge)"
 _LLM_JUDGE_INTRO = (
     "Message chunk pairs judged semantically equivalent by an LLM judge, "
@@ -659,6 +709,7 @@ def render_markdown(
     redundant_read: RedundantReadResult | None = None,
     llm_judge: LLMJudgeResult | None = None,
     waste_rate: WasteRateMetric | None = None,
+    verification: "VerificationAxisResult | None" = None,
 ) -> str:
     """CascadeResult + WasteDetail list -> markdown string.
 
@@ -695,6 +746,12 @@ def render_markdown(
         trace, cr, context_resend, redundant_read, llm_judge,
     )
     lines.extend(_render_cost_summary(cost_summary))
+
+    # Above every list on purpose. A session-level verdict answers "is
+    # something wrong with this session", and the lists below answer "what
+    # specifically, and how much". The first question is the one somebody
+    # scanning the page is asking.
+    lines.extend(_render_verification_badge(verification))
 
     # Enrich once. Used by (a) coverage banner in the waste-0 branch too,
     # (b) category breakdown / per-pair rendering below.

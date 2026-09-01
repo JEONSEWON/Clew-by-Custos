@@ -17,6 +17,7 @@ from clew.report._enrich import coverage_stats, enrich, scan_id_bridge_candidate
 from clew.report._model import WasteDetail, build_cost_summary
 
 if TYPE_CHECKING:
+    from clew.detect.llm_judge.verification_axis import VerificationAxisResult
     from clew.config import ResolvedTools
 
 _PHI = 0.514345
@@ -179,6 +180,31 @@ def _waste_rate_block(wr: WasteRateMetric | None) -> dict | None:
     }
 
 
+def _verification_block(vr: "VerificationAxisResult | None") -> dict:
+    """The three outcomes, kept apart in the machine-readable form too.
+
+    `finding` and `not_judged_reason` are separate keys rather than one status
+    string, so a consumer cannot accidentally read "could not tell" as "no".
+    That collapse is what the killed rule did, at precision 0.3250.
+    """
+    if vr is None or not vr.enabled:
+        return {"enabled": False}
+    return {
+        "enabled": True,
+        "judged": vr.judged,
+        "finding": vr.finding if vr.judged else None,
+        "not_judged_reason": vr.not_judged_reason,
+        "evidence": vr.evidence or None,
+        "confidence": round(vr.confidence, 4) if vr.judged else None,
+        "judge_calls": vr.calls,
+        "judge_cost_usd": round(vr.cost_usd, 8),
+        "note": (
+            "LLM judgement, non-reproducible even at temperature=0. "
+            "Enters no cost figure and no waste rate."
+        ),
+    }
+
+
 def render_json(
     trace: Trace,
     cr: CascadeResult,
@@ -192,6 +218,7 @@ def render_json(
     redundant_read: RedundantReadResult | None = None,
     llm_judge: LLMJudgeResult | None = None,
     waste_rate: WasteRateMetric | None = None,
+    verification: "VerificationAxisResult | None" = None,
 ) -> str:
     """CascadeResult + WasteDetail list -> JSON string (indent=2).
 
@@ -359,6 +386,7 @@ def render_json(
         "redundant_read": _redundant_read_block(redundant_read),
         "llm_judge": _llm_judge_block(llm_judge),
         "waste_rate": _waste_rate_block(waste_rate),
+        "verification": _verification_block(verification),
         "note": (
             "Detection thresholds were calibrated on synthetic traces; "
             "real-trace calibration is in progress. Borderline matches "
