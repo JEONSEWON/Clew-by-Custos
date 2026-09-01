@@ -325,11 +325,22 @@ def test_the_watcher_module_still_cannot_send(monkeypatch):
 # ── the registration, which is the artifact Windows actually reads ─────────
 
 def test_the_watch_task_registers_the_watch_command():
-    """What ships to the scheduler is the XML, not the function that built it."""
+    """What ships to the scheduler is the XML, not the function that built it.
+
+    The whole `Arguments` element, not a substring of it. The substring form
+    (`"watch --once --auto" in xml`) passed unchanged when `--send` was added,
+    which means it was not measuring the flag that decides whether this machine
+    talks to a server every minute. A test that survives the change it exists
+    to notice is the shape `feedback_assert_on_shipped_artifact` is about.
+    """
+    import re
+
     from clew import schedule
 
     xml = schedule._task_xml(1, task_args=schedule.WATCH_ARGS, time_limit="PT10M")
-    assert "watch --once --auto" in xml
+    args = re.search(r"<Arguments>([^<]*)</Arguments>", xml)
+    assert args, "the registration has no Arguments element"
+    assert args.group(1) == "-m clew watch --once --auto --send", args.group(1)
     assert "<Interval>PT1M</Interval>" in xml
     assert "<ExecutionTimeLimit>PT10M</ExecutionTimeLimit>" in xml
     assert "<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>" in xml

@@ -31,7 +31,14 @@ WATCH_TASK_NAME = "BoxdawnWatch"
 # this wait. Widening it widens the latency by the same amount.
 WATCH_EVERY_MINUTES = 1
 SUBMIT_ARGS = ("submit", "--auto")
-WATCH_ARGS = ("watch", "--once", "--auto")
+# `--send` is here rather than in a config file because the registered command
+# line is the honest record of what the machine does every minute. `schtasks
+# /query /xml` shows it; a flag read from somewhere else would not.
+#
+# Turning it off is `clew watch --uninstall` followed by `--install`, or one
+# `delete from live_alert_allowlist` on the server -- either half closes the
+# chain on its own, which is the redundancy `live_send.py` is built around.
+WATCH_ARGS = ("watch", "--once", "--auto", "--send")
 # Latency amendment: the sweep is the second largest term in the delay after
 # the close rule itself, so it moves with it. 15 minutes against a 20-minute
 # close rule means a finished session waits at most 35 for its upload.

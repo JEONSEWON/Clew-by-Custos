@@ -78,7 +78,29 @@ Two independent gates hold that: the client sends nothing without `--send`, and
 the server delivers nothing without a row. A client bug and a server bug would
 both have to occur for a mail nobody chose.
 
-## 5. What these four do not establish
+## 5. A fifth thing, found after the deploy
+
+The migration applied, its verify block reported all four functions present,
+and `GET /live-feedback/1` answered **502**. `revoke all ... from public, anon,
+authenticated` without a matching `grant ... to service_role` leaves a function
+that exists and that the server may not call. Every earlier migration pairs the
+two; `0021` shipped with only the first half.
+
+Nothing in this document would have caught it. §1 asks what the function's
+signature *can carry*, §3 asks what the unique index *refuses*, and both were
+answered correctly against a database where the sender could still execute
+everything, because the test harness connects as the owner. The question
+"may the role the server actually uses call this" was never asked.
+
+It was found by sending an HTTP request to the deployed route. Fixed, and a
+test now reads every migration and fails on a function that is revoked, granted
+to no role, and called from no other SQL body -- verified by deleting the four
+grants, which names exactly those four.
+
+The cost of missing it: the first real alert would have carried two feedback
+links that both answered 502, and P5 measures whether those links are answered.
+
+## 6. What these four do not establish
 
 - **Not that a mail arrives.** No mail has been sent. The Resend path is the
   one `deliver_alerts` already uses, which is evidence about that function and
@@ -91,7 +113,7 @@ both have to occur for a mail nobody chose.
 - **Nothing about a second project.** §8 step 5 makes widening its own
   decision and this document does not imply it.
 
-## 6. What happens next, in order
+## 7. What happens next, in order
 
 1. One row in `live_alert_allowlist`, and one `alert_rule` with a
    `notify_email`. That is the switch, and it is a database write rather than
