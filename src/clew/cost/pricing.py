@@ -170,7 +170,7 @@ PRICING: dict[str, ModelPricing] = {
         output_per_mtok=5.0,
     ),
     "gemini-1.5-flash": ModelPricing(
-        # Source: historical archived rates
+        # Source: https://ai.google.dev/pricing (historical archived rates)
         # Verified: 2026-08-05 (deprecated in June 2026)
         name="gemini-1.5-flash",
         base_input_per_mtok=0.075,
