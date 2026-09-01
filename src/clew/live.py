@@ -306,6 +306,7 @@ def watch(
     once: bool = False,
     on_finding=None,
     on_sweep=None,
+    on_cycle=None,
     tools: "ResolvedTools | None" = None,
 ) -> None:
     """Poll every project until interrupted. Records; sends nothing.
@@ -313,6 +314,13 @@ def watch(
     One `(project, root)` per codebase, the same split `submit` uses, because
     the hourly cap is per project and a blended root would make one busy
     codebase spend another's allowance.
+
+    `on_cycle` runs once per pass, after the ledger is written. It exists so
+    that delivery is a step over the ledger rather than a branch off
+    `on_finding`: the retry and the first attempt are then the same call, and a
+    send that fails is simply still in the file next pass. This module still
+    cannot send -- the callback is the caller's, and a test parses these
+    imports to keep it that way.
     """
     while True:
         findings = load_findings(findings_path)
@@ -329,6 +337,12 @@ def watch(
                 on_sweep(project, result)
         if len(findings) != before:
             save_findings(findings, findings_path)
+        if on_cycle is not None:
+            # After the write, never before: whatever this pass recorded is on
+            # disk, so a delivery step reads a complete ledger, and a crash
+            # between the two loses nothing that is not offered again next
+            # pass.
+            on_cycle()
         if once:
             return
         time.sleep(max(poll_seconds, SCAN_BACKOFF * elapsed))
