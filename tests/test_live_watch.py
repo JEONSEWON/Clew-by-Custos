@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -930,3 +931,43 @@ def test_the_watcher_still_does_not_reach_the_sender():
     source = pathlib.Path(live.__file__).read_text(encoding="utf-8")
 
     assert "live_send" not in source, "live.py names the sender"
+
+
+# -- what the CLI tells the person registering it --------------------------
+
+def test_the_registration_note_follows_the_flag():
+    """It said "Nothing is sent, and there is no endpoint to send to yet"
+    while WATCH_ARGS already carried --send and the endpoint was deployed.
+
+    A hand-written sentence beside a constant that later changed. Asserted
+    against the real constant, so the claim cannot outlive the flag again.
+    """
+    from clew.__main__ import _registration_note
+    from clew import schedule
+
+    note = _registration_note(schedule.WATCH_ARGS)
+
+    assert "--send" in note, note
+    assert "Nothing is sent" not in note
+    assert "no endpoint" not in note
+
+    off = _registration_note(("watch", "--once", "--auto"))
+    assert "sends nothing" in off
+    assert "--send" not in off
+
+
+def test_the_status_line_counts_what_was_delivered():
+    """`0 sent (shadow)` was a literal in both halves. Findings carry
+    `delivered` now, and the registration can send."""
+    from clew.__main__ import _findings_note
+    from clew import schedule
+
+    findings = [_finding(session="one.jsonl"),
+                replace(_finding(session="two.jsonl"), delivered=True)]
+
+    assert _findings_note(findings, schedule.WATCH_ARGS) == (
+        "2 recorded, 1 delivered (sending)")
+    assert _findings_note(findings, ("watch", "--once")) == (
+        "2 recorded, 1 delivered (shadow)")
+    assert _findings_note([], schedule.WATCH_ARGS) == (
+        "0 recorded, 0 delivered (sending)")
