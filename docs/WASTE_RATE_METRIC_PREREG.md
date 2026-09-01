@@ -1,5 +1,16 @@
 # Waste-rate Metric — Pre-registration
 
+> ⚠️ **Superseded figure (2026-09-01): Corpus A `union_wr_cost` was 0.2903 and is 0.9731.**
+> Every citation of `0.2903` in this document is left exactly as written — a
+> pre-registration is a record of what was believed when it was written, and
+> editing one destroys what it exists to prove. Two defects in opposite
+> directions produced it: a numerator priced as billed against a denominator
+> priced as though no caching existed (7.71× median), and five sessions whose
+> waste cost entered the numerator while their denominator was 0 (55.7% of it).
+> Corrected over the 23 sessions priced on both sides: **145.4490 / 149.4728 =
+> 0.9731**. `union_wr_char` did not move. Corpus B and Corpus C are unaffected.
+> Full account: [`WR_COST_PRICE_BASIS_AMENDMENT_2_RESULTS.md`](WR_COST_PRICE_BASIS_AMENDMENT_2_RESULTS.md).
+
 **Status.** Pre-registration. Per `feedback_rule_8`, this document is
 pushed and PR-opened before any measurement script or reporting code
 lands. Metric definitions, corpora, detector set, and session
@@ -439,7 +450,7 @@ are the record of record.
 
 **A finding not pre-committed but worth noting:**
 
-- `union_wr_char = 0.9930` and `union_wr_cost = 0.2903` **diverge by 3×**. This is expected under the current cost model: WR_char counts UTF-8 bytes uniformly, while WR_cost apportions provider-reported input tokens per-chunk (proportionally by tiktoken length) — chunks that are short but repeat many times contribute a small cost share each time even though they contribute a large char share cumulatively. The two ratios answer different questions and neither is wrong. Pitch material that uses the "%" without qualifier should say which one (`char` is more conservative for "how much of the trace is waste"; `cost` is more accurate for "how much of your bill is waste").
+- `union_wr_char = 0.9930` and `union_wr_cost = 0.2903` **diverge by 3×**. ⚠️ **The divergence and the explanation that follows are superseded (2026-09-01).** It was not the cost model working as intended; it was the two defects in the banner at the top of this file. Corrected, `union_wr_cost = 0.9731` against `union_wr_char = 0.9930` — they do not diverge by 3×. The paragraph is left as written because the divergence it explains away was the defect. This is expected under the current cost model: WR_char counts UTF-8 bytes uniformly, while WR_cost apportions provider-reported input tokens per-chunk (proportionally by tiktoken length) — chunks that are short but repeat many times contribute a small cost share each time even though they contribute a large char share cumulatively. The two ratios answer different questions and neither is wrong. Pitch material that uses the "%" without qualifier should say which one (`char` is more conservative for "how much of the trace is waste"; `cost` is more accurate for "how much of your bill is waste").
 
 ### 13.4 Notes on the scan
 

@@ -1,5 +1,16 @@
 # Cost Table Exgentic Expansion — Pre-registration
 
+> ⚠️ **Superseded figure (2026-09-01): Corpus A `union_wr_cost` was 0.2903 and is 0.9731.**
+> Every citation of `0.2903` in this document is left exactly as written — a
+> pre-registration is a record of what was believed when it was written, and
+> editing one destroys what it exists to prove. Two defects in opposite
+> directions produced it: a numerator priced as billed against a denominator
+> priced as though no caching existed (7.71× median), and five sessions whose
+> waste cost entered the numerator while their denominator was 0 (55.7% of it).
+> Corrected over the 23 sessions priced on both sides: **145.4490 / 149.4728 =
+> 0.9731**. `union_wr_char` did not move. Corpus B and Corpus C are unaffected.
+> Full account: [`WR_COST_PRICE_BASIS_AMENDMENT_2_RESULTS.md`](WR_COST_PRICE_BASIS_AMENDMENT_2_RESULTS.md).
+
 > **Post-amendment note (2026-08-15):** references to Corpus B `union_wr_cost = 0.9189` below reflect the 2026-08-11 measurement and are preserved as historic. The current value is **0.9202** per [WASTE_RATE_METRIC_PREREG §14](WASTE_RATE_METRIC_PREREG.md#14-amendment--union_wr_cost-per-span-attribution-2026-08-15). Corpus C figures in this document (0.9397 / 0.9233 / 0.9332) were re-scanned on 2026-08-15 and are unchanged.
 
 **Status.** Pre-registration. Per `feedback_rule_8`, this document is
