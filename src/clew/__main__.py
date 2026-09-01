@@ -565,10 +565,22 @@ def _watch(args: argparse.Namespace) -> int:
         # reports the error loudly, and that is the right place for it.
         user_tools = None
 
+    # Delivery lives in its own module and is off unless asked. `live.py`
+    # cannot reach the network at all -- a test parses its imports -- so
+    # turning this on is a change here and never a change to the detector.
+    from clew import live_send
+
+    sending = live_send.enabled(args.send)
+
     def on_finding(f) -> None:
         print(f"finding  {f.signal}  {Path(f.session).name}  "
               f"repeat at {f.occurred_at}  "
               f"({f.latency_seconds():.0f}s behind, {f.candidates_seen} candidates)")
+        if not sending:
+            return
+        sent = live_send.send_finding(f, flag=True)
+        print(f"         sent: ok={sent.ok} recorded={sent.recorded} "
+              f"mode={sent.delivery_mode or '-'} {sent.reason}")
 
     def on_sweep(project, result) -> None:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {project}: "
@@ -589,19 +601,28 @@ def _watch(args: argparse.Namespace) -> int:
             tally["capped"] += result.suppressed_hourly
             tally["seconds"] += result.seconds
 
+        def relay(f) -> None:
+            if live_send.enabled(args.send):
+                tally["sent"] += 1 if live_send.send_finding(f, flag=True).ok else 0
+
+        tally["sent"] = 0
         live.watch(targets, embedder, n=_N, phi=_PHI,
                    poll_seconds=args.interval, once=True, on_sweep=count,
-                   tools=user_tools)
+                   on_finding=relay, tools=user_tools)
         total = len(live.load_findings())
         schedule.log_run(
             f"projects={len(targets)} live={tally['live']} "
             f"recorded={tally['recorded']} capped={tally['capped']} "
-            f"findings={total} {tally['seconds']:.1f}s",
+            f"sent={tally['sent']} findings={total} {tally['seconds']:.1f}s",
             live.WATCH_LOG_PATH,
         )
         return 0
 
-    print(f"shadow mode: recording to {live.FINDINGS_PATH}, sending nothing")
+    if sending:
+        print(f"recording to {live.FINDINGS_PATH} and telling the server about "
+              f"each finding. Whether you get mail is the server's decision.")
+    else:
+        print(f"shadow mode: recording to {live.FINDINGS_PATH}, sending nothing")
     try:
         live.watch(
             targets, embedder, n=_N, phi=_PHI,
@@ -828,8 +849,10 @@ def main() -> None:
         description=(
             "The fast path. The analyzer is already on this machine, so a "
             "repeated step is found while the session is still open instead of "
-            "43 minutes after it closes. Shadow mode: findings are written to "
-            "~/.clew/live_findings.json and nothing is sent anywhere. See "
+            "43 minutes after it closes. Findings are written to "
+            "~/.clew/live_findings.json. Nothing leaves this machine unless "
+            "you pass --send, and even then the server only mails projects on "
+            "its allow-list. See "
             + _live_prereg_url()
         ),
     )
@@ -851,6 +874,15 @@ def main() -> None:
                    help="show whether it is registered and what it has found")
     w.add_argument("--every", type=int, default=None, metavar="MIN",
                    help="minutes between passes for --install (default: 1)")
+    w.add_argument("--send", action="store_true", default=None,
+                   help=(
+                       "tell the server about each finding so it can mail you "
+                       "(opt-in). Off by default, and the server refuses "
+                       "anyway unless your project is on its allow-list -- "
+                       "the two halves fail closed independently. What crosses "
+                       "the wire is a session key, a tool name and two counts: "
+                       "never a trace, never a path."
+                   ))
     w.add_argument("--auto", action="store_true",
                    help=argparse.SUPPRESS)
 

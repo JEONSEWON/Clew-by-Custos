@@ -71,6 +71,11 @@ class Finding:
     occurred_at: str      # candidate.start_time -- when the repeat happened
     recorded_at: str      # when this watcher noticed. P2 is the gap.
     candidates_seen: int
+    # The tool the repeat was on. Recorded because the restriction to
+    # idempotent tools makes it the thing a reader most wants to see, and
+    # because it is what a mail can say without naming a file. Defaulted so a
+    # ledger written before this field is still readable.
+    tool: str = ""
     delivered: bool = False
 
     def latency_seconds(self) -> float:
@@ -175,6 +180,7 @@ def scan(
         occurred_at=candidate.start_time.isoformat(),
         recorded_at=now.isoformat(),
         candidates_seen=len(candidates),
+        tool=candidate.agent_or_node_id,
     )
 
 
