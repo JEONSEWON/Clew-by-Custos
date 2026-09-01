@@ -280,7 +280,37 @@ def test_a_session_that_will_not_ingest_does_not_stop_the_others(sessions, monke
     assert [f.session for f in findings] == [str(sessions / "two.jsonl")]
 
 
+def test_the_fixture_clock_is_not_in_the_future():
+    """A T0 ahead of now makes `is_live` true for every `now`.
+
+    `is_live` has no lower bound -- it asks whether the last activity is
+    *recent*, and a session stamped in the future is trivially that. So a
+    future T0 makes any test that reads the real clock pass on a technicality,
+    and keeps doing it until real time catches up.
+
+    f61e4e5 shipped exactly that: T0 was twenty hours ahead when it was
+    written, `test_watch_once_writes_the_ledger` passed, and CI went red at
+    T0 + CLOSE_AFTER with nothing having changed.
+    """
+    assert T0 < datetime.now(timezone.utc), (
+        "T0 is in the future, which makes is_live true regardless of now"
+    )
+
+
 def test_watch_once_writes_the_ledger(sessions, tmp_path):
+    """`watch` reads its own clock, so T0 cannot reach it.
+
+    Every other test here calls `sweep` and passes `now`. `watch` takes no
+    `now` -- it calls `datetime.now(timezone.utc)` itself -- so the sessions
+    have to be stamped from the same clock it uses, or they are stale before
+    the sweep starts and it finds nothing.
+    """
+    stamped = datetime.now(timezone.utc)
+    for name in ("one.jsonl", "two.jsonl"):
+        (sessions / name).write_text(
+            json.dumps({"timestamp": stamped.isoformat()}) + "\n",
+            encoding="utf-8")
+
     path = tmp_path / "live_findings.json"
     live.watch([("p", sessions)], _FixedEmbedder(), 2, 0.5,
                findings_path=path, once=True)
