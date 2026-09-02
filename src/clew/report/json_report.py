@@ -171,10 +171,35 @@ def _waste_rate_block(wr: WasteRateMetric | None) -> dict | None:
         "union_waste_cost": round(wr.union_waste_cost, 8),
         "union_wr_char": _wr_round(wr.union_wr_char),
         "union_wr_cost": _wr_round(wr.union_wr_cost),
+        # `waste_cost` is here because it was computed and then dropped, and
+        # the drop propagated: the storage layer builds its per-detector rows
+        # from `cost_summary.detector_breakdown`, which has no arm for
+        # `duplicate_creation`, so that detector could not be stored and a
+        # dashboard could not show it (PER_DETECTOR_WASTE_COST_AMENDMENT_PREREG
+        # §0). Read from the metric, never recomputed -- a second computation
+        # would be a second answer to a question already answered.
+        #
+        # ★ It buys no larger number. Tool-side cost is structurally zero on
+        # Claude Code traces (tool spans carry no token count and no rate), so
+        # every one of these is 0.0 on that corpus -- measured 0.0 on 15 of 15,
+        # for `repeat` and `redundant_read` as well. What it buys is that a
+        # measured zero stops being indistinguishable from nothing stored.
+        #
+        # Rounded to 8 places like `union_waste_cost` above -- the same kind of
+        # quantity -- rather than with `_wr_round`, which exists for ratios in
+        # [0, 1].
+        #
+        # `float()` first, so the type is stable. `round(0, 8)` returns the int
+        # `0`, and a zero-waste detector would serialize as `0` while a
+        # non-zero one serializes as a float. `union_waste_cost` beside it has
+        # that same wobble and is deliberately left alone: changing it would
+        # alter an existing key's bytes, which §3 of the amendment forbids and
+        # P3 measures.
         "per_detector": {
             d: {"wr_char": _wr_round(wr.per_detector[d].wr_char),
                 "wr_cost": _wr_round(wr.per_detector[d].wr_cost),
-                "waste_bytes": wr.per_detector[d].waste_bytes}
+                "waste_bytes": wr.per_detector[d].waste_bytes,
+                "waste_cost": round(float(wr.per_detector[d].waste_cost), 8)}
             for d in DETECTOR_ORDER
         },
     }
