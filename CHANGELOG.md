@@ -2,6 +2,62 @@
 
 All notable, user-visible changes to `boxdawn` (previously published on PyPI as `clew-custos`). This file tracks releases going forward — earlier versions are not back-filled because the criteria for what qualifies as user-visible were not established at the time.
 
+## 0.5.7 — 2026-09-02 · **보내다 실패하면 잃었고, 볼 게 없으면 아무 말도 안 했다**
+
+세 가지가 사용자에게 닿는다. 셋 다 "이미 알고 있던 것을 말하지 않던" 자리다.
+
+### 실시간 알림이 한 번 실패하면 그 소견을 영구히 잃었다
+
+`on_finding` 은 소견이 처음 기록되는 순간 **딱 한 번** 불렸다. 전송이 실패하면
+다시 시도하지 않았고, 추적하라고 만든 `delivered` 필드는 선언만 있고 아무도
+읽지 않았다.
+
+이제 배달은 **원장을 훑는 단계**다. 매 스윕 뒤 아직 못 보낸 소견 전부를 다시
+내보내고, **첫 시도와 재시도가 같은 호출**이다 — 서로 다르게 동작할 branch 가
+없다. 재시도 주기는 이미 있는 감시 스케줄이라 새로 자는 코드가 없다.
+
+★ **그리고 더 큰 것**: 감시기가 프로젝트별 키를 **버리고** 있었다
+(`(project, root)` 로만 타겟을 만들어서). 그래서 전역 자격증명 파일로 되돌아갔고,
+그 파일이 없으면 **모든 전송이 `no_key`** 였다. 있는 경우가 더 나쁘다 — 서버는
+키로 프로젝트를 판단하므로 여러 프로젝트가 한 키로 보내면 **전부 한 곳에
+기록된다**. 이제 각 소견이 **자기 프로젝트 키로** 나가고, 키가 없는 프로젝트의
+소견은 옆 프로젝트 키로 보내는 대신 **아예 안 보낸다**.
+
+포기 카운터는 없다. 대신 실행 로그에 `pending=N` 과 마지막 이유가 남는다 —
+영구 실패가 1분마다 시끄러운 쪽이, 두 번 조용해지는 쪽보다 낫다.
+
+### 도구 호출 기록이 없는 트레이스가 "낭비 없음"이라고만 말했다
+
+도구 span 을 하나도 못 받으면 도구 반복 탐지기는 볼 것이 없다. 그런데 리포트는
+`no waste detected` 만 찍고 **그 사실을 한 줄도 말하지 않았다.** "볼 게 없었다"와
+"봤는데 깨끗했다"가 같은 문장이었다.
+
+이제 그 경우 이렇게 말한다:
+
+> **Tool mapping coverage for this trace**: no tool calls were recorded, so the
+> tool-repeat detectors had nothing to examine — this is not a finding of zero
+> waste. If this agent does call tools, its instrumentation may not be emitting
+> tool spans.
+
+측정된 프레임워크 셋이 그 상태다 — 계측기가 도구 span 을 안 내보내는
+**Haystack · Google GenAI · Anthropic 직접 SDK**. 도구가 있는 트레이스의 리포트는
+**바이트까지 그대로**다 (실 트레이스 12건 대조).
+
+### 탐지기별 절대 비용이 계산되고 버려졌다
+
+`waste_rate.per_detector` 는 비율만 내보냈다. 절대 비용은 계산된 뒤
+직렬화에서 사라졌고, 그 때문에 저장 계층이 `duplicate_creation` 의 행을 만들 수
+없어 **대시보드가 그 탐지기를 아예 보여줄 수 없었다.**
+
+이제 네 탐지기 모두 `waste_cost` 를 담는다. **숫자가 커지지는 않는다** — Claude
+Code 트레이스에서 도구측 비용은 구조적으로 0이다(도구 span 에 토큰수·요율이
+없다). 사는 것은 **0으로 측정된 것**이 **저장 안 된 것**과 구분된다는 것이다.
+
+### 안 바뀐 것
+
+탐지 로직 · φ · N · 임계값 · 게시된 모든 수치 · 요율표. 그리고 리포트의 다른
+모든 필드 — 새 키를 빼면 JSON 이 이전과 완전히 동일하다(12건 대조).
+
 ## 0.5.6 — 2026-09-01 · **틀린 요금이 "정확함"이라고 적혀 나가고 있었다**
 
 이번 판의 이유는 새 기능이 아니라 **정정**이다. 네 모델의 요율이 틀렸고, 그중
