@@ -489,3 +489,161 @@ def test_coverage_line_c_determinism():
     a = coverage_stats(trace, [])["unrecognized_tool_names"]
     b = coverage_stats(trace, [])["unrecognized_tool_names"]
     assert a == b == ["a-tool", "b-tool"]
+
+
+# ───────────── zero tool spans: COVERAGE_ZERO_TOOL_AMENDMENT_PREREG ─────────
+#
+# Before this, a trace whose tool detectors had nothing to run on said only
+# "no waste detected" -- the banner was skipped rather than adapted, so "we
+# could not look" and "you are clean" were the same report. Three measured
+# frameworks live in that state (Haystack, Google GenAI, the Anthropic direct
+# SDK), because their instrumentors emit no tool span.
+
+def _llm_span(sid: str, t: int, out: str = "answer", tokens: int = 10) -> Span:
+    return Span(
+        trace_id="t", span_id=sid, parent_span_id="root",
+        agent_or_node_id="model", span_kind="llm",
+        start_time=_ts(t), end_time=_ts(t + 1),
+        input_text="ask", output_text=out, token_count=tokens,
+        model="fake", cost_rate=1e-6,
+    )
+
+
+def test_a_trace_with_no_tool_spans_says_so(  # P1
+):
+    """P1. The sentence the amendment exists for, and neither of the two
+    strings that would mean the old shape leaked through."""
+    trace = _trace([_llm_span("l1", 1)])
+    cr = _cascade_result([], [])
+    md = render_markdown(trace, cr, [])
+
+    assert "no tool calls were recorded" in md
+    assert "this is not a finding of zero waste" in md
+    assert "100.0%" not in md, "the vacuous ratio reached the page"
+    assert "0 of 0" not in md, "the counts shape rendered on an empty trace"
+
+
+def test_the_no_tool_line_renders_in_the_waste_detected_branch_too():  # P6
+    """P6. Two render sites, and the amendment's first draft saw one.
+
+    A trace can carry waste and no tool spans at once -- llm-side waste with an
+    uninstrumented tool layer -- and that report goes down the other branch.
+    """
+    a = _llm_span("l1", 1, out="same answer")
+    b = _llm_span("l2", 100, out="same answer")
+    trace = _trace([a, b])
+    wd = WasteDetail(origin=a, candidate=b, cosine=1.0)
+    cr = _cascade_result([a, b], ["l2"])
+    md = render_markdown(trace, cr, [wd])
+
+    assert "wasteful span" in md, "this test needs the waste-detected branch"
+    assert "no tool calls were recorded" in md
+    assert "100.0%" not in md
+
+
+def test_the_with_tools_shape_is_untouched():  # P2
+    """P2. A wording fix that moves a report with tools in it is not a wording
+    fix. The counts form has to come out exactly as before."""
+    s1 = _tool_span("s1", "filesystem-read_file", 1)
+    s2 = _tool_span("s2", "some-unmapped-tool", 2)
+    trace = _trace([s1, s2])
+    md = render_markdown(trace, _cascade_result([s1, s2], []), [])
+
+    assert ("**Tool mapping coverage for this trace**: 1 of 2 tools "
+            "recognized (50.0%).") in md
+    assert "no tool calls were recorded" not in md
+
+
+def test_coverage_stats_json_is_unchanged_by_this(  # P3
+):
+    """P3. `coverage_ratio` stays 1.0 on the empty case, deliberately.
+
+    It is stored, pre-registered, and read by the aggregate. The defect was in
+    the prose, so the fix is in the prose -- and `unique_tools_in_trace == 0`
+    already disambiguates for any machine that looks.
+    """
+    trace = _trace([_llm_span("l1", 1)])
+    cov = json.loads(render_json(trace, _cascade_result([], []), []))[
+        "coverage_stats"]
+
+    assert cov["unique_tools_in_trace"] == 0
+    assert cov["recognized_tools"] == 0
+    assert cov["coverage_ratio"] == 1.0, (
+        "changing this to fix a sentence would move a measurement; the "
+        "amendment §3 says it stays"
+    )
+    assert cov["unrecognized_tool_names"] == []
+
+
+def test_a_json_consumer_can_tell_the_empty_case_apart():  # P3 corollary
+    """The hazard the amendment names rather than fixes: `coverage_ratio` alone
+    reads as 100%. What makes it safe is that the companion count is in the
+    same object, so a renderer has something to guard on."""
+    empty = json.loads(render_json(_trace([_llm_span("l1", 1)]),
+                                   _cascade_result([], []), []))["coverage_stats"]
+    s1 = _tool_span("s1", "filesystem-read_file", 1)
+    full = json.loads(render_json(_trace([s1]), _cascade_result([s1], []),
+                                  []))["coverage_stats"]
+
+    assert empty["coverage_ratio"] == full["coverage_ratio"] == 1.0
+    assert empty["unique_tools_in_trace"] == 0
+    assert full["unique_tools_in_trace"] == 1
+
+
+def test_the_empty_trace_is_not_excluded_from_the_aggregate():  # P4
+    """P4. `excluded_reason` decides which traces leave the published
+    denominators. A trace with llm calls and no tool spans was included before
+    and stays included -- otherwise a wording change would silently move every
+    corpus figure."""
+    from clew.metrics.waste_rate import compute_waste_rate
+
+    class _FixedEmbedder:
+        def embed(self, text: str) -> list[float]:
+            return [1.0, 0.0]
+
+    # `excluded_reason` reads `metadata["llm_calls"]`, not llm spans. That
+    # distinction matters here: a trace with neither is excluded as
+    # `no_llm_calls` and always was, while the frameworks this amendment is
+    # about *do* produce llm_calls -- their instrumentors emit the LLM span and
+    # skip only the tool span. So the case under test is llm_calls present,
+    # tool spans absent.
+    trace = _trace([_llm_span("l1", 1)])
+    trace.metadata["llm_calls"] = [{
+        "input_text": "ask", "input_tokens": 10, "output_tokens": 4,
+        "input_cost_rate": 1e-6, "model": "fake", "span_id": "l1",
+    }]
+    wr = compute_waste_rate(trace, embedder=_FixedEmbedder(), n=2, phi=0.5)
+
+    assert wr.excluded_reason is None, (
+        f"a no-tool trace became excluded: {wr.excluded_reason}"
+    )
+    assert wr.total_input_bytes > 0
+
+
+def test_both_shapes_come_from_one_function():
+    """The two render sites must not be able to disagree. If a third site is
+    added, it gets both shapes by calling this."""
+    from clew.report.markdown import _coverage_line_a
+
+    empty = _coverage_line_a({"unique_tools_in_trace": 0, "recognized_tools": 0,
+                              "coverage_ratio": 1.0})
+    full = _coverage_line_a({"unique_tools_in_trace": 2, "recognized_tools": 1,
+                             "coverage_ratio": 0.5})
+
+    assert "no tool calls were recorded" in empty
+    assert "1 of 2 tools recognized (50.0%)" in full
+
+
+def test_the_stale_comment_is_gone():
+    """The comment above Line A said it was "ALWAYS rendered" while a guard
+    below it skipped the empty case. That mismatch is what made the first draft
+    of the amendment assert a sentence we never shipped -- read twice, run
+    zero times. It must not be left describing the new code either."""
+    import inspect
+
+    import clew.report.markdown as md_mod
+
+    source = inspect.getsource(md_mod)
+    assert "ALWAYS rendered" not in source, (
+        "the comment that misled a reader once is still there"
+    )
