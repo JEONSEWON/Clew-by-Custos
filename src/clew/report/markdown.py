@@ -115,6 +115,37 @@ _COVERAGE_LINE_A = (
     "**Tool mapping coverage for this trace**: {recognized} of "
     "{unique_in_trace} tools recognized ({pct:.1%})."
 )
+# COVERAGE_ZERO_TOOL_AMENDMENT_PREREG §4 (frozen). Rendered instead of Line A
+# when the trace has no tool spans at all. Before this the banner was skipped
+# in that case, so a report whose tool detectors had nothing to run on said
+# only "no waste detected" -- and "we could not look" read as "you are clean".
+#
+# `coverage_ratio` is `1.0` when there are no tools, so the skip was right and
+# the substitution is what was missing. The stored value is deliberately left
+# alone (§3): moving a measurement to fix a sentence is the wrong direction.
+_COVERAGE_LINE_A_NO_TOOLS = (
+    "**Tool mapping coverage for this trace**: no tool calls were recorded, "
+    "so the tool-repeat detectors had nothing to examine — this is not a "
+    "finding of zero waste. If this agent does call tools, its "
+    "instrumentation may not be emitting tool spans."
+)
+
+
+def _coverage_line_a(cov: dict) -> str:
+    """Line A in whichever of its two shapes this trace calls for.
+
+    One function because there are two render sites (the waste-0 branch and the
+    waste-detected branch) and the first draft of the amendment noticed only
+    one. A trace can have waste and no tool spans -- llm-side waste with an
+    uninstrumented tool layer -- so both sites need both shapes.
+    """
+    if cov["unique_tools_in_trace"] == 0:
+        return _COVERAGE_LINE_A_NO_TOOLS
+    return _COVERAGE_LINE_A.format(
+        recognized=cov["recognized_tools"],
+        unique_in_trace=cov["unique_tools_in_trace"],
+        pct=cov["coverage_ratio"],
+    )
 _COVERAGE_LINE_B = (
     "**Idempotent pairs with unrecognized tool in interval**: "
     "{pairs_affected} of {idempotent_total}."
@@ -769,16 +800,17 @@ def render_markdown(
         if wr_line is not None:
             lines.append(wr_line)
         lines.append("")
-        # Coverage line A — ALWAYS rendered, including waste-0.
+        # Coverage line A — always rendered, including waste-0, and in two
+        # shapes: the counts when there are tools, and the no-tools sentence
+        # when there are none (COVERAGE_ZERO_TOOL_AMENDMENT_PREREG §4).
+        #
         # PREREG §1.1 Q2 rationale: a low-coverage user seeing "no waste"
         # alone reads it as "we're clean" while Boxdawn is blind to most of
         # their tool inventory. False reassurance is worse than false alarm.
+        # Zero tools is the extreme of that, and used to be the one case the
+        # banner was silent about.
+        lines.append("- " + _coverage_line_a(cov))
         if cov["unique_tools_in_trace"] > 0:
-            lines.append("- " + _COVERAGE_LINE_A.format(
-                recognized=cov["recognized_tools"],
-                unique_in_trace=cov["unique_tools_in_trace"],
-                pct=cov["coverage_ratio"],
-            ))
             provenance = _format_coverage_provenance(cov)
             if provenance is not None:
                 for line in provenance:
@@ -829,12 +861,8 @@ def render_markdown(
         # the header level would over-signal that the whole report is uncertain,
         # training readers to ignore it. So the banner sits here — right before
         # the Redundant-invocation candidates section it actually qualifies.
+        lines.append("- " + _coverage_line_a(cov))
         if cov["unique_tools_in_trace"] > 0:
-            lines.append("- " + _COVERAGE_LINE_A.format(
-                recognized=cov["recognized_tools"],
-                unique_in_trace=cov["unique_tools_in_trace"],
-                pct=cov["coverage_ratio"],
-            ))
             provenance = _format_coverage_provenance(cov)
             if provenance is not None:
                 for line in provenance:
