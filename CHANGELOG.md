@@ -2,6 +2,101 @@
 
 All notable, user-visible changes to `boxdawn` (previously published on PyPI as `clew-custos`). This file tracks releases going forward — earlier versions are not back-filled because the criteria for what qualifies as user-visible were not established at the time.
 
+## 0.5.10 — 2026-09-04 · **Mac 과 Linux 에서는 자동 수집이 아예 없었다**
+
+`boxdawn submit --install` 은 Windows 에서만 실제로 등록됐다. macOS·Linux 에서는
+붙여넣을 줄을 출력하고 **0 으로 종료**했다. 감시 사슬이 그 기계에서는 사람이
+스케줄러 일을 대신 하지 않으면 시작조차 못 했다.
+
+### 추가 — 세 플랫폼 모두 실제 등록
+
+| 플랫폼 | 등록 | **읽어서 확인** |
+|---|---|---|
+| Windows | `schtasks /Create /XML` | `schtasks /Query` |
+| Linux | `crontab -` (태스크별 펜스 블록) | `crontab -l` |
+| macOS | `launchctl load -w` | `launchctl list <label>` |
+
+`schedule.py` 는 오랫동안 그 둘을 거부했고 이유를 스스로 적어뒀다: *이 파일은 그
+둘을 테스트할 수 없고, 조용히 실패하는 등록은 없는 것보다 나쁘다.* **위험 진단은
+옳았고 처방이 틀렸다.** 처방은 거부가 아니라 **등록한 다음 읽어서 확인하는 것**이다.
+확인이 통과할 때만 성공을 보고하고, 실패하면 **예전과 똑같은 안내문**을 준다 —
+최악의 경우가 이전 동작과 같으므로 조용한 성공이 도달 불가능하다.
+
+실제 Linux 에서 확인했다(WSL Ubuntu 24.04, 진짜 `crontab`, 29/29): 설치 · 읽기확인 ·
+재설치가 교체(중복 아님) · 두 태스크 공존 · uninstall 이 자기 블록만 지움 ·
+**사용자가 직접 쓴 crontab 줄이 전 과정에서 보존됨** · 표현 불가능한 간격 거부.
+
+macOS 는 여기 하드웨어가 없다. 명령은 기록된 `launchctl` 동작으로 시험했고, 실제
+사용자를 보호하는 것은 읽기확인이다 — 그 macOS 버전에서 명령이 틀리면 **안내문을
+받고, 있다고 믿는 에이전트를 받지 않는다.** `RunAtLoad` 는 false 라 에이전트를
+올리는 것이 백필 스윕을 발동시키지 않는다.
+
+### 수정 — 두 결함
+
+- **`*/90` 은 "90분마다"가 아니라 cron 이 거부하는 줄이다.** 옛 코드는 어떤 N 에도
+  `*/{N}` 을 찍었다. 이제 정시 단위는 시 필드(`0 */2 * * *`)를 쓰고, 표현 불가능한
+  간격은 **아무것도 쓰지 않고** 이름을 대며 거부한다.
+- 🔴 **`is_registered()` 가 그 두 플랫폼에서 `None` 을 돌려줬고, CLI 는 `None` 을
+  "종료코드로 판정하지 말라"로 읽는다.** 그래서 Mac 에서 `--install` 이 **제출
+  워터마크를 찍고 0 으로 종료**했다 — 등록된 것이 없는데. 그 워터마크는 이후 백필을
+  억제하므로, 사용자가 수집되고 있다고 믿은 구간이 조용히 비었다. 이제 세 플랫폼
+  모두 진짜 boolean 을 돌려주고, `None` 은 네 번째 플랫폼을 뜻한다.
+
+### 변경 — 한 탐지기가 두 이름으로 독자에게 닿고 있었다
+
+리포트의 비용 블록은 `provable_duplicate`, 낭비율 줄은 `repeat` 이라 불렀다. 같은
+cascade 탐지기다. 한쪽에서 세 줄을 세고 다른 쪽에서 "4 detectors" 를 읽은 독자는
+둘을 맞춰볼 방법이 없었다.
+
+```
+전:  - provable_duplicate: $0.000000
+후:  - repeat: $0.000000
+```
+
+**표시 이름만 통일했다. JSON 키는 일부러 그대로다** — `cost_summary.detector_breakdown`
+은 웹 앱과 저장 계층의 파싱 계약이고, 라벨을 정리하려고 필드명을 바꾸면 둘 다 깨진다.
+그래서 행이 `repeat` 이라 말하고 각주가 키를 밝힌다(그 반대가 아니다).
+
+★ 읽기 문제만이 아니었다: 저장 계층이 한 블록을 다른 블록의 이름으로 읽어
+`provable_duplicate.waste_bytes` 가 **2026-08-27 이전에 저장된 모든 행에서 NULL**
+이었다(cloud 쪽에서 이미 수정됨, 전방향).
+
+### 변경 — 설치 명령은 `pip install boxdawn` 하나다
+
+`[detect]` extra 가 **패키지 0개**를 해석한다는 것을 깨끗한 venv 두 개로 확인했다
+(각 14 패키지 · `pip freeze` diff **0줄**). 그래서 우리가 출력하는 모든 명령에서 뺐다 —
+README · CLI 오류문 · CI · ARCHITECTURE. **extra 정의는 남긴다**: 지우면 수개월간
+게시된 README·PyPI 페이지·고정된 requirements 를 따라온 사람의 `boxdawn[detect]` 에
+pip 이 경고를 띄운다. 빈 채로 두면 그 명령이 조용히 계속 동작한다.
+
+CLI 오류문은 장황한 게 아니라 **틀렸다**: *"detect dependencies missing. Run:
+pip install 'boxdawn[detect]'"* 는 그 extra 가 아무것도 설치하지 않으므로 그 실패를
+고칠 수 없다. 없는 것은 base 의존성이라 재설치를 안내한다.
+
+### 수정 — README 가 거짓을 두 곳에서 말하고 있었다
+
+`boxdawn submit` 을 *"릴리스에 아직 없다 — 0.5.3 이후 착지"* 라고 적고 있었다.
+**0.5.4(2026-08-28)에 출하됐고** 그때부터 모든 릴리스에 있다. 추론이 아니라 실행으로
+확인했다: PyPI 0.5.9 을 깨끗한 venv 에 깔고 `boxdawn submit --help` 가 답한다.
+
+### 수정 — 0 인 `waste_cost` 는 float 다
+
+`sum({}.values())` 가 int `0` 을 돌려주므로, 아무것도 플래그하지 않은 탐지기가
+`float` 로 선언된 필드로 int 를 돌려줬다. **직렬화 바이트는 무변**이고 추정이 아니라
+대조했다 — 제로 트레이스와 1.46MB 실세션 둘 다 byte-identical.
+🔴 그 옆 주석이 `union_waste_cost` 도 "같은 흔들림"이 있다고 적고 있었는데 **아니다**:
+`span_cost` 가 `0.0` 으로 시작하므로 모든 경로에서 float 다. 이월 항목이 틀린 필드에
+적혀 있었다.
+
+### 사용자에게 닿지 않는 것
+
+FM-1.1 결과 문서(제약 18/40 · 위반 0건 — **양성 표본이 비어 축을 세울 수 없었다**)와
+FM-2.2 사전등록. 둘 다 문서이며 코드는 없다. FM-2.2 는 축 후보 6개가 연달아 기각된
+뒤 **양쪽 모집단을 먼저 세고** 고른 첫 축이다(MAST-Data 265/1,642 · 실제 세션에서
+되묻기 144턴 8.10% · 후보 618턴).
+
+1,012 passed / 1 xfailed (`PYTHONPATH=src` 필수).
+
 ## 0.5.9 — 2026-09-03 · **판정기가 무엇을 요청받았는지 보지 못하고 있었다**
 
 하나가 사용자에게 닿는다. 판정 축이 보는 화면에 **사용자가 무엇을 요청했는지**가
