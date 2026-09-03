@@ -2,6 +2,67 @@
 
 All notable, user-visible changes to `boxdawn` (previously published on PyPI as `clew-custos`). This file tracks releases going forward — earlier versions are not back-filled because the criteria for what qualifies as user-visible were not established at the time.
 
+## 0.5.8 — 2026-09-03 · **판정은 켜져 있었고, 부품이 없었다**
+
+두 가지가 사용자에게 닿는다. 하나는 **오늘 새로 설치한 사람의 판정이 조용히
+죽어 있던 것**이고, 하나는 리포트가 같은 말을 두 뜻으로 쓰던 것이다.
+
+### 새로 설치하면 판정이 조용히 안 돌았다
+
+`[judge]` extra 가 `anthropic>=0.30` 이었고 **위쪽 한계가 없었다.** `anthropic`
+1.x 가 `Messages.create()` 에서 `temperature` 를 없앴고, 판정기 둘 다
+`temperature=0.0` 을 넘긴다. 그래서 깨끗한 설치는 1.x 를 받아 **모든 판정이**
+이렇게 돌아왔다:
+
+```
+verification: {enabled: true, judged: false, judge_calls: 1, judge_cost_usd: 0.0,
+               not_judged_reason: "the judge did not answer"}
+```
+
+★ **이 실패는 조용한 종류다.** 판정기는 429 가 아닌 예외를 `parse_failed` 로
+바꾸고, 축은 그걸 "판정 못 했음"으로 보고한다 — 화면에서 **"판정할 게 없었다"와
+구분되지 않는다.** 2026-09-03 라이브 컨테이너에서 확인: `anthropic 1.3.0`,
+`TypeError: Messages.create() got an unexpected keyword argument 'temperature'`.
+
+그리고 **우리 코드는 한 줄도 안 바뀌었다.** 바뀐 것은 *언제 설치했는가* 하나다.
+개발 기계는 몇 달 전에 해석된 0.109.2 를 갖고 있어서 같은 트레이스를 정상
+판정했다. CI 초록불이 이 사고를 증명해주지 못하는 모양이다.
+
+이제 `anthropic>=0.30,<1` 이다. 올리는 쪽이 아니라 **묶는 쪽**을 골랐다: 0.x 는
+게시된 정밀도 수치 전부가 측정된 버전이고, `temperature=0` 은 리포트 문면에
+적혀 있고 판정 사전등록 §3 이 동결한 값이다. 1.x 로 가는 것은 업그레이드가
+아니라 개정이다.
+
+가드는 **핀이 아니라 이유에 걸려 있다** — 코드가 `temperature` 를 넘기는 동안만
+발동한다. 나중에 판정기가 이전하면 한계는 다시 열려도 되고, 테스트를 고쳐야
+옳은 일을 할 수 있는 가드는 읽지 않고 고쳐진다.
+
+### 리포트가 "탐지기별"을 두 뜻으로 썼다
+
+`Breakdown by detector:` 아래 세 줄을 세고 나면 그 아래 절이 **"union of 4
+detectors"** 라고 말했고, 둘을 맞춰볼 방법이 리포트 안에 없었다. 두 블록은 서로
+다른 자료구조에서 오고 **멤버가 실제로 다르다**:
+
+| 블록 | 멤버 |
+|---|---|
+| 비용 귀속 | `provable_duplicate` · `context_resend` · `redundant_read` · `semantic_duplicate` |
+| 낭비율 합집합 | `repeat` · `context_resend` · `redundant_read` · `duplicate_creation` |
+
+한 탐지기가 두 이름을 쓰고(`provable_duplicate` = `repeat`, 둘 다 cascade), 네
+번째 멤버는 아예 다른 탐지기다. 이 결함이 발견된 트레이스에서 빠진 행은
+`semantic_duplicate` — 돌지 않은 LLM 판정기였다.
+
+★ 읽기 문제만이 아니었다. 저장 계층이 한 블록을 다른 블록의 이름으로 읽어
+**저장된 모든 트레이스에서 `provable_duplicate` 의 바이트가 비어 있었고**, 그건
+화면에서 "중복 바이트 없음"과 구분되지 않는다.
+
+이제 비용 블록은 자기 넷을 이름으로 밝히고, **돌지 않은 탐지기는 행이 없다 —
+여기서의 부재는 측정된 0이 아니다** 를 말하고, 다른 집합을 가리킨다. 낭비율
+한 줄은 맨 "4 detectors" 대신 자기 넷이 어디 나열돼 있는지를 말한다.
+
+문면만이다. 이름 통일은 동결된 사전등록 집합의 멤버를 옮기고 저장 어휘와
+대시보드까지 닿으므로 **별개 트랙**이다.
+
 ## 0.5.7 — 2026-09-02 · **보내다 실패하면 잃었고, 볼 게 없으면 아무 말도 안 했다**
 
 세 가지가 사용자에게 닿는다. 셋 다 "이미 알고 있던 것을 말하지 않던" 자리다.
