@@ -228,8 +228,12 @@ def _analyze(args: argparse.Namespace) -> int:
         from clew.detect.cascade import cascade
         from clew.detect.semantic import Embedder
     except ImportError as e:
+        # Not "install the [detect] extra" any more: that extra resolves to
+        # zero packages, so it could never have fixed this. What is missing
+        # here is a base dependency, which a reinstall of the package itself
+        # is what actually repairs.
         print(
-            f"Error: detect dependencies missing. Run: pip install 'boxdawn[detect]'\n{e}",
+            f"Error: a base dependency is missing. Run: pip install --force-reinstall boxdawn\n{e}",
             file=sys.stderr,
         )
         return 1

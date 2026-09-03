@@ -11,7 +11,7 @@ appeared five times across two sessions: a guard that passed while the thing it
 guarded was gone. See `feedback_assert_on_shipped_artifact`.
 
 ★ The collected count is not one number, and the first version of this file
-failed CI by assuming it was. CI installs `.[detect,dev]`, which leaves
+failed CI by assuming it was. CI installs `.[dev]`, which leaves
 `opentelemetry` out (it lives in `[adapter]`), and two modules skip at import
 without it. So CI collects 819 where a full local install collects 838. The
 floor is per-environment for that reason, keyed on the one dependency that
@@ -37,7 +37,7 @@ import pytest
 # skipped entry of its own while its tests are not collected at all. That makes
 # these margins slightly more conservative than they look, which is the right
 # direction for a floor.
-FLOOR_WITHOUT_ADAPTER = 844        # 851 collected on a clean `.[detect,dev]`
+FLOOR_WITHOUT_ADAPTER = 844        # 851 collected on a clean `.[dev]`
 FLOOR_WITH_ADAPTER = 863           # 870 collected with the adapter extra
 
 

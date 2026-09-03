@@ -15,8 +15,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install boxdawn with detect extras (cold, no cache)
-        run: pip install ".[detect]"
+      - name: Install boxdawn the way the README says (cold, no cache)
+        run: pip install .
       - name: Run boxdawn analyze without HF token
         env:
           HF_TOKEN: ""
@@ -37,8 +37,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install with dev + detect
-        run: pip install ".[detect,dev]"
+      - name: Install with dev extra
+        run: pip install ".[dev]"
       # Lint before the suite: a syntax error or an undefined name is cheaper to
       # read from ruff than from a collection error six minutes in. `F` and `E9`
       # only -- the selection and the reasons for what is left out are in
@@ -65,8 +65,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install with dev + detect
-        run: pip install ".[detect,dev]"
+      - name: Install with dev extra
+        run: pip install ".[dev]"
       - name: Lint (ruff)
         run: ruff check
       - name: Run pytest
