@@ -558,6 +558,24 @@ def _render_cost_summary(summary: TraceCostSummary) -> list[str]:
         lines.append("Breakdown by detector:")
         for detector, cost in summary.detector_breakdown.items():
             lines.append(f"  - {detector}: ${cost:.6f}")
+        # Two blocks in this report say "per detector" and they are not the
+        # same four. This one attributes cost across `provable_duplicate`,
+        # `context_resend`, `redundant_read` and `semantic_duplicate`; the
+        # waste-rate line below unions `repeat` (the same cascade family
+        # under its other name), `context_resend`, `redundant_read` and
+        # `duplicate_creation`. Left unsaid, a reader counts three rows here
+        # against "4 detectors" there and has no way to reconcile them --
+        # and the storage layer already read one block with the other's
+        # names, which is why every stored `provable_duplicate` carried no
+        # byte count at all.
+        lines.append(
+            "  _Cost attribution across four detectors: provable_duplicate, "
+            "context_resend, redundant_read, semantic_duplicate. A detector "
+            "that did not run has no row -- absence here is not a measured "
+            "zero. Not the same four as the waste-rate line, which unions "
+            "repeat (this block's provable_duplicate), context_resend, "
+            "redundant_read and duplicate_creation._"
+        )
     lines.append("")
     return lines
 
@@ -650,11 +668,16 @@ def _waste_rate_line(wr: WasteRateMetric | None) -> str | None:
         return None
     pct_char = f"{wr.union_wr_char * 100:.1f}%"
     if wr.union_wr_cost is None:
-        return f"- **Waste rate (bytes)**: {pct_char} of input bytes flagged (union of 4 detectors)."
+        return (
+            f"- **Waste rate (bytes)**: {pct_char} of input bytes flagged "
+            "(union of the 4 waste-rate detectors; see "
+            "`waste_rate.per_detector`)."
+        )
     pct_cost = f"{wr.union_wr_cost * 100:.1f}%"
     return (
         f"- **Waste rate**: {pct_char} of input bytes / {pct_cost} of input cost "
-        f"flagged as waste (union of 4 detectors)."
+        f"flagged as waste (union of the 4 waste-rate detectors; see "
+        f"`waste_rate.per_detector`)."
     )
 
 
