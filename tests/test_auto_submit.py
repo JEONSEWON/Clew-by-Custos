@@ -346,3 +346,171 @@ def test_a_send_records_how_far_it_reached(tmp_path, monkeypatch):
                pace_seconds=0, out=lambda *a: None)
     entry = next(iter(json.loads(led.read_text(encoding="utf-8")).values()))
     assert entry["sent_through"] == last.isoformat()
+
+
+# ── registering on macOS and Linux, and refusing to claim it worked ─────────
+#
+# These three platforms used to be two: Windows registered, and macOS/Linux
+# were handed a line to paste. The reason recorded in `schedule.py` was that a
+# registration which silently fails to take is worse than none -- right about
+# the danger, wrong about the remedy. The remedy here is that every
+# registration is read back, and `install` reports success only when the query
+# afterwards confirms it.
+#
+# The cron path was verified end to end against the real `crontab` binary on
+# WSL Ubuntu 24.04 (29/29, including preserving a line the user wrote). What
+# these tests add is the half that machine cannot show: the failure paths, and
+# macOS, where there is no hardware here to run `launchctl` on.
+
+
+class _FakeRun:
+    """Records argv and answers from a table, so a platform can be simulated."""
+
+    def __init__(self, answers):
+        self.answers = answers
+        self.calls = []
+
+    def __call__(self, argv, **kwargs):
+        self.calls.append((tuple(argv), kwargs.get("input")))
+        for prefix, result in self.answers:
+            if tuple(argv[:len(prefix)]) == tuple(prefix):
+                return result
+        raise AssertionError(f"unexpected command: {argv}")
+
+
+def _proc(returncode=0, stdout="", stderr=""):
+    import subprocess as _sp
+    return _sp.CompletedProcess(args=[], returncode=returncode,
+                                stdout=stdout, stderr=stderr)
+
+
+def test_cron_install_that_does_not_take_reports_failure_not_success(monkeypatch):
+    """The whole reason auto-registration is allowed here.
+
+    `crontab -` exits 0 and the line is not in `crontab -l` afterwards. Before
+    the read-back this returned success and the user believed a task existed.
+    """
+    monkeypatch.setattr(schedule.sys, "platform", "linux")
+    fake = _FakeRun([
+        (["crontab", "-l"], _proc(0, stdout="")),      # empty, before and after
+        (["crontab", "-"], _proc(0)),                  # write "succeeds"
+    ])
+    monkeypatch.setattr(schedule.subprocess, "run", fake)
+
+    ok, message = schedule.install(15)
+    assert ok is False
+    assert "not in `crontab -l`" in message
+    # and the user is left where they were: with the line to paste
+    assert "crontab -e" in message
+    assert "*/15 * * * *" in message
+
+
+def test_cron_refuses_an_interval_it_cannot_express(monkeypatch):
+    """`*/90` is not "every 90 minutes", it is a line cron rejects. Writing it
+    and letting cron fail is the silent failure in a different costume."""
+    monkeypatch.setattr(schedule.sys, "platform", "linux")
+    calls = _FakeRun([])
+    monkeypatch.setattr(schedule.subprocess, "run", calls)
+
+    ok, message = schedule.install(90)
+    assert ok is False
+    assert "90" in message and "Nothing was installed" in message
+    assert calls.calls == [], "nothing may be written when the interval is refused"
+
+
+def test_cron_expression_covers_minutes_and_whole_hours():
+    assert schedule._cron_expression(1) == "*/1 * * * *"
+    assert schedule._cron_expression(15) == "*/15 * * * *"
+    assert schedule._cron_expression(59) == "*/59 * * * *"
+    assert schedule._cron_expression(60) == "0 */1 * * *"
+    assert schedule._cron_expression(120) == "0 */2 * * *"
+    assert schedule._cron_expression(90) is None
+    assert schedule._cron_expression(1440) is None      # a day is not */24
+    assert schedule._cron_expression(0) is None
+
+
+def test_one_task_block_does_not_eat_the_other_or_the_users_lines():
+    """Two registrations coexist and neither touches a line somebody wrote."""
+    mine = "0 3 * * * /usr/bin/backup"
+    text = (
+        f"{mine}\n"
+        "# >>> boxdawn BoxdawnSubmit >>>\n"
+        "*/15 * * * * python -m clew submit --auto\n"
+        "# <<< boxdawn BoxdawnSubmit <<<\n"
+        "# >>> boxdawn BoxdawnWatch >>>\n"
+        "*/1 * * * * python -m clew watch --once --auto --send\n"
+        "# <<< boxdawn BoxdawnWatch <<<\n"
+    )
+    left = schedule._strip_block(text, schedule.WATCH_TASK_NAME)
+    assert mine in left
+    assert "BoxdawnSubmit" in left
+    assert "BoxdawnWatch" not in left
+    assert "watch --once" not in left
+
+
+def test_an_empty_crontab_is_a_first_install_not_an_error(monkeypatch):
+    """`crontab -l` exits non-zero with "no crontab for <user>" when there is
+    none. Reading that as an error is how a first install would fail."""
+    monkeypatch.setattr(schedule.sys, "platform", "linux")
+    monkeypatch.setattr(schedule.subprocess, "run", _FakeRun([
+        (["crontab", "-l"], _proc(1, stderr="no crontab for jeon")),
+    ]))
+    assert schedule._read_crontab() == ""
+
+
+def test_launchd_install_that_does_not_load_hands_back_the_command(monkeypatch, tmp_path):
+    """No macOS here to run `launchctl` on, so the protection is the read-back:
+    a wrong command for someone's macOS version leaves them with instructions,
+    never with an agent they believe is loaded."""
+    monkeypatch.setattr(schedule.sys, "platform", "darwin")
+    monkeypatch.setattr(schedule.Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setattr(schedule.subprocess, "run", _FakeRun([
+        (["launchctl", "unload"], _proc(1)),
+        (["launchctl", "load"], _proc(0)),
+        (["launchctl", "list"], _proc(1, stderr="Could not find service")),
+    ]))
+
+    ok, message = schedule.install(15)
+    assert ok is False
+    assert "launchctl list com.boxdawn.submit" in message
+    assert "launchctl load -w" in message
+    # the plist is still written, so pasting the load command is enough
+    assert (tmp_path / "Library" / "LaunchAgents"
+            / "com.boxdawn.submit.plist").exists()
+
+
+def test_launchd_plist_names_this_interpreter_and_the_interval(monkeypatch, tmp_path):
+    monkeypatch.setattr(schedule.Path, "home", staticmethod(lambda: tmp_path))
+    plist = schedule._launchd_plist(15, schedule.SUBMIT_ARGS)
+    assert "<key>Label</key><string>com.boxdawn.submit</string>" in plist
+    assert "<key>StartInterval</key><integer>900</integer>" in plist
+    assert f"<string>{sys.executable}</string>" in plist or "python" in plist
+    assert "<string>submit</string>" in plist and "<string>--auto</string>" in plist
+    # RunAtLoad off: loading the agent must not fire a backfill sweep at once
+    assert "<key>RunAtLoad</key><false/>" in plist
+
+
+def test_the_watch_agent_gets_its_own_label(monkeypatch, tmp_path):
+    """Both registrations on one Mac, or the second overwrites the first."""
+    assert schedule._launchd_label(schedule.SUBMIT_ARGS) == "com.boxdawn.submit"
+    assert schedule._launchd_label(schedule.WATCH_ARGS) == "com.boxdawn.watch"
+
+
+def test_is_registered_is_no_longer_unknown_on_mac_and_linux(monkeypatch):
+    """It returned None for both, and the CLI reads None as "do not judge the
+    exit code" -- which is why `--install` there set the submission watermark
+    and exited 0 while nothing had been scheduled."""
+    monkeypatch.setattr(schedule.sys, "platform", "linux")
+    monkeypatch.setattr(schedule.subprocess, "run", _FakeRun([
+        (["crontab", "-l"], _proc(0, stdout="# >>> boxdawn BoxdawnSubmit >>>\n")),
+    ]))
+    assert schedule.is_registered() is True
+
+    monkeypatch.setattr(schedule.sys, "platform", "darwin")
+    monkeypatch.setattr(schedule.subprocess, "run", _FakeRun([
+        (["launchctl", "list"], _proc(0, stdout="{}")),
+    ]))
+    assert schedule.is_registered() is True
+
+    monkeypatch.setattr(schedule.sys, "platform", "aix")
+    assert schedule.is_registered() is None

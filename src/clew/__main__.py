@@ -697,7 +697,7 @@ def _watch_schedule(args: argparse.Namespace, schedule, live) -> int:
     name = schedule.WATCH_TASK_NAME
 
     if args.status:
-        registered = schedule.is_registered(name)
+        registered = schedule.is_registered(name, schedule.WATCH_ARGS)
         where = {True: "registered", False: "not registered",
                  None: "unknown on this platform"}[registered]
         print(f"scheduler   : {where} ({name})")
@@ -714,9 +714,9 @@ def _watch_schedule(args: argparse.Namespace, schedule, live) -> int:
         return 0
 
     if args.uninstall:
-        ok, message = schedule.uninstall(name)
+        ok, message = schedule.uninstall(name, schedule.WATCH_ARGS)
         print(message)
-        return 0 if ok or schedule.is_registered(name) is None else 1
+        return 0 if ok or schedule.is_registered(name, schedule.WATCH_ARGS) is None else 1
 
     every = args.every or schedule.WATCH_EVERY_MINUTES
     ok, message = schedule.install(
@@ -726,7 +726,7 @@ def _watch_schedule(args: argparse.Namespace, schedule, live) -> int:
         time_limit="PT10M",
     )
     print(message)
-    if ok or schedule.is_registered(name) is None:
+    if ok or schedule.is_registered(name, schedule.WATCH_ARGS) is None:
         print(_registration_note(schedule.WATCH_ARGS))
         return 0
     return 1
