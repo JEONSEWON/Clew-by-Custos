@@ -71,7 +71,20 @@ semantic = [
 judge = [
     # LLM-as-judge Semantic Duplicate detector (opt-in). Only needed
     # when CLEW_ENABLE_LLM_JUDGE=1 or --llm-judge is passed.
-    "anthropic>=0.30",
+    #
+    # Upper bound, not decoration. `anthropic` 1.x removed `temperature`
+    # from `Messages.create()`, and both judges pass `temperature=0.0`
+    # (verification_judge.py, anthropic_client.py). Without the bound a
+    # clean install resolves 1.x and every judged trace comes back
+    # `not_judged: "the judge did not answer"` -- an error path that reads
+    # exactly like "there was nothing to judge". Measured on a live Modal
+    # container 2026-09-03: anthropic 1.3.0, TypeError on the kwarg.
+    #
+    # 0.x is also the version every published precision figure was measured
+    # on, and `temperature=0` is stated in the shipped report text and
+    # frozen by the judge prereg §3. Moving to 1.x is an amendment, not an
+    # upgrade.
+    "anthropic>=0.30,<1",
 ]
 dev = [
     "pytest>=8.0",
