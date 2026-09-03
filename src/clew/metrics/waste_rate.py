@@ -180,7 +180,7 @@ def _repeat_metric(
         tokens = s.token_count or 0
         rate = s.cost_rate or 0.0
         waste_cost_by_span[sid] = tokens * rate
-    waste_cost = sum(waste_cost_by_span.values())
+    waste_cost = sum(waste_cost_by_span.values(), 0.0)
     return PerDetectorMetric(
         detector="repeat",
         waste_bytes=waste_bytes,
@@ -252,7 +252,7 @@ def _redundant_read_metric(
         waste_cost_by_span[ev.read_span_id] = (
             waste_cost_by_span.get(ev.read_span_id, 0.0) + float(ev.waste_cost)
         )
-    waste_cost = sum(waste_cost_by_span.values())
+    waste_cost = sum(waste_cost_by_span.values(), 0.0)
     return PerDetectorMetric(
         detector="redundant_read",
         waste_bytes=waste_bytes,
@@ -292,7 +292,7 @@ def _duplicate_creation_metric(
         tokens = s.token_count or 0
         rate = s.cost_rate or 0.0
         waste_cost_by_span[sid] = tokens * rate
-    waste_cost = sum(waste_cost_by_span.values())
+    waste_cost = sum(waste_cost_by_span.values(), 0.0)
     return PerDetectorMetric(
         detector="duplicate_creation",
         waste_bytes=waste_bytes,

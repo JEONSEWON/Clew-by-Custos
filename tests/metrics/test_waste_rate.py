@@ -660,3 +660,27 @@ def test_a_priced_call_with_tiers_is_still_priced_by_them(embedder: Embedder):
     billed = (1_000 * pricing.base_input_per_mtok
               + 9_000 * pricing.cache_read_per_mtok) / 1_000_000.0
     assert cost == pytest.approx(billed)
+
+
+def test_every_waste_cost_is_a_float_even_when_it_is_zero(embedder: Embedder):
+    """`PerDetectorMetric.waste_cost` is annotated `float`; a zero must be one.
+
+    `sum({}.values())` returns the int `0`, so a detector that flagged nothing
+    handed back an int through a field typed float. Measured 2026-09-03 on a
+    zero-waste trace: `repeat`, `redundant_read` and `duplicate_creation` all
+    came back `0` as int while `context_resend` came back `0.0`.
+
+    The JSON boundary already coerced with `float()`, so no serialized byte
+    moved -- verified identical on a zero-waste trace and on a 1.46 MB real
+    session. This asserts the in-memory type, which is what the annotation
+    promises and what any consumer reading the dataclass directly gets.
+    """
+    trace = Trace(trace_id="t", spans=[_root()], metadata={})
+    wr = compute_waste_rate(trace, embedder=embedder, n=2, phi=0.514345)
+
+    for name, pm in wr.per_detector.items():
+        assert isinstance(pm.waste_cost, float), (
+            f"per_detector[{name}].waste_cost is {type(pm.waste_cost).__name__}, "
+            "not float"
+        )
+    assert isinstance(wr.union_waste_cost, float)
