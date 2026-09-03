@@ -64,6 +64,65 @@ def _call(messages: list[dict]) -> dict:
 # ── the view the judge is shown ────────────────────────────────────────────
 
 
+def test_the_request_appears_in_the_view():
+    """Without this the axes that compare asked-against-done cannot be asked
+    at all. Measured before the amendment: 40 of 40 labelled sessions carry a
+    request, median 136 characters."""
+    view = render_trace_for_judge(_trace(
+        [_tool("s1", "Edit", {"file_path": "a.py"}, 10)],
+        llm_calls=[_call([{"role": "user", "content": [
+            {"type": "text", "text": "Write a function that dedupes a list"}]}])],
+    ))
+
+    assert "USER ASKED: Write a function that dedupes a list" in view
+
+
+def test_a_tool_result_is_not_reported_as_something_the_user_said():
+    """The trap this guard exists for. Claude Code carries tool results in
+    `user`-role messages, so selecting on the role alone pulls machine output
+    into the view labelled as a person's words -- 871 of them across the 40
+    labelled sessions. `tool_result` blocks belong to the ACTION lines."""
+    view = render_trace_for_judge(_trace(
+        [_tool("s1", "Bash", {"command": "ls"}, 10)],
+        llm_calls=[_call([
+            {"role": "user", "content": [
+                {"type": "text", "text": "list the files"}]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "content": "a.py b.py c.py"}]},
+        ])],
+    ))
+
+    assert "USER ASKED: list the files" in view
+    assert "a.py b.py c.py" not in view.split("ACTION")[0], (
+        "a tool result was rendered as a user turn"
+    )
+    assert view.count("USER ASKED:") == 1
+
+
+def test_a_repeated_request_is_one_thing_the_user_said():
+    """Prompts accumulate, so every earlier turn reappears in every later
+    call. Counting appearances would report one request as many."""
+    turn = {"role": "user", "content": [{"type": "text", "text": "fix the bug"}]}
+    view = render_trace_for_judge(_trace(
+        [_tool("s1", "Edit", {"file_path": "a.py"}, 10)],
+        llm_calls=[_call([turn]), _call([turn, turn])],
+    ))
+
+    assert view.count("USER ASKED: fix the bug") == 1
+
+
+def test_the_request_comes_before_the_actions():
+    """A judge reading actions before knowing what was asked is being asked to
+    hold the question in mind while it reads the answer."""
+    view = render_trace_for_judge(_trace(
+        [_tool("s1", "Edit", {"file_path": "a.py"}, 10)],
+        llm_calls=[_call([{"role": "user", "content": [
+            {"type": "text", "text": "do the thing"}]}])],
+    ))
+
+    assert view.index("USER ASKED") < view.index("ACTION")
+
+
 def test_actions_appear_in_time_order_not_list_order():
     """Distinguishes reading `trace.spans` as given. Order is the whole
     evidence for "edited, then ran it" versus "ran it, then edited"."""

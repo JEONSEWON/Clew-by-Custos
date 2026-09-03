@@ -68,8 +68,15 @@ class CheckedVerdict:
 def render_trace_for_judge(trace: Trace) -> str:
     """The session as the judge sees it (prereg §2).
 
-    Tool calls in order as `tool name + input`, tool outputs truncated, and the
-    assistant's own text blocks.
+    The user's request, the assistant's own text blocks, then the tool calls in
+    order as `tool name + input` with outputs truncated.
+
+    The request was absent until the user-turn amendment. FM-3.2 did not need
+    it -- "did the agent check what it changed" is answerable from actions --
+    but FM-1.1, FM-2.3 and FM-3.1 each compare what was asked against what
+    happened, and with the request missing those are not hard questions but
+    unaskable ones. Measured before the change: 40 of 40 labelled sessions
+    carry a request, median 136 characters.
 
     ★ On Claude Code traces the assistant text is lossy and the
     pre-registration says so rather than fixing it here. The adapter keeps no
@@ -80,6 +87,9 @@ def render_trace_for_judge(trace: Trace) -> str:
     that is not done for an axis whose precision is unknown.
     """
     lines: list[str] = []
+
+    for text in _user_texts(trace):
+        lines.append(f"USER ASKED: {text}")
 
     for text in _assistant_texts(trace):
         lines.append(f"AGENT SAID: {text}")
@@ -101,6 +111,49 @@ def render_trace_for_judge(trace: Trace) -> str:
         lines.append(f"  output: {out}")
 
     return "\n".join(lines)
+
+
+def _user_texts(trace: Trace) -> list[str]:
+    """The user's own words, recovered from accumulated prompts, in order.
+
+    ★ The trap this function exists to avoid: Claude Code carries **tool
+    results in `user`-role messages**. Selecting on the role alone would pull
+    871 tool outputs into the view across the 40 labelled sessions, present
+    them as things a person said, and double a view that is already bounded.
+    Only `text` blocks are taken; `tool_result` blocks are left to the ACTION
+    lines that already render them.
+
+    Deduplicated by first appearance for the same reason as the assistant
+    side: prompts accumulate, so every earlier turn reappears in every later
+    call, and a turn seen twice is one thing the user said.
+    """
+    seen: dict[str, None] = {}
+    for call in trace.metadata.get("llm_calls") or []:
+        raw = call.get("input_text")
+        if not isinstance(raw, str):
+            continue
+        try:
+            messages = json.loads(raw)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(messages, list):
+            continue
+        for message in messages:
+            if not isinstance(message, dict) or message.get("role") != "user":
+                continue
+            content = message.get("content")
+            if isinstance(content, str):
+                if content.strip():
+                    seen.setdefault(content.strip(), None)
+                continue
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text = (block.get("text") or "").strip()
+                    if text:
+                        seen.setdefault(text, None)
+    return list(seen)
 
 
 def _assistant_texts(trace: Trace) -> list[str]:
