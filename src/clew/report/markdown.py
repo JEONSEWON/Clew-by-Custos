@@ -449,8 +449,10 @@ def _render_verification_badge(vr: "VerificationAxisResult | None") -> list[str]
     lines.append(f"  - judge confidence: {vr.confidence:.2f}")
     lines.append(
         "  - LLM judgement, not a deterministic detector: non-reproducible "
-        "even at temperature=0, and measured at precision 0.9286 on 40 "
-        "hand-labelled sessions. It enters no cost figure and no waste rate."
+        "even at temperature=0. Measured on 40 hand-labelled sessions at "
+        "precision 0.9286 without the request in the judge's view and 1.0000 "
+        "with it; the two differ by one session, so read them as unchanged "
+        "rather than improved. It enters no cost figure and no waste rate."
     )
     lines.append("")
     return lines

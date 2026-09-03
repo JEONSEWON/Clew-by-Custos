@@ -815,7 +815,9 @@ def main() -> None:
             "FM-3.2). One call per trace to the Anthropic API with your "
             "ANTHROPIC_API_KEY; measured at $0.0046 and 1.8 s per session. "
             "Without a key the report says 'not judged' and the exit code is "
-            "still 0. Precision 0.9286 on 40 hand-labelled sessions."
+            "still 0. Precision on 40 hand-labelled sessions: 0.9286 "
+            "without the request in the judge's view, 1.0000 with it "
+            "(one session apart)."
         ),
     )
     p.add_argument(

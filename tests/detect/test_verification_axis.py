@@ -203,7 +203,21 @@ def test_the_report_states_the_finding_when_there_is_one():
         enabled=True, finding=True, evidence="no check appears", confidence=0.9))
     assert "no check of it appears in the trace" in md
     assert "no check appears" in md
-    assert "0.9286" in md, "the precision this axis shipped on belongs next to it"
+    # Both figures, and which view each belongs to. A guard that asks only for
+    # "0.9286" goes green when the other half is dropped, and 0.9286 alone
+    # describes a view the product stopped using when the request was added
+    # (JUDGE_VIEW_USER_TURN_AMENDMENT_RESULTS §5). A guard that asks only for
+    # "1.0000" is worse: it is a ceiling number on n=40 that this project has
+    # said in writing must not be read as an improvement.
+    for required in ("0.9286", "1.0000", "without the request", "with it"):
+        assert required in md, (
+            "the verification note has to name both measured figures and the "
+            "view each belongs to; missing " + repr(required)
+        )
+    assert "unchanged" in md, (
+        "one session apart is not an improvement, and the note has to say so "
+        "rather than leaving a reader to compare the two numbers"
+    )
 
 
 def test_the_report_is_silent_when_the_axis_passed_or_was_off():
