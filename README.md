@@ -19,7 +19,7 @@ Boxdawn watches what your agents do and finds **the work they already paid for**
 Or run it on your own machine, offline:
 
 ```bash
-pip install "boxdawn[detect]"
+pip install boxdawn
 boxdawn analyze <trace>.jsonl --out report.md
 ```
 
@@ -76,7 +76,7 @@ All 13 differing-ID pairs in this trace are the same tool, `canvas-canvas_upload
 Reproduce:
 
 ```bash
-pip install "boxdawn[detect]"
+pip install boxdawn
 # Toolathlon corpus (CC-BY-4.0): huggingface.co/datasets/hkust-nlp/Toolathlon-Trajectories
 boxdawn analyze grok-4_2.jsonl --out report.md
 ```
@@ -359,10 +359,10 @@ planned until that changes. The measurement and its provenance are in
 with two homes is a number that will disagree with itself. Monitoring and alerting are a
 different claim, and they are on the list above.
 
-**Not in a release yet:** `boxdawn submit` sends finished sessions to your project on a
+**Shipped since `0.5.4`:** `boxdawn submit` sends finished sessions to your project on a
 pre-registered close rule ([`docs/SESSION_CLOSE_RULE_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/SESSION_CLOSE_RULE_PREREG.md)),
-and it works end to end against live key issuance — but it landed after `0.5.3`, so the
-version on PyPI does not have the command yet.
+and it works end to end against live key issuance. Verified on the current PyPI release
+(`0.5.9`) in a clean virtualenv: `boxdawn submit --help` answers.
 
 **Stack:** Vercel Next.js · Modal serverless Python (the detector runtime is this repo's code) · Supabase (Postgres + Auth) · Resend (email).
 
@@ -397,7 +397,9 @@ The list below is what a serious evaluation would surface anyway, so it is here 
 
 ## Install
 
-`[detect]` (default, lightweight; no torch): sha256 structural gate. Covers Claude Code, Toolathlon, RedundancyBench, and any OTel / OpenInference trace whose duplicated work sits at the tool layer. This is where every empirically validated detection so far comes from.
+**`pip install boxdawn` is the whole install** (lightweight; no torch): the sha256 structural gate, the four deterministic detectors, cost attribution and the waste-rate metric. Covers Claude Code, Toolathlon, RedundancyBench, and any OTel / OpenInference trace whose duplicated work sits at the tool layer. This is where every empirically validated detection so far comes from.
+
+> Earlier docs said `pip install "boxdawn[detect]"`. That extra resolves to zero additional packages — the two installs are byte-identical — so it is no longer printed anywhere. It still resolves, so an older command keeps working.
 
 `[semantic]` (optional, ~2 GB with CUDA torch): adds the cosine gate for non-tool spans. Required for LangGraph chain-node paraphrase duplication.
 
@@ -415,7 +417,7 @@ pip install "boxdawn[semantic]"
 From source:
 
 ```bash
-pip install "boxdawn[detect] @ git+https://github.com/boxdawn/boxdawn.git"
+pip install "boxdawn @ git+https://github.com/boxdawn/boxdawn.git"
 ```
 
 Requires Python `≥ 3.12`.
@@ -441,7 +443,7 @@ boxdawn submit              # send it
 
 Finds sessions that have gone quiet long enough to call finished, uploads each once, and never sends the same session twice. What counts as "finished" is preregistered rather than chosen here: [`docs/SESSION_CLOSE_RULE_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/SESSION_CLOSE_RULE_PREREG.md).
 
-Needs a project key in `BOXDAWN_API_KEY` or `~/.clew/credentials.yaml`; sign in at [boxdawn.com](https://boxdawn.com) to issue one. **This command is not in a released version yet** — it landed after `0.5.3`, so `pip install boxdawn` does not have it. `--dry-run` needs no key.
+Needs a project key in `BOXDAWN_API_KEY` or `~/.clew/credentials.yaml`; sign in at [boxdawn.com](https://boxdawn.com) to issue one. `--dry-run` needs no key.
 
 Start with `--dry-run`. A first run is a backfill of every session on the machine, not a trickle: 81 of 84 on the machine the rule was measured on.
 

@@ -913,7 +913,7 @@ dependency → 1.
 
 **When detect dependencies are missing** (`__main__.py:113–118`):
 ```
-Error: detect dependencies missing — pip install 'clew[detect]'
+Error: a base dependency is missing — pip install --force-reinstall boxdawn
 ```
 
 ---
@@ -1130,6 +1130,6 @@ dev = [
 
 Install:
 ```bash
-pip install -e ".[detect]"           # CLI analysis only (OTel SDK JSON → report)
+pip install -e .                     # CLI analysis only (OTel SDK JSON → report)
 pip install -e ".[adapter,detect]"   # includes direct LangGraph capture
 ```
