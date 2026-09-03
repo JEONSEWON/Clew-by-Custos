@@ -543,6 +543,11 @@ def _render_redundant_read_section(
 
 _COST_SUMMARY_HEADER = "## Cost summary"
 
+# Display only. The JSON key stays `provable_duplicate` (a parsing contract for
+# the web app and the storage layer); what the reader sees is the one name the
+# README and the waste-rate line already use for the same cascade detector.
+_DETECTOR_DISPLAY = {"provable_duplicate": "repeat"}
+
 
 def _render_cost_summary(summary: TraceCostSummary) -> list[str]:
     """Cost Attribution Completion prereg §5.2 — top-of-report cost block."""
@@ -559,24 +564,28 @@ def _render_cost_summary(summary: TraceCostSummary) -> list[str]:
         lines.append("")
         lines.append("Breakdown by detector:")
         for detector, cost in summary.detector_breakdown.items():
-            lines.append(f"  - {detector}: ${cost:.6f}")
+            lines.append(f"  - {_DETECTOR_DISPLAY.get(detector, detector)}: ${cost:.6f}")
         # Two blocks in this report say "per detector" and they are not the
-        # same four. This one attributes cost across `provable_duplicate`,
-        # `context_resend`, `redundant_read` and `semantic_duplicate`; the
-        # waste-rate line below unions `repeat` (the same cascade family
-        # under its other name), `context_resend`, `redundant_read` and
-        # `duplicate_creation`. Left unsaid, a reader counts three rows here
-        # against "4 detectors" there and has no way to reconcile them --
-        # and the storage layer already read one block with the other's
-        # names, which is why every stored `provable_duplicate` carried no
-        # byte count at all.
+        # same four. One cascade detector was reaching the reader under two
+        # names -- `provable_duplicate` here, `repeat` in the waste-rate line
+        # -- and the storage layer read one block with the other's names,
+        # which is why every stored `provable_duplicate` carried no byte
+        # count at all.
+        #
+        # The display name is unified on `repeat`, which is the name the
+        # README and the waste-rate line already ship. **The JSON key is
+        # deliberately unchanged**: `cost_summary.detector_breakdown` is a
+        # parsing contract for the web app and the storage layer, and
+        # renaming a field to tidy a label would break both. So the row says
+        # `repeat` and the footnote names the key, rather than the reverse.
         lines.append(
-            "  _Cost attribution across four detectors: provable_duplicate, "
+            "  _Cost attribution across four detectors: repeat, "
             "context_resend, redundant_read, semantic_duplicate. A detector "
             "that did not run has no row -- absence here is not a measured "
-            "zero. Not the same four as the waste-rate line, which unions "
-            "repeat (this block's provable_duplicate), context_resend, "
-            "redundant_read and duplicate_creation._"
+            "zero. `repeat` is keyed `provable_duplicate` in the JSON report "
+            "(same cascade detector, key kept for compatibility). Not the "
+            "same four as the waste-rate line, which unions repeat, "
+            "context_resend, redundant_read and duplicate_creation._"
         )
     lines.append("")
     return lines
