@@ -191,10 +191,20 @@ def _waste_rate_block(wr: WasteRateMetric | None) -> dict | None:
         #
         # `float()` first, so the type is stable. `round(0, 8)` returns the int
         # `0`, and a zero-waste detector would serialize as `0` while a
-        # non-zero one serializes as a float. `union_waste_cost` beside it has
-        # that same wobble and is deliberately left alone: changing it would
-        # alter an existing key's bytes, which §3 of the amendment forbids and
-        # P3 measures.
+        # non-zero one serializes as a float.
+        #
+        # ★ 2026-09-03: the source of that int was found and fixed at the
+        # metric (`sum(..., 0.0)` on an empty per-span dict returned the int
+        # `0`), so `PerDetectorMetric.waste_cost` now matches its `float`
+        # annotation. This `float()` is kept as the boundary belt: it is the
+        # only place that decides what goes on the wire, and a future change
+        # reintroducing an int upstream would otherwise change these bytes
+        # silently.
+        #
+        # 🔴 An earlier note here said `union_waste_cost` has "that same
+        # wobble". It does not, and never did: `span_cost` is seeded `0.0`
+        # (metrics/waste_rate.py), so the sum is a float on every path.
+        # Measured 2026-09-03 -- `0.0`, type float, on a zero-waste trace.
         "per_detector": {
             d: {"wr_char": _wr_round(wr.per_detector[d].wr_char),
                 "wr_cost": _wr_round(wr.per_detector[d].wr_cost),
