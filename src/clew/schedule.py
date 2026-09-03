@@ -7,10 +7,26 @@ the same empty log. A registered task survives reboot, holds no memory while
 idle, and can be listed by name — three things a background process only gets
 by reimplementing them.
 
-Windows is registered for real here. macOS and Linux are handed the exact line
-to install instead of having it written for them: this file cannot test those
-two, and a registration that silently fails to take is the failure mode the
-whole design is avoiding.
+All three platforms are registered for real. The objection this file used to
+record -- that it cannot test macOS and Linux, and that a registration which
+silently fails to take is the failure mode the whole design is avoiding --
+was right about the danger and wrong about the remedy.
+
+The remedy is not refusing to register. It is that **every registration is
+read back before it is reported**: cron through `crontab -l`, launchd through
+`launchctl list`, Windows through `schtasks /Query`. `install` returns
+`registered=True` only when the query confirms, and when it does not it returns
+the same hand-installable instructions this file printed before, plus what was
+attempted and what the query said. The worst case is therefore exactly the old
+behaviour, and a silent success is not reachable.
+
+Tested where it could be: the cron path end to end on real Linux
+(WSL Ubuntu 24.04, cron 3.0pl1, Python 3.12.3) -- install, read back, preserve
+a pre-existing crontab, uninstall. The launchd path has no macOS to run on
+here, so its commands are exercised against recorded `launchctl` behaviour in
+tests and its verification step is what protects a real user: if the command is
+wrong for their macOS version, the read-back fails and they get instructions
+rather than a task they believe exists.
 """
 from __future__ import annotations
 
@@ -144,14 +160,193 @@ def _xml_escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def _cron_expression(every_minutes: int) -> str | None:
+    """A cron schedule field cron will accept, or None if it will not.
+
+    `*/N` is only valid in the minute field for N below 60; `*/90` is not "every
+    90 minutes", it is a line cron rejects. The old code emitted `*/{N}`
+    unconditionally, so `--every 90` printed an instruction that could not be
+    installed. Whole hours get the hour field instead, and anything else is
+    refused by name rather than written and left to fail.
+    """
+    if 1 <= every_minutes < 60:
+        return f"*/{every_minutes} * * * *"
+    if every_minutes % 60 == 0 and 1 <= every_minutes // 60 < 24:
+        return f"0 */{every_minutes // 60} * * *"
+    return None
+
+
+def _cron_markers(task_name: str) -> tuple[str, str]:
+    """The fenced block one task owns, so two tasks coexist and neither edits
+    a line the user wrote themselves."""
+    return f"# >>> boxdawn {task_name} >>>", f"# <<< boxdawn {task_name} <<<"
+
+
+def _read_crontab() -> str:
+    """The user's crontab, or "" when they have none.
+
+    An empty crontab exits non-zero with "no crontab for <user>" on stderr,
+    which is not an error condition -- it is the first install. Treating it as
+    one is how a first install would fail.
+    """
+    proc = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+    return proc.stdout if proc.returncode == 0 else ""
+
+
+def _strip_block(text: str, task_name: str) -> str:
+    begin, end = _cron_markers(task_name)
+    out, skipping = [], False
+    for line in text.splitlines():
+        if line.strip() == begin:
+            skipping = True
+            continue
+        if line.strip() == end:
+            skipping = False
+            continue
+        if not skipping:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _install_cron(every_minutes: int, task_name: str,
+                  task_args: tuple[str, ...]) -> tuple[bool, str]:
+    expr = _cron_expression(every_minutes)
+    if expr is None:
+        return False, (
+            f"cannot schedule every {every_minutes} minutes with cron: the "
+            "minute field takes an interval below 60, and above that only "
+            "whole hours (60, 120, ... 1380). Nothing was installed."
+        )
+    begin, end = _cron_markers(task_name)
+    line = f"{expr} {command_line(task_args)}"
+    kept = _strip_block(_read_crontab(), task_name).rstrip("\n")
+    body = f"{kept}\n" if kept else ""
+    new = f"{body}{begin}\n{line}\n{end}\n"
+
+    proc = subprocess.run(["crontab", "-"], input=new,
+                          capture_output=True, text=True)
+    if proc.returncode != 0:
+        return False, (
+            (proc.stderr.strip() or f"crontab exited {proc.returncode}")
+            + "\n" + _cron_instructions(every_minutes, task_args)
+        )
+    # Read back. `crontab -` accepting the input is not the same as the line
+    # being there afterwards, and this is the whole reason auto-registration is
+    # allowed on this platform at all.
+    if line not in _read_crontab():
+        return False, (
+            "crontab accepted the write but the line is not in `crontab -l` "
+            "afterwards, so nothing is scheduled.\n"
+            + _cron_instructions(every_minutes, task_args)
+        )
+    return True, f"registered cron job {task_name}, every {every_minutes} min"
+
+
+def _uninstall_cron(task_name: str) -> tuple[bool, str]:
+    current = _read_crontab()
+    begin, _ = _cron_markers(task_name)
+    if begin not in current:
+        return True, f"no cron job {task_name} to remove"
+    stripped = _strip_block(current, task_name).rstrip("\n")
+    proc = subprocess.run(["crontab", "-"],
+                          input=(f"{stripped}\n" if stripped else ""),
+                          capture_output=True, text=True)
+    if proc.returncode != 0:
+        return False, (proc.stderr.strip() or f"crontab exited {proc.returncode}")
+    if begin in _read_crontab():
+        return False, ("crontab accepted the write but the block is still in "
+                       "`crontab -l`; remove it with `crontab -e`")
+    return True, f"removed cron job {task_name}"
+
+
+def _launchd_label(task_args: tuple[str, ...]) -> str:
+    return f"com.boxdawn.{task_args[0]}"
+
+
+def _launchd_plist_path(task_args: tuple[str, ...]) -> Path:
+    return (Path.home() / "Library" / "LaunchAgents"
+            / f"{_launchd_label(task_args)}.plist")
+
+
+def _launchd_plist(every_minutes: int, task_args: tuple[str, ...]) -> str:
+    label = _launchd_label(task_args)
+    program = "".join(f"    <string>{_xml_escape(part)}</string>\n"
+                      for part in _runner(task_args))
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0"><dict>\n'
+        f"  <key>Label</key><string>{label}</string>\n"
+        "  <key>ProgramArguments</key><array>\n"
+        f"{program}"
+        "  </array>\n"
+        f"  <key>StartInterval</key><integer>{every_minutes * 60}</integer>\n"
+        "  <key>RunAtLoad</key><false/>\n"
+        "</dict></plist>\n"
+    )
+
+
+def _launchctl_loaded(label: str) -> bool:
+    proc = subprocess.run(["launchctl", "list", label],
+                          capture_output=True, text=True)
+    return proc.returncode == 0
+
+
+def _install_launchd(every_minutes: int,
+                     task_args: tuple[str, ...]) -> tuple[bool, str]:
+    label = _launchd_label(task_args)
+    path = _launchd_plist_path(task_args)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_launchd_plist(every_minutes, task_args), encoding="utf-8")
+    except OSError as e:
+        return False, f"{e}\n" + _launchd_instructions(every_minutes, task_args)
+
+    # An already-loaded agent makes `load` fail, so unload first and ignore
+    # how that goes -- the read-back below is what decides.
+    subprocess.run(["launchctl", "unload", str(path)],
+                   capture_output=True, text=True)
+    proc = subprocess.run(["launchctl", "load", "-w", str(path)],
+                          capture_output=True, text=True)
+    if not _launchctl_loaded(label):
+        detail = (proc.stderr.strip() or proc.stdout.strip()
+                  or f"launchctl exited {proc.returncode}")
+        return False, (
+            f"the plist was written to {path} but `launchctl list {label}` "
+            f"does not show it, so nothing is scheduled ({detail}).\n"
+            "Load it yourself with:\n"
+            f"  launchctl load -w {path}"
+        )
+    return True, f"registered launchd agent {label}, every {every_minutes} min"
+
+
+def _uninstall_launchd(task_args: tuple[str, ...]) -> tuple[bool, str]:
+    label = _launchd_label(task_args)
+    path = _launchd_plist_path(task_args)
+    subprocess.run(["launchctl", "unload", "-w", str(path)],
+                   capture_output=True, text=True)
+    if _launchctl_loaded(label):
+        return False, (f"`launchctl list {label}` still shows it. Remove it "
+                       f"with:\n  launchctl unload -w {path}")
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as e:
+        return False, f"unloaded, but {path} could not be removed: {e}"
+    return True, f"removed launchd agent {label}"
+
+
 def install(every_minutes: int = DEFAULT_EVERY_MINUTES,
             task_name: str = TASK_NAME,
             task_args: tuple[str, ...] = SUBMIT_ARGS,
             time_limit: str = "PT1H") -> tuple[bool, str]:
     """Register the sweep. Returns (registered, message).
 
-    `registered` is False when this platform is only being told what to run,
-    so a caller never reports a task that was not created.
+    `registered` is True only when a query afterwards confirms the task is
+    there. On a False the message carries the hand-installable instructions and
+    what the query said, so the caller never reports a task that was not
+    created and the user is never worse off than before this file registered
+    anything.
     """
     if sys.platform == "win32":
         # Written out rather than piped: `schtasks /XML` takes a path, and it
@@ -174,11 +369,16 @@ def install(every_minutes: int = DEFAULT_EVERY_MINUTES,
         return True, f"registered task {task_name}, every {every_minutes} min"
 
     if sys.platform == "darwin":
-        return False, _launchd_instructions(every_minutes, task_args)
+        return _install_launchd(every_minutes, task_args)
+    if sys.platform.startswith("linux"):
+        return _install_cron(every_minutes, task_name, task_args)
+    # Some other platform. Nothing is attempted, because attempting it is what
+    # produces the silent half-registration this file exists to avoid.
     return False, _cron_instructions(every_minutes, task_args)
 
 
-def uninstall(task_name: str = TASK_NAME) -> tuple[bool, str]:
+def uninstall(task_name: str = TASK_NAME,
+              task_args: tuple[str, ...] = SUBMIT_ARGS) -> tuple[bool, str]:
     if sys.platform == "win32":
         proc = subprocess.run(
             ["schtasks", "/Delete", "/F", "/TN", task_name],
@@ -189,30 +389,43 @@ def uninstall(task_name: str = TASK_NAME) -> tuple[bool, str]:
                            or f"schtasks exited {proc.returncode}")
         return True, f"removed task {task_name}"
     if sys.platform == "darwin":
-        return False, ("remove it with:\n"
-                       "  launchctl unload ~/Library/LaunchAgents/com.boxdawn.submit.plist\n"
-                       "  rm ~/Library/LaunchAgents/com.boxdawn.submit.plist")
+        return _uninstall_launchd(task_args)
+    if sys.platform.startswith("linux"):
+        return _uninstall_cron(task_name)
     return False, "remove the boxdawn line from `crontab -e`"
 
 
-def is_registered(task_name: str = TASK_NAME) -> bool | None:
-    """True/False on Windows; None where this file does not register."""
-    if sys.platform != "win32":
-        return None
-    proc = subprocess.run(
-        ["schtasks", "/Query", "/TN", task_name],
-        capture_output=True, text=True,
-    )
-    return proc.returncode == 0
+def is_registered(task_name: str = TASK_NAME,
+                  task_args: tuple[str, ...] = SUBMIT_ARGS) -> bool | None:
+    """True/False on Windows, macOS and Linux; None on any other platform.
+
+    None means "this file does not register here", which the CLI reads as "do
+    not judge the exit code on it". It used to be returned for macOS and Linux
+    too, and that is why `--install` there set the submission watermark and
+    exited 0 while nothing had been scheduled.
+    """
+    if sys.platform == "win32":
+        proc = subprocess.run(
+            ["schtasks", "/Query", "/TN", task_name],
+            capture_output=True, text=True,
+        )
+        return proc.returncode == 0
+    if sys.platform == "darwin":
+        return _launchctl_loaded(_launchd_label(task_args))
+    if sys.platform.startswith("linux"):
+        return _cron_markers(task_name)[0] in _read_crontab()
+    return None
 
 
 def _cron_instructions(every_minutes: int,
                        task_args: tuple[str, ...] = SUBMIT_ARGS) -> str:
+    expr = _cron_expression(every_minutes)
+    if expr is None:
+        return (f"cannot schedule every {every_minutes} minutes with cron: "
+                "below 60, or whole hours up to 1380.")
     return (
         "not registered. Add this to `crontab -e` yourself:\n"
-        f"  */{every_minutes} * * * * {command_line(task_args)}\n"
-        "(this platform is not registered automatically, because a "
-        "registration that fails silently is worse than none)"
+        f"  {expr} {command_line(task_args)}"
     )
 
 
