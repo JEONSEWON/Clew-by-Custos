@@ -260,3 +260,50 @@ def test_the_json_report_carries_both_signals():
     assert cost["accuracy_flag"] == "accurate"
     assert cost["rate_from_table"] is False
     assert cost["unpriced_models"] == ["kinetic-0715"]
+
+
+def test_the_cascade_detector_reaches_the_reader_under_one_name():
+    """The rendered report says `repeat`, not two names for one detector.
+
+    Two blocks in this report say "per detector". The cascade detector was
+    printed as `provable_duplicate` in the cost block and `repeat` in the
+    waste-rate line, and the storage layer read one block with the other's
+    names -- every stored `provable_duplicate` carried no byte count.
+
+    The assertion is on the shipped text, not on the mapping table: a comment
+    or a dict can be right while the report a customer reads is wrong.
+    """
+    trace = _root_trace("t-name", [_tier_split_call(1000, 500, 100)])
+    cascade = CascadeResult(
+        trace_id="t-name", wasteful=True, waste_span_ids=["s"],
+        waste_tokens=100, waste_cost=0.5,
+    )
+    md = render_markdown(trace, cascade, details=[])
+
+    assert "Breakdown by detector:" in md
+    assert "- repeat: $" in md, "the cost row must name the detector `repeat`"
+    assert "- provable_duplicate: $" not in md, (
+        "the old name must not appear as a row label"
+    )
+    # The footnote still has to name the JSON key, or a reader parsing the
+    # JSON cannot connect the row to the field.
+    assert "keyed `provable_duplicate` in the JSON report" in md
+
+
+def test_the_json_key_is_not_renamed_by_the_label_change():
+    """`detector_breakdown` is a parsing contract; the label change must not
+    touch it. Renaming this field breaks the web app and the storage layer."""
+    trace = _root_trace("t-key", [_tier_split_call(1000, 500, 100)])
+    cascade = CascadeResult(
+        trace_id="t-key", wasteful=True, waste_span_ids=["s"],
+        waste_tokens=100, waste_cost=0.5,
+    )
+    js = json.loads(render_json(trace, cascade, details=[]))
+
+    breakdown = js["cost_summary"]["detector_breakdown"]
+    assert "provable_duplicate" in breakdown, (
+        "the JSON key must stay `provable_duplicate` -- display-only change"
+    )
+    assert "repeat" not in breakdown, (
+        "the display name must not leak into the JSON contract"
+    )
