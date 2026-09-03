@@ -361,8 +361,8 @@ different claim, and they are on the list above.
 
 **Shipped since `0.5.4`:** `boxdawn submit` sends finished sessions to your project on a
 pre-registered close rule ([`docs/SESSION_CLOSE_RULE_PREREG.md`](https://github.com/boxdawn/boxdawn/blob/main/docs/SESSION_CLOSE_RULE_PREREG.md)),
-and it works end to end against live key issuance. Verified on the current PyPI release
-(`0.5.9`) in a clean virtualenv: `boxdawn submit --help` answers.
+and it works end to end against live key issuance. Verified in a clean virtualenv on
+`0.5.10`, 2026-09-04: `boxdawn submit --help` answers.
 
 **Stack:** Vercel Next.js · Modal serverless Python (the detector runtime is this repo's code) · Supabase (Postgres + Auth) · Resend (email).
 
