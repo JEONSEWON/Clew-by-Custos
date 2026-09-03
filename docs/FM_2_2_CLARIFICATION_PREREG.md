@@ -214,6 +214,86 @@ not a re-drawn sample here.
 6. Only on a pass: wiring, and a decision about whether this ships behind the
    same plan gate and the same per-project switch as FM-3.2.
 
+## 8.5 Amendment (2026-09-04): the population was alive, and the frame is now the close rule
+
+**Written before any label was assigned and before the judge was called.** The
+draw was re-run, not the labels; there were none.
+
+### What happened
+
+§1.2 and §3 record the population as **85 sessions · 618 candidates · 144
+contrast**, measured 2026-09-03. Running the same code the next morning gave
+**625 candidates and 145 contrast**. Nothing in the code changed.
+
+The cause is that the corpus is `~/.claude/projects` on a machine where **other
+agent sessions are running while this one measures**. Both were identified: the
+two sessions that had not gone quiet were the marketing session (last write
+0.3 minutes earlier) and the web session (1.9 minutes). They are writing their
+own turns into the corpus this axis samples.
+
+| frame | sessions | candidates | contrast |
+|---|---:|---:|---:|
+| §1.2/§3 as recorded, 2026-09-03 | 85 | 618 | 144 |
+| all sessions, 2026-09-04 16:18Z | 86 | **625** | **145** |
+| **finished only** (the amendment) | **84** | **616** | **144** |
+
+### Two reasons this is a defect and not only instability
+
+1. **A draw against a moving population is not reproducible**, and §8 step 2
+   requires the draw to be. Anyone re-running it later gets a different 40.
+2. 🔴 **An open session's last turn is truncated mid-answer.** The candidate
+   rule is *"the agent did not ask"*, and in a session still being written that
+   may mean *"the agent has not finished answering yet"*. Those two are not the
+   same thing, and the rule cannot tell them apart. Every live session
+   contributes at least one such turn.
+
+The second is the one that would have corrupted labels, and it does not go away
+by waiting for a quiet moment to sample — it goes away by excluding sessions
+that are not finished.
+
+### The frame
+
+> **Population = turns from sessions that are finished by the pre-registered
+> close rule**: the most recent in-file timestamp is at least **240 minutes**
+> older than the moment of the draw
+> ([`SESSION_CLOSE_RULE_PREREG.md`](SESSION_CLOSE_RULE_PREREG.md) §4).
+
+**The threshold is not invented here.** 240 minutes is already frozen, already
+measured against its own false-close distribution, and already the rule that
+decides what `boxdawn submit` sends. Reusing it means this axis does not add a
+number anyone has to defend separately.
+
+Revised counts, and they replace §1.2 and §3 where the two disagree:
+
+| | |
+|---|---|
+| sessions | **84** |
+| candidates (`no_ask` · <50 chars · ≥1 tool call) | **616** |
+| contrast (stop-and-ask) | **144** — unchanged |
+
+★ The contrast pool did not move at all, and the candidate pool moved by
+**2 of 618 (0.3%)**. So this changes almost nothing about the measurement and
+everything about whether it can be repeated. That is the reason to write it
+down rather than absorb it.
+
+### What is explicitly NOT changed
+
+- **The predictions.** P1–P7 stand as written, including P2's floor of 8
+  positives in 40. The sample size is still 40 + 40 and the seed is still
+  `20260903`.
+- **The candidate rule.** Shortness plus no-ask plus at least one tool call,
+  exactly as §3 defines it.
+- **No label exists yet**, so nothing is being re-drawn to fit anything. If the
+  draw had been labelled first, the honest move would have been to keep the old
+  frame and report the drift as a limit.
+
+### Recorded so the next axis does not repeat it
+
+Any axis sampling this corpus inherits the problem: **the machine's own agent
+sessions are part of the population, and some of them are running.** The close
+rule is the frame, and the draw records the corpus manifest (file list with
+sizes and last timestamps) so a later re-run can prove it read the same thing.
+
 ## 9. Cost, for planning rather than as a claim
 
 FM-3.2 measured $0.0046 and 1.8 s per session on `claude-haiku-4-5`. 80 calls
