@@ -227,6 +227,53 @@ from run;
 
 ---
 
+## §5.1 Dry-run results — 2026-09-04, all four predictions hold
+
+Run against production before anything was applied. Recorded here rather than
+in a separate file so the prediction and its outcome cannot drift apart.
+
+```
+plan_code | lim  | used_by_analyzed_at | used_by_received_at
+pro       | 2000 | 24                  | 24
+
+rows_total | months_disagree
+105        | 0
+```
+
+| | Prediction | Measured | |
+|---|---|---|---|
+| **P1** | 0 submissions refused | `24 / 2000` → **0** | **pass — gate open** |
+| **P2** | `pro`, under 200 | `pro`, **24** (1.2% of limit) | pass |
+| **P3** | under 20% disagree | **0 / 105 = 0%** | pass |
+| **P4** | 0 rows end up null | follows from P3 | pass |
+
+### ★ P3 came in stronger than predicted, which changes §1.2
+
+`months_disagree = 0` means **no stored row has `received_at` and
+`analyzed_at` in different calendar months.** The backfill in §1.2 was
+registered as a knowingly-wrong value that could only overcount; on today's
+data it is **exact on the monthly axis for all 105 rows**, which is the only
+axis the limit uses.
+
+§1.2 is **not** relaxed on that basis. The error is zero *for the rows that
+exist now*, and the migration may be applied later than today. The verify
+block still reports the affected count, and if it is non-zero at apply time
+the §1.2 reasoning is what covers it. What changes is the expectation, not
+the guard.
+
+### Two facts worth carrying forward
+
+- **The whole production `run` table is 105 rows.** Any figure derived from
+  it is derived from 105 rows, and a percentage of 105 is not a stable
+  percentage. Cite the count, not the ratio.
+- **The two time axes agree this month** (24 = 24). So the label defect in §1
+  is not currently *also* a numeric defect — the mislabelled figure happens to
+  equal the number of rows created this month. That coincidence is what makes
+  the label safe to fix before the counter, and it will not survive the first
+  cross-month re-submission.
+
+---
+
 ## §6 🔴 Ordering — the copy goes before the switch
 
 `/app/plan` is live and currently says, in the user's own language, that the
