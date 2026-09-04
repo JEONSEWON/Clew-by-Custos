@@ -60,6 +60,42 @@ that re-submission increments would **penalise the retry path `0018` was
 built to enable**, and a single long session could consume a month's quota by
 itself.
 
+### 🔴 There are three quantities here, and the live page names the wrong one
+
+Added 2026-09-04 after the web session read its own copy. `/app/plan` labels
+this figure **"Uploads this month" / "이번 달 업로드"**. Three different
+quantities are in play and no two of them are equal:
+
+| | Quantity | Counted by |
+|---|---|---|
+| (a) | **Uploads** — submissions accepted | **nothing.** No table records it |
+| (b) | Distinct traces whose latest analysis is this month | `plan_usage` today — and this is what the page calls "uploads" |
+| (c) | Rows created this month | nothing yet; §1.1 adds it |
+
+Because `run` is unique on `(project_id, trace_id, params_key)`, a user who
+uploads the same trace five times in one month sees **"Uploads this month:
+1"**. The label is wrong today, independently of enforcement.
+
+**And the migration makes the label worse, not better.** Switching
+`plan_usage` to `created_at` moves the figure from (b) to (c), which is
+*smaller*:
+
+| | today (`analyzed_at`) | after (`created_at`) |
+|---|---|---|
+| same trace uploaded 5× in September | 1 | 1 |
+| August run re-submitted in September | **September +1** | September +0 |
+
+⚠️ **So "re-submission is not counted" is false today and true only after the
+migration.** Within one month it already holds (the row exists, so the count
+does not move). Across months it does *not* hold — re-submitting an August
+run moves its `analyzed_at` into September and the September figure goes up
+by one, with no row created.
+
+⇒ Copy that says re-submission does not count **must not ship before the
+migration.** It would be accurate for the same-month case and wrong for the
+cross-month case, which is the case a growing session at a month boundary
+actually hits.
+
 ### The column needed does not exist
 
 `run` has `id bigserial`, `analyzed_at`, `received_at` (`0001:99-111`).
@@ -213,10 +249,16 @@ and the copy is the only thing a user can act on.
 
 1. Dry-run §5, check P1–P4
 2. Notify the web session (trigger 6) with the frozen answers from §1–§4
-3. Web ships `/app/plan` copy, confirms live
-4. Migration: `run.created_at`, backfill, `ingest_run` check, `plan_usage`
+3. Web fixes the **label** first — the figure is (b), not (a), and is wrong
+   today regardless of this document. This copy must not yet claim that
+   re-submission is uncounted; that is only true after step 5.
+4. Web ships the **enforcement** copy on top of the corrected label, confirms
+   live. Writing it on the old label puts a true sentence on a false axis.
+5. Migration: `run.created_at`, backfill, `ingest_run` check, `plan_usage`
    switched to the new column
-5. Verify block reports refusals-that-would-have-happened as 0 (P1)
+6. Web may then state that re-submission does not count — it becomes true at
+   step 5 and not before
+7. Verify block reports refusals-that-would-have-happened as 0 (P1)
 
 ---
 
