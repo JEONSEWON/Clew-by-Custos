@@ -153,6 +153,74 @@ _CURRENCY_PHRASES = (
 )
 _VERSION_RE = re.compile(r"\b\d+\.\d+\.\d+\b")
 
+# 2026-09-04, same day, second pass: the phrase list above was the whole rule,
+# and a web session reading this file found that it is not one. "the newest
+# version", "currently released" and "now on PyPI" say the identical false
+# thing and match none of the five entries, so the guard returned zero
+# offenders and passed. **A banned-value check that passes falsely ships**, in
+# a way an absent-data check does not: nothing downstream looks again.
+#
+# So the list stays as a belt -- it names the five wordings that actually
+# shipped, and a named phrase gives a better failure message -- but the rule
+# below is structural and does not depend on having thought of the wording.
+_CURRENCY_WORD_RE = re.compile(
+    r"\b(?:current|currently|latest|newest|present|now)\b", re.I
+)
+
+# Sentence scope, not line scope, and it has to be both.
+#
+# A line is too wide: README:388 says "The v0.3.0 in-cascade reread gate was
+# retired", and three sentences later "The current standalone Redundant Read
+# Detector is a different approach". Those are a historical version and a
+# present-tense detector, not a claim that 0.3.0 is current -- flagging it
+# would train the next person to delete the guard.
+#
+# A line is also too narrow: the sentence this guard exists for is written
+# across two lines in the source ("Verified in a clean virtualenv on\n
+# `0.5.10`, 2026-09-04"), so a line-by-line scan can be evaded by a newline.
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _currency_offenders(text: str) -> list[tuple[int, str, str]]:
+    """Sentences claiming a version is the present one.
+
+    Returns `(line_number, why, sentence)`, one per offending sentence.
+    """
+    offenders: list[tuple[int, str, str]] = []
+    pos = 0
+    for sentence in _SENTENCE_SPLIT_RE.split(text):
+        if not sentence:
+            continue
+        start = text.index(sentence, pos)
+        pos = start + len(sentence)
+        flat = " ".join(sentence.split())
+        phrase = next((p for p in _CURRENCY_PHRASES if p in flat.lower()), None)
+        structural = bool(
+            _VERSION_RE.search(flat) and _CURRENCY_WORD_RE.search(flat)
+        )
+        if phrase or structural:
+            why = phrase or "version number + a word placing it in the present"
+            offenders.append((text.count("\n", 0, start) + 1, why, flat))
+    return offenders
+
+
+# The wordings that got past the phrase list, and the two that must not be
+# flagged. Held here rather than only in the README so that the hole cannot
+# reopen the next time someone edits the prose: a guard nobody has shown the
+# misses of gets read as a guarantee.
+_CLAIMS_A_VERSION_IS_CURRENT = (
+    "Verified on the current PyPI release (0.5.9).",
+    "Verified on the newest version, 0.5.10.",
+    "0.5.10 is currently released on PyPI.",
+    "0.5.10 is now on PyPI.",
+    "The latest release is 0.5.10.",
+)
+_DOES_NOT_CLAIM_THAT = (
+    "Verified in a clean virtualenv on `0.5.10`, 2026-09-04.",
+    "The v0.3.0 gate was retired. The current standalone detector differs.",
+    "Shipped since `0.5.4`: `boxdawn submit` sends finished sessions.",
+)
+
 
 def _package_version() -> str:
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
@@ -172,17 +240,35 @@ def test_no_shipped_sentence_claims_a_version_is_the_current_one():
     whoever releases next.
     """
     version = _package_version()
-    offenders = []
-    for i, line in enumerate(README.splitlines(), 1):
-        low = line.lower()
-        for phrase in _CURRENCY_PHRASES:
-            if phrase in low:
-                offenders.append((i, phrase, _VERSION_RE.findall(line), line.strip()))
+    offenders = _currency_offenders(README)
     assert not offenders, (
         "README names a version as the current one, which the next release "
         f"makes false (package version is {version}):\n"
-        + "\n".join(f"  README.md:{i}  [{p}]  {ln[:110]}" for i, p, _v, ln in offenders)
+        + "\n".join(f"  README.md:{i}  [{w}]  {s[:110]}" for i, w, s in offenders)
         + "\nDate the observation instead: `verified on X.Y.Z, YYYY-MM-DD`."
+    )
+
+
+def test_the_currency_rule_catches_the_wordings_the_phrase_list_missed():
+    """The phrase list passed all three of these while they said the same thing.
+
+    This is the regression the guard was rewritten for. It asserts on the rule
+    directly rather than through the README, because the README is green today
+    and would stay green if the rule were narrowed back to a phrase list.
+    """
+    missed = [s for s in _CLAIMS_A_VERSION_IS_CURRENT if not _currency_offenders(s)]
+    assert not missed, "guard does not catch:\n" + "\n".join(f"  {s}" for s in missed)
+
+
+def test_the_currency_rule_leaves_dated_and_historical_sentences_alone():
+    """A guard that fires on the correct phrasing gets deleted, not obeyed.
+
+    The second case is the one that forced sentence scope: README:388 carries a
+    retired version and, later in the same line, a present-tense detector.
+    """
+    flagged = [s for s in _DOES_NOT_CLAIM_THAT if _currency_offenders(s)]
+    assert not flagged, "guard false-positives on:\n" + "\n".join(
+        f"  {s}" for s in flagged
     )
 
 
