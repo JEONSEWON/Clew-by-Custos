@@ -144,6 +144,58 @@ loses the reason, and the reason is what the CLI has to print.
 **Frozen:** `null` limit means unlimited, never zero. Same rule `0017` §1
 already states, restated because inverting it is a live-path outage.
 
+### 🔴 §2.1 The rule is per (trace × parameters), not per trace — and a release resets it
+
+Added 2026-09-04, found by multiplying a fact the web session supplied with
+the rule above. Neither of us had it alone.
+
+`params_key` is a generated stored column
+(`0001:117`):
+
+```
+md5(phi::text || ':' || n_window::text || ':' || embed_model || ':' || analyzer_version)
+```
+
+**`analyzer_version` is inside it**, and `params_key` is part of the conflict
+target `(project_id, trace_id, params_key)`. The four fields that feed it are
+in `ingest_run`'s INSERT list and **absent from its `do update set`** —
+necessarily, since changing them would change the key being matched on.
+
+⇒ **Re-submitting the same trace after a release does not conflict. It
+inserts.** So it creates a row, so by the rule above it consumes quota.
+
+And this is the automatic path, not an operator mistake. `submit` re-sends a
+session when it has new content (`submit.py:280`, `_unsent(entry) or
+_has_new_content(p, entry)`), and the ledger is keyed on file path with a
+`sends` counter. A session that is submitted, grows, and is submitted again
+**with a release in between** produces two rows for one trace.
+
+**That is correct behaviour, not a defect.** `params_key` is the
+comparability guard (`0001:112`): measurements from two analyzer versions must
+not be summed, so two rows is what the schema is for, and the second analysis
+is genuinely new work with real cost — new compute, and a second verification
+call. Quota consumption is the honest outcome.
+
+**What it changes is the sentence.** `0018`'s "re-submission does not add
+rows" holds **only within one analyzer version**. So:
+
+| statement | true when |
+|---|---|
+| "the same trace uploaded twice is counted once" | same version, same month |
+| "re-submission does not count" | after §1.1 lands — **and only within a version** |
+| "a re-analysis after an upgrade counts again" | **always, and this one survives the migration** |
+
+⚠️ The third row is the durable qualifier. `created_at` fixes the cross-month
+case; **nothing fixes the cross-version case, because it is not broken.** Copy
+that says re-submission never counts is false the first time a user upgrades
+mid-session, which given a release cadence of 0.5.4 → 0.5.10 inside one week
+is not a corner case.
+
+**Frozen:** the limit is not adjusted to compensate. A version boundary
+producing a second row is a second measurement that cost us a second call;
+charging for it is the accurate behaviour, and hiding it inside a larger quota
+would make the number mean something else.
+
 ---
 
 ## §3 The boundary
@@ -224,6 +276,53 @@ select count(*) as rows_total,
             <> date_trunc('month', analyzed_at)) as months_disagree
 from run;
 ```
+
+---
+
+## §5.1 Dry-run results — 2026-09-04, all four predictions hold
+
+Run against production before anything was applied. Recorded here rather than
+in a separate file so the prediction and its outcome cannot drift apart.
+
+```
+plan_code | lim  | used_by_analyzed_at | used_by_received_at
+pro       | 2000 | 24                  | 24
+
+rows_total | months_disagree
+105        | 0
+```
+
+| | Prediction | Measured | |
+|---|---|---|---|
+| **P1** | 0 submissions refused | `24 / 2000` → **0** | **pass — gate open** |
+| **P2** | `pro`, under 200 | `pro`, **24** (1.2% of limit) | pass |
+| **P3** | under 20% disagree | **0 / 105 = 0%** | pass |
+| **P4** | 0 rows end up null | follows from P3 | pass |
+
+### ★ P3 came in stronger than predicted, which changes §1.2
+
+`months_disagree = 0` means **no stored row has `received_at` and
+`analyzed_at` in different calendar months.** The backfill in §1.2 was
+registered as a knowingly-wrong value that could only overcount; on today's
+data it is **exact on the monthly axis for all 105 rows**, which is the only
+axis the limit uses.
+
+§1.2 is **not** relaxed on that basis. The error is zero *for the rows that
+exist now*, and the migration may be applied later than today. The verify
+block still reports the affected count, and if it is non-zero at apply time
+the §1.2 reasoning is what covers it. What changes is the expectation, not
+the guard.
+
+### Two facts worth carrying forward
+
+- **The whole production `run` table is 105 rows.** Any figure derived from
+  it is derived from 105 rows, and a percentage of 105 is not a stable
+  percentage. Cite the count, not the ratio.
+- **The two time axes agree this month** (24 = 24). So the label defect in §1
+  is not currently *also* a numeric defect — the mislabelled figure happens to
+  equal the number of rows created this month. That coincidence is what makes
+  the label safe to fix before the counter, and it will not survive the first
+  cross-month re-submission.
 
 ---
 
