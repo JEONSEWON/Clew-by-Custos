@@ -294,6 +294,82 @@ sessions are part of the population, and some of them are running.** The close
 rule is the frame, and the draw records the corpus manifest (file list with
 sizes and last timestamps) so a later re-run can prove it read the same thing.
 
+## 8.6 Amendment (2026-09-05): P1 has no value for "I cannot judge this"
+
+Written **before any of the blind 15 carries a mark.** The sheet holds zero
+entries; `_fm22_labels_drafted.json` is frozen and untouched. Nothing here is
+fitted to a result, because no result exists.
+
+### What happened
+
+The labeller read the sheet and reported that the turns all looked justified,
+and separately that they could not apply the criterion with confidence. §6 gives
+P1 a two-letter alphabet, so both of those come out as the same mark: **NEG**.
+
+That is the defect. P1 exists to answer *"are these two people using the same
+rule?"*, and a forced binary makes **"the agent did not need to ask"** and
+**"I cannot tell whether it needed to ask"** the same observation. If the second
+one is common, P1 can clear 0.80 while measuring nothing, and P2's miss — already
+recorded at 3 positives against a floor of 8 — would rest on labels whose
+agreement number is uninterpretable.
+
+🔴 It is the *instrument* that is being fixed, not the labels and not the
+threshold. A labeller who cannot separate the classes is a result about the
+criterion, and §7 already says a criterion nobody can apply must stop before the
+judge is called. It needs somewhere to be written down.
+
+### The rule, fixed now
+
+The label alphabet becomes **POS / NEG / `?`**, and P1 is scored as follows:
+
+| | |
+|---|---|
+| P1(a) | agreement over the marked items only, `?` excluded from both numerator and denominator |
+| P1(b) | agreement over all 15, every `?` counted as a **disagreement** |
+| pass | **both** at or above 0.80 |
+| divergent | both reported, in the same sentence, always. Never one alone |
+| `?` ≥ **8 of 15** | P1 is **not reported as a score.** Recorded as *"the criterion did not operate"*, and the axis stops there — the same stop §7 gives a P1 miss |
+
+The 8-of-15 line is the same shape as P2's floor, and for the same reason: below
+it the remaining items cannot carry a claim about agreement no matter which way
+they fall.
+
+### The sheet was also rebuilt, and one part of it was a defect
+
+§4's second validity threat ends: *"The sample draw records, per turn, whether
+the tool appears anywhere in that session, so this can be checked against the
+labels rather than assumed away."* The draw did record it — `ask_tool_in_session`
+is in `_fm22_draw.RESULTS.json` for every drawn turn. **The label sheet did not
+render it.** So the check §4 promised could not be performed by the person
+labelling, which is the only place it can be performed.
+
+The rebuilt sheet carries it, along with the previous user turn, the agent's
+first tool call and its target, and the first paragraph of the reply.
+
+**This is a change to the materials, not to the question.** §6 fixes the sample
+— 15 ids, seed `20260903` — and §8 step 2 fixes the draw; neither fixes the
+sheet, and `_fm22_draw.py` states in its own docstring that it does not build
+one. The question is quoted verbatim from §6 and is unchanged.
+
+### What is explicitly NOT changed
+
+- **The 0.80 threshold**, and the stop that follows a miss.
+- **The sample.** Same 15 ids, same seed `20260903`, same 40 + 40 draw.
+- **The question.** Word for word as §6 writes it.
+- **P2's floor of 8**, and the reading §7 gives its miss: publish the negative
+  result, name the instruction-to-ask, take the axis to an external corpus, and
+  do **not** widen the candidate rule.
+- **The drafted labels.** All 40 stay frozen in the file they were written to.
+  A `?` in the blind set does not license revisiting one of them.
+- **P3–P7**, which are not reached unless P1 and P2 both pass.
+
+### Why this is written down rather than absorbed
+
+A scoring rule with a number in it that gets decided after the marks arrive is
+the thing pre-registration exists to prevent. The marks have not arrived. Fixing
+the alphabet in a merged document now costs one PR; deciding how to handle a
+`?` after seeing eleven of them costs the axis its result.
+
 ## 9. Cost, for planning rather than as a claim
 
 FM-3.2 measured $0.0046 and 1.8 s per session on `claude-haiku-4-5`. 80 calls
