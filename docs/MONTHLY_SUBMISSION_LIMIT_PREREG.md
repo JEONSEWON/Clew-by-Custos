@@ -208,10 +208,18 @@ Stated because it is a user-visible cut: an org that exhausts its quota is
 refused until the boundary, and "which midnight" is a support question. It is
 written here so the answer is the same one the code gives.
 
-⚠️ The database time zone is **not verified in this document.** Anyone
-applying this must confirm it and, if it is not UTC, decide whether that is
-the intended boundary before shipping. Recording it as unknown rather than
-assuming UTC.
+**Verified 2026-09-05:** `show timezone` on the production instance returns
+`UTC`. The assumption this document refused to make turned out to be the
+measurement, so the boundary stands as frozen and no re-decision is needed.
+
+★ In the time zone the support question arrives in, that boundary is **09:00
+KST on the 1st**, not KST midnight. A KST user between 00:00 and 09:00 on the
+1st is still inside the previous period, and a run they submit then counts
+against the month that appears to have ended.
+
+Consequence for copy: **"매월 1일" alone is false for nine hours of that day.**
+Any user-facing sentence naming the reset must name the hour with it. That is
+the sentence the web session was waiting on before writing the plan page.
 
 ---
 
